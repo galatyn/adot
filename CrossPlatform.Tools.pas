@@ -184,6 +184,41 @@ type
     property Count: integer read GetCount;
   end;
 
+  TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
+  
+  TMultimap<TKey,TValue> = class(TDictionary<TKey,TValue>)
+  protected
+    type
+      TMultimapKey = record
+        Key: TKey;
+        Number: integer;
+      end;
+    var
+      FCount: TDictionary<TKey, integer>;
+      FValues: TDictionary<TMultimapKey, TValue>;
+
+    function GetCount: integer;
+
+  public
+    type
+      TSearch = record
+      private
+        Number: integer;
+      end;
+
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure Add(const AKey: TKey; const AValue: TValue);
+    function ContainsKey(const AKey: TKey): Boolean;
+    function Remove(const AKey: TKey):Boolean;
+    function GetFirstValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
+    function GetNextValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
+    function GetValuesCount(const AKey: TKey):Integer;
+
+    property Count: integer read GetCount;
+  end;
+  
   // Unlike TObjectStack, TObjectStackExt provides Items property for direct index-based access to all items
   // (TObjectStack hides internal array behind private section, so we can't extend functionality in normal OO-way).
   TObjectStackExt<TValue: class> = class
@@ -295,45 +330,6 @@ type
 
     class function DecodedSize(const ASrc; APackedSize: cardinal): cardinal;
     class procedure Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
-  end;
-
-  TListOfThreads = class;
-
-  TListableThread = class(TThread)
-  protected
-    FDestroyingListEvent: TEvent;
-    FThreadList: TListOfThreads;
-
-    // Descendants _must_ call it at end of execute method.
-    // It should be called inside of Execute method.
-    procedure ThreadFinished;
-
-    // Descendants must support it - when called, execute should be finished ASAP.
-    procedure TerminatedSet; override;
-
-  public
-    constructor Create(AList: TListOfThreads);
-    destructor Destroy; override;
-
-    // Descendants must use it in all wait operations to be sure, that thread will
-    // be resumed and terminated by request of owner (list) as soon as possible.
-    property TerminateRequestEvent: TEvent read FDestroyingListEvent;
-  end;
-
-  // Will destroy all contained threads gracefully on destruction.
-  TListOfThreads = class
-  protected
-    FListMutex: TMutex;
-    FList: TList<TListableThread>;
-    FTimeout: DWORD;
-
-  public
-    constructor Create;
-    destructor Destroy; override;
-    procedure Add(AThread: TListableThread);
-    procedure ThreadFinished(ACaller: TListableThread);
-
-    property Timeout: DWORD read FTimeout write FTimeout;
   end;
 
 implementation
@@ -1462,131 +1458,6 @@ begin
     raise exception.create('RLDecode error');
 end;
 
-{ TListableThread }
-
-constructor TListableThread.Create(AList: TListOfThreads);
-begin
-  FDestroyingListEvent := TEvent.Create(nil, True, False, '');
-  FThreadList := AList;
-
-  // when creating new thread, list must not be in-destroying state
-  // so it is safe to aquire FListMutex
-  FThreadList.Add(Self);
-
-  inherited Create(False);
-end;
-
-destructor TListableThread.Destroy;
-begin
-  // Task can be destroyed:
-  // 1. If Execute finished (then FreOnTerminate will be set).
-  // 2. If owner is destroying.
-  // In any case we should not wait for thread here, just clean up.
-  FThreadList := nil;
-  FreeAndNil(FDestroyingListEvent);
-  inherited;
-end;
-
-procedure TListableThread.TerminatedSet;
-begin
-  inherited;
-  if FDestroyingListEvent<>nil then
-    FDestroyingListEvent.SetEvent;
-end;
-
-procedure TListableThread.ThreadFinished;
-begin
-  FThreadList.ThreadFinished(Self);
-end;
-
-{ TListOfThreads<T> }
-
-constructor TListOfThreads.Create;
-begin
-  FListMutex := TMutex.Create;
-  FList := TList<TListableThread>.Create;
-  FTimeout := 3000;
-end;
-
-procedure TListOfThreads.Add(AThread: TListableThread);
-begin
-  FListMutex.Acquire;
-  try
-    FList.Add(AThread);
-  finally
-    FListMutex.Release;
-  end;
-end;
-
-procedure TListOfThreads.ThreadFinished(ACaller: TListableThread);
-var
-  Signalated: THandleObject;
-  ObjArr: THandleObjectArray;
-begin
-  // This method is always called in context of ACaller thread.
-  // It mean that any other method (including dstructor) may run at same time.
-  setlength(ObjArr, 2);
-  ObjArr[0] := FListMutex;
-  ObjArr[1] := ACaller.FDestroyingListEvent;
-  if THandleObject.WaitForMultiple(ObjArr, INFINITE, False, Signalated)=wrSignaled then
-    if Signalated=ACaller.FDestroyingListEvent then
-    begin
-      // destroying is initiated by TListOfThreads.Destroy (list will care of destroying)
-      ACaller.FreeOnTerminate := False;
-      ACaller.FThreadList := nil;
-    end
-    else
-    try
-      // destroying is initiated by thread (finished)
-      // and we aquired FListMutex
-      FList.Remove(ACaller);
-      ACaller.FThreadList := nil;
-      ACaller.FreeOnTerminate := True;
-    finally
-      FListMutex.Release;
-    end;
-end;
-
-destructor TListOfThreads.Destroy;
-var
-  i: Integer;
-  t: TListableThread;
-begin
-  if (FList<>nil) and (FListMutex<>nil) then
-  begin
-    FListMutex.Acquire;
-    try
-
-      // Iinform all threads to finish (terminate).
-      // Signalate DestroyingList event (to avoid of deadlocks).
-      for i := FList.Count-1 downto 0 do
-      begin
-        t := FList[i];
-        t.Terminate; // will call FDestroyingListEvent.SetEvent from TerminatedSet
-      end;
-
-      // Wait for threads and destroy.
-      // Delphi doesn't have platform independent function to wait several threads,
-      // but we already signalated all threads, so it is ok to wait them one by one.
-      // The only potential problem - we can't use general timeout for full wait operation.
-      for i := FList.Count-1 downto 0 do
-        try
-          t := FList[i];
-          t.WaitFor;
-          FList[i].Free;
-        except
-        end;
-      FList.Clear;
-    finally
-      FListMutex.Release;
-    end;
-  end;
-
-  FreeAndNil(FList);
-  FreeAndNil(FListMutex);
-  inherited;
-end;
-
 { TObjectStackExt<TValue> }
 
 procedure TObjectStackExt<TValue>.Clear;
@@ -1665,6 +1536,83 @@ end;
 procedure TObjectStackExt<TValue>.TrimExcess;
 begin
   FItems.TrimExcess;
+end;
+
+{ TMultimap<TKey, TValue> }
+
+constructor TMultimap<TKey, TValue>.Create;
+begin
+  FCount := TDictionary<TKey, integer>.Create;
+  FValues := TDictionary<TMultimapKey, TValue>.Create;
+end;
+
+destructor TMultimap<TKey, TValue>.Destroy;
+begin
+  FreeAndNil(FCount);
+  FreeAndNil(FValues);
+  inherited;
+end;
+
+function TMultimap<TKey, TValue>.GetCount: integer;
+begin
+  result := FValues.Count;
+end;
+
+function TMultimap<TKey, TValue>.ContainsKey(const AKey: TKey): Boolean;
+begin
+  result := GetValuesCount(AKey)>0;
+end;
+
+function TMultimap<TKey, TValue>.GetValuesCount(const AKey: TKey): Integer;
+begin
+  if not FCount.TryGetValue(AKey, result) then
+    result := 0;
+end;
+
+procedure TMultimap<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue);
+var
+  MKey: TMultimapKey;
+begin
+  MKey.Key := AKey;
+  if not FCount.TryGetValue(AKey, MKey.Number) then
+    MKey.Number := 0;
+  FCount.AddOrSetValue(AKey, MKey.Number+1);
+  FValues.Add(MKey, AValue);
+end;
+
+function TMultimap<TKey, TValue>.Remove(const AKey: TKey): Boolean;
+var
+  MKey: TMultimapKey;
+begin
+  result := FCount.TryGetValue(AKey, MKey.Number);
+  if not result then
+    Exit;
+  FCount.Remove(AKey);
+  MKey.Key := AKey;
+  while MKey.Number>0 do
+  begin
+    dec(MKey.Number);
+    FValues.Remove(MKey);
+  end;
+end;
+
+function TMultimap<TKey, TValue>.GetFirstValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
+begin
+  result := FCount.TryGetValue(AKey, AIterator.Number) and GetNextValue(AKey, AValue, AIterator);
+end;
+
+function TMultimap<TKey, TValue>.GetNextValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
+var
+  MKey: TMultimapKey;
+begin
+  result := AIterator.Number>0;
+  if not result then
+    Exit;
+  dec(AIterator.Number);
+  MKey.Key := AKey;
+  MKey.Number := AIterator.Number;
+  if not FValues.TryGetValue(MKey, AValue) then
+    raise Exception.Create('Error');
 end;
 
 initialization

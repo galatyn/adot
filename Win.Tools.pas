@@ -125,23 +125,7 @@ type
     property Created: Boolean read FCreated;
   end;
 
-  {TThreadTools = class
-  protected
-
-  public
-    // Deadlock-free implementation of Synchronize method (synchronization
-    // with threads FROM main thread must be implemented with supplied methods
-    // WaitForSingle/... only.
-    // Example of such deadlock: main thread calls Mutex.Wait (to access
-    // object shared with thread), thread calls Synchronize (to access VCL).
-    class function WaitForSingle(Handle: THandle; Timeout: LongWord): TWaitResult; static;
-    class function WaitForMultiple(const HandleObjs: THandleObjectArray;
-      Timeout: LongWord; AAll: Boolean; out SignaledObj: THandleObject;
-      UseCOMWait: Boolean = False; Len: Integer = 0): TWaitResult; static;
-    class procedure Synchronize(AMethod: TMethod); static;
-  end;  }
-
-// AH: We should remove it when Embarcadero includes it into Winapi.Windows
+// AH: We should remove it when Embarcadero include it into Winapi.Windows
 {$EXTERNALSYM QueryFullProcessImageName}
 function QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD;
   lpFilename: LPCWSTR; var nSize: DWORD): BOOL; stdcall;
