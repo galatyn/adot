@@ -4,15 +4,15 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls;
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, CrossPlatform.PEG.Test,
+  CrossPlatform.Log, VCL.Log;
 
 type
   TFormMain = class(TForm)
     MemoLog: TMemo;
+    procedure FormCreate(Sender: TObject);
   private
-    { Private declarations }
   public
-    { Public declarations }
   end;
 
 var
@@ -21,5 +21,14 @@ var
 implementation
 
 {$R *.dfm}
+
+procedure TFormMain.FormCreate(Sender: TObject);
+begin
+  AppLog := TMixLog.Create([
+    TVCLStringsLog.Create(MemoLog.Lines),
+    TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
+  ]);
+  CrossPlatform.PEG.Test.RunTestSet;
+end;
 
 end.

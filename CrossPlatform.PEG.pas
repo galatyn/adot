@@ -52,41 +52,20 @@ type
     property ResAsString: string read GetResultatAsString;
   end;
 
-  TExpressionStack = class
-  private
-    function GetCount: integer;
-    function GetItem(i: integer): TPEGInstance;
-  protected
-    FStack: TObjectList<TPEGInstance>;
-    FCP: integer;
-
-  public
-    constructor Create;
-    destructor Destroy; override;
-
-    procedure Push(AValue: TPEGInstance);
-    function Pop: TPEGInstance;
-    function Peek: TPEGInstance;
-
-    property Count: integer read GetCount;
-    property Items[i: integer]: TPEGInstance read GetItem; default;
-    property BinCount: integer read GetBinCount write SetBinCount;
-    property BinItems[i: integer] read GetBinItem;
-  end;
-
   TRecursionAction = (lraSkip, lraError);
   TPEGParser = class
   protected
     FDataSource: TStream;
     FOwnsDataSource: boolean;
     FLastResult: TPEGOpRes;
-    FStack: TObjectStackExt<TPEGInstance>;
+    FStack: TObjectStack<TPEGInstance>;
     FCP: integer;
     FDataSourceFormat: TSourceFormat;
     FCaseInsensitive: Boolean;
     FRecursionSet: TSet<TInstanceId>;
     FRecursionAction: TRecursionAction;
     FIteration: integer;
+    FChildInstance: TPEGInstance;
 
     procedure ExecSubExpression(AParent: TPEGInstance; ASubExpression: TPEGCustom); inline;
     function GetBytesLeft: integer; inline;
@@ -122,6 +101,7 @@ type
     property DataPosition: integer read GetDataPosition;
     property CaseInsensitive: Boolean read FCaseInsensitive;
     property RecursionAction: TRecursionAction read FRecursionAction write FRecursionAction;
+    property IterationsCounter: integer read FIteration;
   end;
 
   TExpressionType = (
@@ -145,7 +125,7 @@ type
     // In this case they put subexpressions one by one to Parser. It helps us
     // to avoid of deep recursion (we use parser expressions stack instead).
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; virtual; abstract;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; virtual; abstract;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; virtual; abstract;
     procedure SetParser(AParser: TPEGParser); virtual;
   public
     property Kind: TExpressionType read FKind write FKind;
@@ -160,7 +140,7 @@ type
     FCaseInsensitive: Boolean;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const AValue: string; ACaseInsensitive: boolean);
@@ -176,7 +156,7 @@ type
     FCaseInsensitive: Boolean;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const AValue: AnsiString; ACaseInsensitive: boolean);
@@ -192,7 +172,7 @@ type
     FCaseInsensitive: Boolean;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const AChars: TAnsiCharSet; ACaseInsensitive: Boolean);
@@ -213,7 +193,7 @@ type
     FCaseInsensitive: Boolean;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const AValue: TAnsiCharSet; ACaseInsensitive: Boolean); overload;
@@ -227,7 +207,7 @@ type
     FValue: TByteDynArray;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const AValue: array of Byte); overload;
@@ -238,7 +218,7 @@ type
     FValue: TByteSet;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
 
   public
     constructor Create(const ABytes: TByteSet);
@@ -249,7 +229,7 @@ type
     FValue: TPEGCustom;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
     procedure SetParser(AParser: TPEGParser); override;
 
   public
@@ -265,7 +245,7 @@ type
     FMinRep, FMaxRep: integer;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
     procedure SetParser(AParser: TPEGParser); override;
 
   public
@@ -278,7 +258,7 @@ type
     FSubExpressions: TList<TPEGCustom>;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
     procedure SetParser(AParser: TPEGParser); override;
 
   public
@@ -292,7 +272,7 @@ type
     FSubExpressions: TList<TPEGCustom>;
 
     function FirstOp(AInstance: TPEGInstance): TPEGOpRes; override;
-    function NextOp(AInstance: TPEGInstance): TPEGOpRes; override;
+    function NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes; override;
     procedure SetParser(AParser: TPEGParser); override;
   public
     constructor Create;
@@ -343,7 +323,7 @@ constructor TPEGParser.Create(ADataSource: TStream; AOwns: boolean;
 begin
   FDataSource := ADataSource;
   FOwnsDataSource := AOwns;
-  FStack := TObjectStackExt<TPEGInstance>.Create;
+  FStack := TObjectStack<TPEGInstance>.Create(False);
   FDataSourceFormat := ADataSourceFormat;
   FCaseInsensitive := ACaseInsensitive;
   FRecursionSet := TSet<TInstanceId>.Create;
@@ -357,6 +337,7 @@ begin
     FDataSource := nil;
   FreeAndNil(FStack);
   FreeAndNil(FRecursionSet);
+  FreeAndNil(FChildInstance);
   inherited;
 end;
 
@@ -396,20 +377,24 @@ end;
 function TPEGParser.LogExprStack(APEGInstance: TPEGInstance): Boolean;
 {$IFDEF PEGLOG}
 var
-  i: Integer;
-  {$ENDIF}
+  Enum: TObjectStack<TPEGInstance>.TEnumerator;
+{$ENDIF}
 begin
   result := True;
   {$IFDEF PEGLOG}
   AppLog.Log(''); LogStr('%d %s [CurStreamPos: %d][CurCmdCount: %d]', [FIteration, APEGInstance.AsString,
     DataSource.Position, FStack.Count]);
-  for i := 0 to FStack.Count-1 do
-    LogStr('%.2d %s : %.2d %s (%s)', [
-      i+1,
-      THex.PointerToHex(FStack[i].PEG),
-      FStack[i].DataPos,
-      FStack[i].PEG.ClassName,
-      FStack[i].PEG.Name]);
+  Enum := FStack.GetEnumerator;
+  try
+    while Enum.MoveNext do
+      LogStr('  %s : %.2d %s (%s)', [
+        THex.PointerToHex(Enum.Current.PEG),
+        Enum.Current.DataPos,
+        Enum.Current.PEG.ClassName,
+        Enum.Current.PEG.Name]);
+  finally
+    FreeAndNil(Enum);
+  end;
   {$ENDIF}
 end;
 
@@ -439,10 +424,12 @@ begin
   {$ENDIF}
 end;
 
+{$IFDEF PEGLOG}
 procedure TPEGParser.LogResults;
 begin
-  //
+
 end;
+{$ENDIF}
 
 function TPEGParser.LogFirstOpWithSubexpr(APEGInstance: TPEGInstance): Boolean;
 begin
@@ -490,6 +477,7 @@ begin
   FLastResult := oprFail;
   ExecSubExpression(nil, AStartPEG);
   FCP := FStack.Count-1;
+  FreeAndNil(FChildInstance);
   repeat
     Inc(FIteration);
     PEGInstance := FStack.Peek;
@@ -527,7 +515,11 @@ begin
     // Next step of running PEG (skip recursion check)
     begin
       Recursion := False;
-      FLastResult := PEGInstance.PEG.NextOp(PEGInstance);
+      FLastResult := PEGInstance.PEG.NextOp(PEGInstance, FChildInstance);
+      // Some PEGs (sequence for example) may save child expressions internally to be able
+      // to restore tree of results after successfull matching.
+      if FChildInstance<>nil then
+        FreeAndNil(FChildInstance);
       Assert(LogNextOp);
     end;
 
@@ -549,11 +541,15 @@ begin
         FRecursionSet.Remove(PEGInstance.Id);
         Assert(LogFinishRecursionTrack(PEGInstance));
       end;
-      FStack.Pop;
-    end;
+      FChildInstance := FStack.Extract;
+    end
+    else
+      FChildInstance := nil;
 
-  until (FStack.Count=0) or (CP<0);
+  until (FStack.Count=0);
   result := FLastResult in [oprOk, oprOkRestoreData];
+  if not result then
+    FreeAndNil(FChildInstance);
 
   {$IFDEF PEGLOG}
   except on e: Exception do begin
@@ -617,7 +613,7 @@ begin
 
 end;
 
-function TPEGString.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGString.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -664,7 +660,7 @@ begin
 
 end;
 
-function TPEGBytes.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGBytes.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -697,7 +693,7 @@ begin
   end;
 end;
 
-function TPEGByteSet.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGByteSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -785,7 +781,7 @@ begin
     AInstance.Len := SizeOf(C);
 end;
 
-function TPEGCharSet.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGCharSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -846,7 +842,7 @@ begin
     AInstance.Len := SizeOf(C);
 end;
 
-function TPEGAnsiCharSet.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGAnsiCharSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -865,9 +861,9 @@ begin
   result := FValue.FirstOp(AInstance);
 end;
 
-function TPEGLink.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGLink.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := FValue.NextOp(AInstance);
+  result := FValue.NextOp(AInstance, AFinishedChild);
 end;
 
 procedure TPEGLink.SetParser(AParser: TPEGParser);
@@ -902,7 +898,7 @@ begin
   Parser.ExecSubExpression(AInstance, FPEG);
 end;
 
-function TPEGRepeat.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGRepeat.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
 
   // We don't accept oprOkRestoreData here!
@@ -994,7 +990,7 @@ begin
   Parser.ExecSubExpression(AInstance, FSubExpressions[0]);
 end;
 
-function TPEGChoice.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGChoice.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
 
   // match found
@@ -1071,7 +1067,7 @@ begin
   Parser.ExecSubExpression(AInstance, FSubExpressions[0]);
 end;
 
-function TPEGSequence.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGSequence.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   if Parser.LastExprResult<>oprOk then
   begin
@@ -1158,7 +1154,7 @@ begin
 
 end;
 
-function TPEGAnsiString.NextOp(AInstance: TPEGInstance): TPEGOpRes;
+function TPEGAnsiString.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
   result := oprFail;
 end;
@@ -1185,31 +1181,6 @@ end;
 function TPEGInstance.GetResultatAsString: string;
 begin
   result := Format('"%s": %s (Start: %d, Len: %d)', [PEG.Name, PEG.ClassName, DataPos, Len]);
-end;
-
-{ TExpressionStack }
-
-constructor TExpressionStack.Create;
-begin
-  inherited;
-  FStack := TObjectList<TPEGInstance>.Create;
-  FCP := -1;
-end;
-
-destructor TExpressionStack.Destroy;
-begin
-  FreeAndNil(FStack);
-  inherited;
-end;
-
-function TExpressionStack.GetCount: integer;
-begin
-  result := FCP+1;
-end;
-
-function TExpressionStack.GetItem(i: integer): TPEGInstance;
-begin
-  result := FStack[FCP];
 end;
 
 end.

@@ -1,11 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
-  <Transactions>
-    <Transaction>2015.09.18 13:35:23.590,=C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.pas</Transaction>
-    <Transaction>2015.09.18 13:36:11.128,E:\!components\adot\Test\MainFrm.dfm=C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.dfm</Transaction>
-    <Transaction>2015.09.18 13:36:11.128,E:\!components\adot\Test\MainFrm.pas=C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.pas</Transaction>
-    <Transaction>2015.09.18 13:36:20.529,E:\!components\adot\Test\TestAdot.dproj=C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Project9.dproj</Transaction>
-    <Transaction>2015.09.18 13:37:04.839,=E:\!components\adot\CrossPlatform.PEG.Test.pas</Transaction>
-    <Transaction>2015.09.18 13:37:32.018,=E:\!components\adot\CrossPlatform.Tools.Test.pas</Transaction>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.128,C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.dfm=E:\!components\adot\Test\MainFrm.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.839,=E:\!components\adot\CrossPlatform.PEG.Test.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.529,C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Project9.dproj=E:\!components\adot\Test\TestAdot.dproj</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.590,=C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.018,=E:\!components\adot\CrossPlatform.Tools.Test.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.128,C:\Users\galatyn\Documents\Embarcadero\Studio\Projects\Unit8.pas=E:\!components\adot\Test\MainFrm.pas</Transaction>
+    <Transaction>2015.09.19 11:23:32.303,=E:\!components\adot\CrossPlatform.Log.pas</Transaction>
+    <Transaction>2015.09.19 11:24:17.475,=E:\!components\adot\VCL.Log.pas</Transaction>
   </Transactions>
 </BorlandProject>

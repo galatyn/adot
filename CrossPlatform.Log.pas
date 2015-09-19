@@ -1,5 +1,18 @@
 unit CrossPlatform.Log;
+(*
+  Logging classes. Example:
 
+  Uses
+    CrossPlatform.Log, VCL.Log;
+
+  procedure TFormMain.FormCreate(Sender: TObject);
+  begin
+    AppLog := TMixLog.Create([
+      TVCLStringsLog.Create(MemoLog.Lines),
+      TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
+    ]);
+  end;
+*)
 interface
 
 uses
@@ -17,10 +30,6 @@ type
     const
       LogPrefix: array[TInfoType] of string = (
         'INF', 'WAR', 'ERR', 'EXC');
-      Architectures: array[TOSVersion.TArchitecture] of string = (
-        'Intel X86' ,'Intel X64' ,'ARM 32' {$IF CompilerVersion >= 29},'ARM 64'{$IFEND});
-      Platforms: array[TOSVersion.TPlatform] of string = (
-        'Windows', 'Mac OS', 'iOS', 'Android', 'Win RT', 'Linux' );
 
   protected
     FHeaderSent: Boolean;
@@ -120,7 +129,7 @@ type
   // Simple and fast logger (buffered + asynchronous).
   // Under some conditions Delphi threading library fails in DLL, consider
   // to use logger withour treading for such DLLs (injected DLL etc).
-  // All loggers are thread-safe.
+  // Thread-safe.
   TFileLog = class(TCustomLog)
   protected
     type
@@ -158,7 +167,7 @@ type
   // Simplest and most reliable logger, all logged data became visible
   // immediately, but not so fast as buffered/threaded loggers, use it only if
   // app is not supposed to log a lot of information.
-  // All loggers are thread-safe.
+  // Thread-safe.
   TSyncFileLog = class(TCustomLog)
   protected
     Stream: TStream;
@@ -177,6 +186,7 @@ type
 
   // Buffered but synchronous logger (faster than TSyncFileLog, but still not
   // so fast as TFileLog).
+  // Thread-safe.
   TSyncBufFileLog = class(TSyncFileLog)
   protected
     Buffer: array[0..65535] of Byte;
@@ -190,7 +200,7 @@ type
 
   // If creation of real logger is not possible (no access to file system etc),
   // it can be usefull create empty logger to keep code simple and readable.
-  // All loggers are thread-safe.
+  // Thread-safe.
   TNullLog = class(TCustomLog)
   protected
     procedure Send(AData: pointer; ASize: Integer); override;
@@ -279,12 +289,10 @@ begin
   if not Enabled or FHeaderSent then
     Exit;
   FHeaderSent := True;
-  {$IFDEF WIN32} Log('App: WIN32'); {$ENDIF}
-  {$IFDEF WIN64} Log('App: WIN64'); {$ENDIF}
-  Log('OS: %s, Architecture: %s, Platform: %s', [
-    TOSVersion.ToString,
-    Architectures[TOSVersion.Architecture],
-    Platforms[TOSVersion.Platform]
+  Log('Platform: %s; Architecture: %s; OS: %s', [
+    TEnumeration<TOSVersion.TPlatform>.ToString(TOSVersion.Platform).Substring(2),
+    TEnumeration<TOSVersion.TArchitecture>.ToString(TOSVersion.Architecture).Substring(2),
+    TOSVersion.ToString
   ]);
   s := ParamStr(0);
   for i := 1 to ParamCount do

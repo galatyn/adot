@@ -11,6 +11,7 @@ object FormMain: TFormMain
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  OnCreate = FormCreate
   PixelsPerInch = 96
   TextHeight = 13
   object MemoLog: TMemo
@@ -19,12 +20,16 @@ object FormMain: TFormMain
     Width = 667
     Height = 378
     Align = alClient
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clWindowText
+    Font.Height = -11
+    Font.Name = 'Courier New'
+    Font.Style = []
     Lines.Strings = (
       'MemoLog')
+    ParentFont = False
+    ScrollBars = ssBoth
     TabOrder = 0
-    ExplicitLeft = 248
-    ExplicitTop = 168
-    ExplicitWidth = 185
-    ExplicitHeight = 89
+    WordWrap = False
   end
 end

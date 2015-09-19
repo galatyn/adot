@@ -7,7 +7,8 @@ uses
   IdGlobal, System.Classes, IdHashMessageDigest, System.SysUtils,
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
-  System.TimeSpan, System.Character, System.Types, System.SyncObjs;
+  System.TimeSpan, System.Character, System.Types, System.SyncObjs,
+  System.TypInfo;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -184,74 +185,51 @@ type
     property Count: integer read GetCount;
   end;
 
-  TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
-  
-  TMultimap<TKey,TValue> = class(TDictionary<TKey,TValue>)
+  TMultimap<TKey,TValue> = class
   protected
     type
       TMultimapKey = record
         Key: TKey;
         Number: integer;
       end;
-    var
-      FCount: TDictionary<TKey, integer>;
-      FValues: TDictionary<TMultimapKey, TValue>;
-
-    function GetCount: integer;
 
   public
     type
-      TSearch = record
+      TValueEnumerator = record
       private
-        Number: integer;
+        FMultimap: TMultimap<TKey,TValue>;
+        FMultimapKey: TMultimapKey;
+
+        constructor Create(AMultimap: TMultimap<TKey,TValue>; const AKey: TKey);
+        function GetCurrent: TValue;
+        function GetKey: TKey;
+      public
+        function MoveNext: Boolean;
+        property Current: TValue read GetCurrent;
+        property Key: TKey read GetKey;
       end;
+
+  protected
+    FCount: TDictionary<TKey, integer>;
+    FValues: TDictionary<TMultimapKey, TValue>;
+
+    function GetTotalValuesCount: integer;
+    function GetValuesCount(const AKey: TKey):Integer;
+    function GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
+    function GetContainsKey(const AKey: TKey): Boolean;
+
+  public
 
     constructor Create;
     destructor Destroy; override;
 
     procedure Add(const AKey: TKey; const AValue: TValue);
-    function ContainsKey(const AKey: TKey): Boolean;
     function Remove(const AKey: TKey):Boolean;
-    function GetFirstValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
-    function GetNextValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
-    function GetValuesCount(const AKey: TKey):Integer;
 
-    property Count: integer read GetCount;
-  end;
-  
-  // Unlike TObjectStack, TObjectStackExt provides Items property for direct index-based access to all items
-  // (TObjectStack hides internal array behind private section, so we can't extend functionality in normal OO-way).
-  TObjectStackExt<TValue: class> = class
-  protected
-    FItems: TObjectList<TValue>;
-
-    function GetCount: integer; inline;
-    procedure SetCount(const Value: integer); inline;
-    function GetItem(index: integer): TValue; inline;
-    function GetPeek: TValue; inline;
-    procedure SetItem(index: integer; const Value: TValue); inline;
-    function GetOwnsObjects: boolean; inline;
-    procedure SetOwnsObjects(const Value: boolean); inline;
-
-  public
-    type
-      TEnumerator = TObjectList<TValue>.TEnumerator;
-
-    constructor Create;
-    destructor Destroy; override;
-
-    function Push(AValue: TValue):TValue; inline;
-    function Pop: TValue; inline;
-    procedure Clear; inline;
-    procedure TrimExcess; inline;
-    function ToArray: TArray<TValue>;
-    function GetEnumerator: TEnumerator;
-
-    property Peek: TValue read GetPeek;
-    property Extract: TValue read Pop;
-    property Count: integer read GetCount write SetCount;
-    property Items[index: integer]:TValue read GetItem write SetItem; default;
-    property OwnsObjects: boolean read GetOwnsObjects write SetOwnsObjects;
+    property TotalValuesCount: integer read GetTotalValuesCount;
+    property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
+    property ContainsKey[const AKey: TKey]: boolean read GetContainsKey; // ValuesCount[AKey]>0
+    property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
   end;
 
   TTiming = class
@@ -330,6 +308,23 @@ type
 
     class function DecodedSize(const ASrc; APackedSize: cardinal): cardinal;
     class procedure Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
+  end;
+
+  // http://stackoverflow.com/questions/31601707/generic-functions-for-converting-an-enumeration-to-string-and-back#31604647
+  TEnumeration<T: record> = record
+  strict private
+    class function TypeInfo: PTypeInfo; inline; static;
+    class function TypeData: PTypeData; inline; static;
+  public
+    class function IsEnumeration: Boolean; static;
+    class function ToOrdinal(Enum: T): Integer; inline; static;
+    class function FromOrdinal(Value: Integer): T; inline; static;
+    class function ToString(Enum: T): string; inline; static;
+    class function FromString(const S: string): T; inline; static;
+    class function MinValue: Integer; inline; static;
+    class function MaxValue: Integer; inline; static;
+    class function InRange(Value: Integer): Boolean; inline; static;
+    class function EnsureRange(Value: Integer): Integer; inline; static;
   end;
 
 implementation
@@ -1458,86 +1453,6 @@ begin
     raise exception.create('RLDecode error');
 end;
 
-{ TObjectStackExt<TValue> }
-
-procedure TObjectStackExt<TValue>.Clear;
-begin
-  FItems.Clear;
-end;
-
-constructor TObjectStackExt<TValue>.Create;
-begin
-  FItems := TObjectList<TValue>.Create;
-end;
-
-destructor TObjectStackExt<TValue>.Destroy;
-begin
-  FreeAndNil(FItems);
-  inherited;
-end;
-
-function TObjectStackExt<TValue>.GetCount: integer;
-begin
-  result := FItems.Count;
-end;
-
-procedure TObjectStackExt<TValue>.SetCount(const Value: integer);
-begin
-  FItems.Count := Value;
-end;
-
-function TObjectStackExt<TValue>.GetEnumerator: TEnumerator;
-begin
-  result := FItems.GetEnumerator;
-end;
-
-function TObjectStackExt<TValue>.GetItem(index: integer): TValue;
-begin
-  result := FItems[index];
-end;
-
-function TObjectStackExt<TValue>.GetPeek: TValue;
-begin
-  result := FItems.Last;
-end;
-
-function TObjectStackExt<TValue>.Pop: TValue;
-begin
-  result := FItems.Last;
-  FItems.Delete(FItems.Count-1);
-end;
-
-function TObjectStackExt<TValue>.Push(AValue: TValue):TValue;
-begin
-  FItems.Add(AValue);
-  result := AValue;
-end;
-
-procedure TObjectStackExt<TValue>.SetItem(index: integer; const Value: TValue);
-begin
-  FItems[index] := Value;
-end;
-
-function TObjectStackExt<TValue>.GetOwnsObjects: boolean;
-begin
-  result := FItems.OwnsObjects;
-end;
-
-procedure TObjectStackExt<TValue>.SetOwnsObjects(const Value: boolean);
-begin
-  FItems.OwnsObjects := Value;
-end;
-
-function TObjectStackExt<TValue>.ToArray: TArray<TValue>;
-begin
-  result := FItems.ToArray;
-end;
-
-procedure TObjectStackExt<TValue>.TrimExcess;
-begin
-  FItems.TrimExcess;
-end;
-
 { TMultimap<TKey, TValue> }
 
 constructor TMultimap<TKey, TValue>.Create;
@@ -1553,12 +1468,12 @@ begin
   inherited;
 end;
 
-function TMultimap<TKey, TValue>.GetCount: integer;
+function TMultimap<TKey, TValue>.GetTotalValuesCount: integer;
 begin
   result := FValues.Count;
 end;
 
-function TMultimap<TKey, TValue>.ContainsKey(const AKey: TKey): Boolean;
+function TMultimap<TKey, TValue>.GetContainsKey(const AKey: TKey): Boolean;
 begin
   result := GetValuesCount(AKey)>0;
 end;
@@ -1596,23 +1511,111 @@ begin
   end;
 end;
 
-function TMultimap<TKey, TValue>.GetFirstValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
+function TMultimap<TKey, TValue>.GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
 begin
-  result := FCount.TryGetValue(AKey, AIterator.Number) and GetNextValue(AKey, AValue, AIterator);
+  result := TValueEnumerator.Create(Self, AKey);
 end;
 
-function TMultimap<TKey, TValue>.GetNextValue(const AKey: TKey; var AValue: TValue; var AIterator: TSearch): Boolean;
-var
-  MKey: TMultimapKey;
+{ TMultimap<TKey, TValue>.TValueEnumerator }
+
+constructor TMultimap<TKey, TValue>.TValueEnumerator.Create(AMultimap: TMultimap<TKey, TValue>; const AKey: TKey);
 begin
-  result := AIterator.Number>0;
-  if not result then
-    Exit;
-  dec(AIterator.Number);
-  MKey.Key := AKey;
-  MKey.Number := AIterator.Number;
-  if not FValues.TryGetValue(MKey, AValue) then
+  FMultimap := AMultimap;
+  FMultimapKey.Key := AKey;
+  if not FMultimap.FCount.TryGetValue(AKey, FMultimapKey.Number) then
+    FMultimapKey.Number := -1;
+end;
+
+function TMultimap<TKey, TValue>.TValueEnumerator.MoveNext: Boolean;
+begin
+  result := FMultimapKey.Number>0;
+  if result then
+    dec(FMultimapKey.Number);
+end;
+
+function TMultimap<TKey, TValue>.TValueEnumerator.GetCurrent: TValue;
+begin
+  if not FMultimap.FValues.TryGetValue(FMultimapKey, result) then
     raise Exception.Create('Error');
+end;
+
+function TMultimap<TKey, TValue>.TValueEnumerator.GetKey: TKey;
+begin
+  result := FMultimapKey.Key;
+end;
+
+{ TEnumeration<T> }
+
+class function TEnumeration<T>.TypeInfo: PTypeInfo;
+begin
+  Result := System.TypeInfo(T);
+end;
+
+class function TEnumeration<T>.TypeData: PTypeData;
+begin
+  Result := System.TypInfo.GetTypeData(TypeInfo);
+end;
+
+class function TEnumeration<T>.IsEnumeration: Boolean;
+begin
+  Result := TypeInfo.Kind=tkEnumeration;
+end;
+
+class function TEnumeration<T>.ToOrdinal(Enum: T): Integer;
+begin
+  Assert(IsEnumeration);
+  Assert(SizeOf(Enum)<=SizeOf(Result));
+  Result := 0; // needed when SizeOf(Enum) < SizeOf(Result)
+  Move(Enum, Result, SizeOf(Enum));
+  Assert(InRange(Result));
+end;
+
+class function TEnumeration<T>.FromOrdinal(Value: Integer): T;
+begin
+  Assert(IsEnumeration);
+  Assert(InRange(Value));
+  Assert(SizeOf(Result)<=SizeOf(Value));
+  Move(Value, Result, SizeOf(Result));
+end;
+
+class function TEnumeration<T>.ToString(Enum: T): string;
+begin
+  Result := GetEnumName(TypeInfo, ToOrdinal(Enum));
+end;
+
+class function TEnumeration<T>.FromString(const S: string): T;
+begin
+  Result := FromOrdinal(GetEnumValue(TypeInfo, S));
+end;
+
+class function TEnumeration<T>.MinValue: Integer;
+begin
+  Assert(IsEnumeration);
+  Result := TypeData.MinValue;
+end;
+
+class function TEnumeration<T>.MaxValue: Integer;
+begin
+  Assert(IsEnumeration);
+  Result := TypeData.MaxValue;
+end;
+
+class function TEnumeration<T>.InRange(Value: Integer): Boolean;
+var
+  ptd: PTypeData;
+begin
+  Assert(IsEnumeration);
+  ptd := TypeData;
+  Result := System.Math.InRange(Value, ptd.MinValue, ptd.MaxValue);
+end;
+
+class function TEnumeration<T>.EnsureRange(Value: Integer): Integer;
+var
+  ptd: PTypeData;
+begin
+  Assert(IsEnumeration);
+  ptd := TypeData;
+  Result := System.Math.EnsureRange(Value, ptd.MinValue, ptd.MaxValue);
 end;
 
 initialization
