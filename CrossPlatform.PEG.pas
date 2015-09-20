@@ -35,17 +35,21 @@ type
     function GetInstanceId: TInstanceId;
     function GetAsString: string;
     function GetResultatAsString: string;
+    procedure AddSubExpression(var ASubExpression: TPEGInstance);
+    procedure FreeSubExpressions;
 
   public
-    Parent   : TPEGInstance; // to build tree of results
-    PEG      : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
-    DataPos  : integer;      // start position (used to rollback data stream, calculate len etc)
-    Len      : integer;      // Len bytes at DataPos are matched
-    Started  : Boolean;      // False=first call, True=subsequent call
-    CurIndex : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
-    EndPos   : integer;      // repeat/... keep here internal state (end position for last op)
+    Parent         : TPEGInstance; // to build tree of results
+    PEG            : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
+    DataPos        : integer;      // start position (used to rollback data stream, calculate len etc)
+    Len            : integer;      // Len bytes at DataPos are matched
+    Started        : Boolean;      // False=first call, True=subsequent call
+    CurIndex       : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
+    EndPos         : integer;      // repeat/... keep here internal state (end position for last op)
+    SubExpressions : TList<TPEGInstance>; // can be used to extract detailed information about subexpressions
 
     constructor Create(AParent: TPEGInstance; APEG: TPEGCustom; ADataPos: integer);
+    destructor Destroy; override;
 
     property Id: TInstanceId read GetInstanceId;
     property AsString: string read GetAsString;
@@ -59,7 +63,6 @@ type
     FOwnsDataSource: boolean;
     FLastResult: TPEGOpRes;
     FStack: TObjectStack<TPEGInstance>;
-    FCP: integer;
     FDataSourceFormat: TSourceFormat;
     FCaseInsensitive: Boolean;
     FRecursionSet: TSet<TInstanceId>;
@@ -307,15 +310,6 @@ begin
   end;
 end;
 
-{ TPEGParser.TPEGInstance }
-
-constructor TPEGInstance.Create(AParent: TPEGInstance; APEG: TPEGCustom; ADataPos: integer);
-begin
-  Parent := AParent;
-  PEG := APEG;
-  DataPos := ADataPos;
-end;
-
 { TPEGParser }
 
 constructor TPEGParser.Create(ADataSource: TStream; AOwns: boolean;
@@ -470,14 +464,13 @@ var
   Recursion: Boolean;
 begin
   {$IFDEF PEGLOG} try {$ENDIF}
+  FreeAndNil(FChildInstance); // free old results
   FIteration := 0;
   DataSource.Position := 0;
   FStack.Clear;
   FRecursionSet.Clear;
   FLastResult := oprFail;
   ExecSubExpression(nil, AStartPEG);
-  FCP := FStack.Count-1;
-  FreeAndNil(FChildInstance);
   repeat
     Inc(FIteration);
     PEGInstance := FStack.Peek;
@@ -615,7 +608,8 @@ end;
 
 function TPEGString.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
 end;
 
 { TPEGBytes }
@@ -662,7 +656,8 @@ end;
 
 function TPEGBytes.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
 end;
 
 { TPEGByteSet }
@@ -695,7 +690,8 @@ end;
 
 function TPEGByteSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
 end;
 
 { TPEGCharSet }
@@ -783,7 +779,8 @@ end;
 
 function TPEGCharSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
 end;
 
 { TPEGAnsiCharSet }
@@ -844,7 +841,8 @@ end;
 
 function TPEGAnsiCharSet.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
 end;
 
 { TPEGLink }
@@ -906,6 +904,7 @@ begin
   // greeby repeater never go forward and never stop.
   if Parser.LastExprResult=oprOk then
   begin
+    AInstance.AddSubExpression(AFinishedChild);
     inc(AInstance.CurIndex);
     AInstance.EndPos := FParser.DataPosition;
 
@@ -1001,6 +1000,7 @@ begin
       Parser.ResetCurrentExpression  // we will try another subexpression to consume all input
     else
     begin
+      AInstance.AddSubExpression(AFinishedChild);
       Result := oprOk;
       AInstance.Len := FParser.DataPosition-AInstance.DataPos;
       Exit;
@@ -1078,6 +1078,7 @@ begin
   inc(AInstance.CurIndex);
   if AInstance.CurIndex<FSubExpressions.Count then
   begin
+    AInstance.AddSubExpression(AFinishedChild);
     Parser.ExecSubExpression(AInstance, FSubExpressions[AInstance.CurIndex]);
     Result := oprMore;
     Exit;
@@ -1156,7 +1157,65 @@ end;
 
 function TPEGAnsiString.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
 begin
-  result := oprFail;
+  // must never be called
+  raise Exception.Create('Error');
+end;
+
+constructor TPEGInstance.Create(AParent: TPEGInstance; APEG: TPEGCustom; ADataPos: integer);
+begin
+  Parent := AParent;
+  PEG := APEG;
+  DataPos := ADataPos;
+  SubExpressions := TList<TPEGInstance>.Create;
+end;
+
+destructor TPEGInstance.Destroy;
+begin
+  FreeSubExpressions;
+  inherited;
+end;
+
+procedure TPEGInstance.FreeSubExpressions;
+var
+  Stack: TStack<TList<TPEGInstance>>;
+  List: TList<TPEGInstance>;
+  Instance: TPEGInstance;
+  i: Integer;
+begin
+  if SubExpressions=nil then
+    Exit;
+  if SubExpressions.Count=0 then
+  begin
+    FreeAndNil(SubExpressions);
+    Exit;
+  end;
+
+  // In order to avoid of deep recursion we use stack to enumerate and free all subexpressions.
+  Stack := TStack<TList<TPEGInstance>>.Create;
+  Stack.Push(SubExpressions);
+  SubExpressions := nil;
+  while Stack.Count>0 do
+  begin
+    List := Stack.Pop;
+    for i := 0 to List.Count-1 do
+    begin
+      Instance := List[i];
+      Assert(Instance.SubExpressions<>nil);
+      if Instance.SubExpressions.Count>0 then
+      begin
+        Stack.Push(Instance.SubExpressions);
+        Instance.SubExpressions := nil;
+      end;
+      Instance.Free;
+    end;
+    List.Free;
+  end;
+end;
+
+procedure TPEGInstance.AddSubExpression(var ASubExpression: TPEGInstance);
+begin
+  SubExpressions.Add(ASubExpression);
+  ASubExpression := nil;
 end;
 
 function TPEGInstance.GetAsString: string;
