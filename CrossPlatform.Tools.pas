@@ -163,27 +163,31 @@ type
 
   TEmptyRec = record end;
 
-  TSet<TValue> = class
+  TSet<TValue> = class(TEnumerable<TValue>)
   private
   protected
-    FSet: TDictionary<TValue, TEmptyRec>;
+    type
+      TEnumerator = TDictionary<TValue, TEmptyRec>.TKeyEnumerator;
+
+    var
+      FSet: TDictionary<TValue, TEmptyRec>;
 
     function GetCount: integer; inline;
+    function DoGetEnumerator: TEnumerator<TValue>; override;
+
   public
     constructor Create; overload;
     constructor Create(const AValues: array of TValue); overload;
     constructor Create(const AValues: TEnumerable<TValue>); overload;
     destructor Destroy; override;
+    function GetEnumerator: TEnumerator; reintroduce;
     procedure Add(const AValue: TValue); overload; inline;
-    procedure Add(const ASet: TSet<TValue>); overload;
     procedure Add(const ASet: array of TValue); overload;
     procedure Add(const AValues: TEnumerable<TValue>); overload;
     procedure Include(const AValue: TValue); overload; inline;
-    procedure Include(const ASet: TSet<TValue>); overload;
     procedure Include(const ASet: array of TValue); overload;
     procedure Include(const AValues: TEnumerable<TValue>); overload;
     procedure Remove(const AValue: TValue); overload; inline;
-    procedure Remove(const ASet: TSet<TValue>); overload;
     procedure Remove(const ASet: array of TValue); overload;
     procedure Remove(const AValues: TEnumerable<TValue>); overload;
     function Contains(const AValue: TValue): boolean; overload; inline;
@@ -214,6 +218,11 @@ type
 
   public
     type
+
+      // Standard containers in Delphi use classes for enumerators.
+      // It is ok when we keep single instance of the class inside, but for multimap we
+      // will have to keep lot of instances (for every key where items enumerator has requested).
+      // To avoid of this we use record type instead of class type.
       TValueEnumerator = record
       private
         FMultimap: TMultimap<TKey,TValue>;
@@ -226,8 +235,12 @@ type
         function MoveNext: Boolean;
         property Current: TValue read GetCurrent;
         property Key: TKey read GetKey;
+        procedure Free; // does nothing, only for kind of "compatibility" with classes.
       end;
 
+      // Implemented in same way as TDictionary:
+      // - Can be requested by GetEnumerator function.
+      // - Must be destroyed after usage.
       TPairEnumerator = class(TEnumerator<TPair<TKey,TValue>>)
       private
         FMultimap: TMultimap<TKey,TValue>;
@@ -249,9 +262,6 @@ type
       TKeyEnumerator = TDictionary<TKey, integer>.TKeyEnumerator;
       TKeyCollection = TDictionary<TKey, integer>.TKeyCollection;
 
-  private
-    function GetKeys: TKeyCollection;
-
   protected
     FCount: TDictionary<TKey, integer>;
     FValues: TDictionary<TMultimapKey, TValue>;
@@ -259,8 +269,9 @@ type
 
     function GetTotalValuesCount: integer;
     function GetValuesCount(const AKey: TKey):Integer;
-    function GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
     function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
+    function GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
+    function GetKeys: TKeyCollection;
 
   public
 
@@ -274,6 +285,10 @@ type
     procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
     procedure Add(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
     procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
+
+    //    e := m.Values[Key];
+    //    while e.MoveNext do
+    //      if m.Current=10 then m.RemoveValue(e);
     function Remove(const AKey: TKey):Boolean;
     procedure RemoveValue(const AEnum: TValueEnumerator);
     procedure RemoveValues(const AKey: TKey; const AValues: TSet<TValue>); overload;
@@ -281,11 +296,29 @@ type
     procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
     function ContainsKey(const AKey: TKey): Boolean;
     function ContainsKeys(const AKeys: array of TKey): Boolean;
+
+    // Adds default enumerator to the multmap. Example:
+    //    p: TPair<string, integer>;
+    //    for p in m do
+    //      [do something] p.Key / p.Value;
     function GetEnumerator: TPairEnumerator; reintroduce;
 
     property TotalValuesCount: integer read GetTotalValuesCount;
     property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
+
+    // Enumerator of values for specific Key. Returns records, ne need to destroy. Example:
+    //    Enum := m.Values['test'];
+    //    While Enum.MoveNext do
+    //      if Enum.Current=314 then m.RemoveValue(Enum);
     property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
+
+    // Mostly it is used as simple way to enumerate all keys. Enumerate all values (alternative to default enumerator):
+    //    for Key in m.Keys do
+    //    begin
+    //      Enum := m.Values[Key];
+    //      while Enum.MoveNext do
+    //        Enum.Current;
+    //    end;
     property Keys: TKeyCollection read GetKeys;
   end;
 
@@ -810,9 +843,19 @@ begin
   inherited;
 end;
 
+function TSet<TValue>.DoGetEnumerator: TEnumerator<TValue>;
+begin
+  Result := GetEnumerator;
+end;
+
 function TSet<TValue>.GetCount: integer;
 begin
   result := FSet.Count;
+end;
+
+function TSet<TValue>.GetEnumerator: TEnumerator;
+begin
+  result := FSet.Keys.GetEnumerator;
 end;
 
 procedure TSet<TValue>.Remove(const ASet: array of TValue);
@@ -831,27 +874,10 @@ begin
     Remove(Item);
 end;
 
-procedure TSet<TValue>.Remove(const ASet: TSet<TValue>);
-var
-  Value: TValue;
-begin
-  for Value in ASet.FSet.Keys do
-    Remove(Value);
-end;
-
 procedure TSet<TValue>.Add(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.Add(AValue, R);
-end;
-
-procedure TSet<TValue>.Add(const ASet: TSet<TValue>);
-var
-  Value: TValue;
-  R: TEmptyRec;
-begin
-  for Value in ASet.FSet.Keys do
-    FSet.AddOrSetValue(Value, R);
 end;
 
 procedure TSet<TValue>.Add(const ASet: array of TValue);
@@ -874,14 +900,6 @@ procedure TSet<TValue>.Include(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.AddOrSetValue(AValue, R);
-end;
-
-procedure TSet<TValue>.Include(const ASet: TSet<TValue>);
-var
-  Value: TValue;
-begin
-  for Value in ASet.FSet.Keys do
-    Include(Value);
 end;
 
 procedure TSet<TValue>.Include(const ASet: array of TValue);
@@ -1784,6 +1802,10 @@ begin
   result := FMultimapKey.Number>0;
   if result then
     dec(FMultimapKey.Number);
+end;
+
+procedure TMultimap<TKey, TValue>.TValueEnumerator.Free;
+begin
 end;
 
 function TMultimap<TKey, TValue>.TValueEnumerator.GetCurrent: TValue;

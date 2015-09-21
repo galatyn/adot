@@ -3,7 +3,8 @@ unit CrossPlatform.Tools.Test;
 interface
 
 uses
-  CrossPlatform.Tools, System.SysUtils;
+  CrossPlatform.Tools, System.SysUtils, System.Generics.Collections,
+  System.Generics.Defaults;
 
 type
   TTests = class
@@ -43,6 +44,9 @@ var
   m: TMultimap<string, integer>;
   e: TMultimap<string, integer>.TValueEnumerator;
   s: TSet<integer>;
+  Key: string;
+  i: Integer;
+  p: TPair<string, integer>;
 begin
   m := nil;
   s := nil;
@@ -66,6 +70,11 @@ begin
     Assert(not m.ContainsKey('4'));
     Assert(not m.ContainsKeys(['1.1', '2', '3', '', '4']));
 
+    i := 0;
+    for p in m do
+      i := i + p.Value;
+    assert(i=56);
+
     e := m.Values['1.1'];
     s := TSet<integer>.Create([11,12,13]);
     Assert(e.MoveNext and s.Contains(e.Current));
@@ -84,6 +93,24 @@ begin
     Assert(m.TotalValuesCount=4);
     e := m.Values[''];
     Assert(not e.MoveNext);
+
+    i := 0;
+    for Key in m.Keys do
+    begin
+      e := m.Values[Key];
+      while e.MoveNext do
+        i := i + e.Current;
+    end;
+    assert(i=39);
+
+    for Key in m.Keys do
+    begin
+      e := m.Values[Key];
+      while e.MoveNext do
+        m.RemoveValue(e);
+    end;
+    Assert(m.TotalValuesCount=0);
+
   finally
     FreeAndNil(s);
     FreeAndNil(m);
