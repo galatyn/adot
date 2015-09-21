@@ -1,6 +1,6 @@
 ﻿[Closed Files]
-File_0=TSourceModule,'E:\!components\adot\Test\MainFrm.pas',0,1,1,1,33,0,0,,
-File_1=TSourceModule,'D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas',0,1,371,39,397,0,0,,
+File_0=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.pas',0,1,15697,1,15718,0,0,,
+File_1=TSourceModule,'E:\!components\adot\Test\MainFrm.pas',0,1,1,1,33,0,0,,
 File_2=TSourceModule,'e:\!components\adot\CrossPlatform.Tools.pas',0,1,180,21,201,0,0,,{1
 File_3=TSourceModule,'D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\win\Winapi.Windows.pas',0,1,3950,27,3971,0,0,,
 File_4=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.Types.pas',0,1,1306,3,1318,0,0,,
@@ -9,17 +9,18 @@ File_6=TSourceModule,'E:\!components\adot\VCL.Log.pas',0,1,1,6,1,0,0,,
 File_7=TSourceModule,'E:\!components\adot\CrossPlatform.Log.pas',0,1,271,1,292,0,0,,{1
 File_8=TSourceModule,'E:\Work\DemoShMemComm\src\MainFrm.pas',0,1,173,1,191,0,0,,{1
 File_9=TSourceModule,'E:\Work\DemoShMemComm\src\TestSpeed\MainFrm.pas',0,1,1,40,37,0,0,,
-File_10=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.pas',0,1,30602,11,30627,0,0,,
-File_11=TSourceModule,'C:\Users\galatyn\GoogleDrive\Knowledgebase\Src\VCL.Log.pas',0,1,1,3,13,0,0,,{1
-File_12=TSourceModule,'c:\Users\galatyn\GoogleDrive\Knowledgebase\Src\Win.Log.pas',0,1,1,18,21,0,0,,
-File_13=TSourceModule,'c:\Users\galatyn\GoogleDrive\Knowledgebase\Src\CrossPlatform.Log.pas',0,1,166,18,180,0,0,,{1
-File_14=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\source\rtl\common\System.Generics.Defaults.pas',0,1,1,1,38,0,0,,
+File_10=TSourceModule,'C:\Users\galatyn\GoogleDrive\Knowledgebase\Src\VCL.Log.pas',0,1,1,3,13,0,0,,{1
+File_11=TSourceModule,'c:\Users\galatyn\GoogleDrive\Knowledgebase\Src\Win.Log.pas',0,1,1,18,21,0,0,,
+File_12=TSourceModule,'c:\Users\galatyn\GoogleDrive\Knowledgebase\Src\CrossPlatform.Log.pas',0,1,166,18,180,0,0,,{1
+File_13=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\source\rtl\common\System.Generics.Defaults.pas',0,1,1,1,38,0,0,,
 
 [Modules]
 Module0=e:\!components\adot\CrossPlatform.PEG.pas
-Module1=E:\!components\adot\CrossPlatform.Tools.Test.pas
+Module1=E:\!components\adot\CrossPlatform.PEGR.pas
 Module2=E:\!components\adot\CrossPlatform.PEG.Test.pas
-Count=3
+Module3=E:\!components\adot\CrossPlatform.Tools.Test.pas
+Module4=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
+Count=5
 EditWindowCount=1
 
 [e:\!components\adot\CrossPlatform.PEG.pas]
@@ -27,7 +28,7 @@ ModuleType=TSourceModule
 FormState=0
 FormOnTop=0
 
-[E:\!components\adot\CrossPlatform.Tools.Test.pas]
+[E:\!components\adot\CrossPlatform.PEGR.pas]
 ModuleType=TSourceModule
 FormState=0
 FormOnTop=0
@@ -37,12 +38,24 @@ ModuleType=TSourceModule
 FormState=0
 FormOnTop=0
 
+[E:\!components\adot\CrossPlatform.Tools.Test.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
+
+[D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
+
 [EditWindow0]
-ViewCount=3
+ViewCount=5
 CurrentEditView=e:\!components\adot\CrossPlatform.PEG.pas
 View0=0
 View1=1
 View2=2
+View3=3
+View4=4
 PercentageSizes=1
 Create=1
 Visible=1
@@ -75,9 +88,9 @@ BottomMiddelPanelData=0000080001020200000009000000446F636B5369746530100000004772
 [View0]
 CustomEditViewType=TEditView
 Module=E:\!components\adot\CrossPlatform.PEG.Test.pas
-CursorX=1
-CursorY=40
-TopLine=11
+CursorX=10
+CursorY=11
+TopLine=21
 LeftCol=1
 Elisions=
 Bookmarks=
@@ -85,21 +98,43 @@ EditViewName=E:\!components\adot\CrossPlatform.PEG.Test.pas
 
 [View1]
 CustomEditViewType=TEditView
-Module=e:\!components\adot\CrossPlatform.PEG.pas
-CursorX=14
-CursorY=247
-TopLine=232
+Module=E:\!components\adot\CrossPlatform.PEGR.pas
+CursorX=1
+CursorY=282
+TopLine=251
 LeftCol=1
 Elisions=
-Bookmarks={1,143,20}{2,247,14}{3,275,78}
-EditViewName=e:\!components\adot\CrossPlatform.PEG.pas
+Bookmarks=
+EditViewName=E:\!components\adot\CrossPlatform.PEGR.pas
 
 [View2]
+CustomEditViewType=TEditView
+Module=e:\!components\adot\CrossPlatform.PEG.pas
+CursorX=13
+CursorY=458
+TopLine=442
+LeftCol=1
+Elisions=
+Bookmarks={1,455,6}{2,90,1}{3,304,78}{5,1211,6}
+EditViewName=e:\!components\adot\CrossPlatform.PEG.pas
+
+[View3]
+CustomEditViewType=TEditView
+Module=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
+CursorX=18
+CursorY=307
+TopLine=286
+LeftCol=1
+Elisions=
+Bookmarks=
+EditViewName=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
+
+[View4]
 CustomEditViewType=TEditView
 Module=E:\!components\adot\CrossPlatform.Tools.Test.pas
 CursorX=1
 CursorY=1
-TopLine=6
+TopLine=1
 LeftCol=1
 Elisions=
 Bookmarks=
@@ -130,7 +165,8 @@ Dockable=1
 StayOnTop=0
 
 [Breakpoints]
-Count=0
+Count=1
+Breakpoint0='e:\!components\adot\CrossPlatform.PEG.pas',465,'',0,1,'',1,0,0,'',1,'','','',0,''
 
 [EmbarcaderoWin32Debugger_AddressBreakpoints]
 Count=0
@@ -238,7 +274,7 @@ MaxLeft=-1
 MaxTop=-1
 ClientWidth=1896
 ClientHeight=3596
-TBDockHeight=9029
+TBDockHeight=7000
 LRDockWidth=1896
 Dockable=1
 StayOnTop=0
@@ -253,11 +289,11 @@ State=0
 Left=0
 Top=0
 Width=1062
-Height=8788
+Height=6760
 MaxLeft=-1
 MaxTop=-1
 ClientWidth=1062
-ClientHeight=8788
+ClientHeight=6760
 TBDockHeight=4885
 LRDockWidth=5307
 Dockable=1
@@ -270,7 +306,7 @@ Visible=0
 Docked=1
 State=0
 Left=-182
-Top=-101
+Top=-99
 Width=1844
 Height=3144
 MaxLeft=-1
@@ -326,8 +362,8 @@ Create=1
 Visible=0
 Docked=1
 State=0
-Left=-1716
-Top=-101
+Left=-1598
+Top=-11
 Width=2844
 Height=6202
 MaxLeft=-1
@@ -346,7 +382,7 @@ Visible=0
 Docked=1
 State=0
 Left=-1818
-Top=-101
+Top=270
 Width=276
 Height=356
 MaxLeft=-1
@@ -451,11 +487,11 @@ State=0
 Left=0
 Top=0
 Width=2339
-Height=1240
+Height=1000
 MaxLeft=-1
 MaxTop=-1
 ClientWidth=2339
-ClientHeight=1240
+ClientHeight=1000
 TBDockHeight=2317
 LRDockWidth=2823
 Dockable=1
@@ -516,11 +552,11 @@ State=0
 Left=0
 Top=0
 Width=1062
-Height=8788
+Height=6760
 MaxLeft=-1
 MaxTop=-1
 ClientWidth=1062
-ClientHeight=8788
+ClientHeight=6760
 TBDockHeight=4885
 LRDockWidth=7151
 Dockable=1
@@ -532,8 +568,8 @@ Create=1
 Visible=0
 Docked=1
 State=0
-Left=0
-Top=0
+Left=370
+Top=827
 Width=2859
 Height=3212
 MaxLeft=-1
@@ -683,7 +719,7 @@ Visible=0
 Docked=1
 State=0
 Left=0
-Top=0
+Top=23
 Width=3823
 Height=1356
 MaxLeft=-1
@@ -714,7 +750,7 @@ MaxLeft=-1
 MaxTop=-1
 ClientWidth=1062
 ClientHeight=4596
-TBDockHeight=9029
+TBDockHeight=7000
 LRDockWidth=1062
 Dockable=1
 StayOnTop=0
@@ -738,7 +774,7 @@ MaxLeft=-1
 MaxTop=-1
 ClientWidth=1896
 ClientHeight=3558
-TBDockHeight=9029
+TBDockHeight=7000
 LRDockWidth=1896
 Dockable=1
 StayOnTop=0
@@ -762,7 +798,7 @@ MaxLeft=-1
 MaxTop=-1
 ClientWidth=1062
 ClientHeight=2558
-TBDockHeight=9029
+TBDockHeight=7000
 LRDockWidth=1062
 Dockable=1
 StayOnTop=0

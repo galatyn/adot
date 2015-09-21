@@ -29,35 +29,69 @@ type
     Pos: integer;
   end;
 
-  // Item of parsing stack (keeps PEG, instance variables, rollback position etc).
-  TPEGInstance = class
+  TExpressionType = (
+    // strings
+    etString, etAnsiString,
+    // chars
+    etCharSet, etAnsiCharSet,
+    // bytes
+    etBytes, etByteSet,
+    // control
+    etLink, etRepeat, etChoice, etSequence
+  );
+
+  TPEGInstance = class;
+  TPEGResult = class
   protected
+    FDataPos : integer;      // start position (used to rollback data stream, calculate len etc)
+    FLen     : integer;      // Len bytes at DataPos are matched
+
+    function GetExpressionType: TExpressionType; virtual; abstract;
+    function GetExpressionName: string; virtual; abstract;
+    function GetSubExprCount: integer; virtual; abstract;
+    function GetSubExpr(n: integer): TPEGResult; virtual; abstract;
+  public
+    property ExpressionType: TExpressionType read GetExpressionType;
+    property ExpressionName: string read GetExpressionName;
+    property Pos: integer read FDataPos;
+    property Len: integer read FLen write FLen;
+    property SubExprCount: integer read GetSubExprCount;
+    property SubExpr[n: integer]: TPEGResult read GetSubExpr; default;
+  end;
+
+  // Item of parsing stack (keeps PEG, instance variables, rollback position etc).
+  TPEGInstance = class(TPEGResult)
+  protected
+    FPEG            : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
+    FStarted        : Boolean;      // False=first call, True=subsequent call
+    FCurIndex       : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
+    FEndPos         : integer;      // repeat/... keep here internal state (end position for last op)
+    FSubExpressions : TList<TPEGInstance>; // can be used to extract detailed information about subexpressions
+
     function GetInstanceId: TInstanceId;
     function GetAsString: string;
     function GetResultatAsString: string;
     procedure AddSubExpression(var ASubExpression: TPEGInstance);
     procedure FreeSubExpressions;
 
-  public
-    Parent         : TPEGInstance; // to build tree of results
-    PEG            : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
-    DataPos        : integer;      // start position (used to rollback data stream, calculate len etc)
-    Len            : integer;      // Len bytes at DataPos are matched
-    Started        : Boolean;      // False=first call, True=subsequent call
-    CurIndex       : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
-    EndPos         : integer;      // repeat/... keep here internal state (end position for last op)
-    SubExpressions : TList<TPEGInstance>; // can be used to extract detailed information about subexpressions
+    function GetExpressionType: TExpressionType; override;
+    function GetExpressionName: string; override;
+    function GetSubExprCount: integer; override;
+    function GetSubExpr(n: integer): TPEGResult; override;
 
-    constructor Create(AParent: TPEGInstance; APEG: TPEGCustom; ADataPos: integer);
-    destructor Destroy; override;
-
+    property PEG: TPEGCustom read FPEG;
     property Id: TInstanceId read GetInstanceId;
     property AsString: string read GetAsString;
     property ResAsString: string read GetResultatAsString;
+
+  public
+    constructor Create(APEG: TPEGCustom; ADataPos: integer);
+    destructor Destroy; override;
   end;
 
   TRecursionAction = (lraSkip, lraError);
   TPEGParser = class
+  private
   protected
     FDataSource: TStream;
     FOwnsDataSource: boolean;
@@ -70,7 +104,7 @@ type
     FIteration: integer;
     FChildInstance: TPEGInstance;
 
-    procedure ExecSubExpression(AParent: TPEGInstance; ASubExpression: TPEGCustom); inline;
+    procedure ExecSubExpression(ASubExpression: TPEGCustom); inline;
     function GetBytesLeft: integer; inline;
     function GetDataPosition: integer; inline;
     procedure RecursionError;
@@ -89,6 +123,7 @@ type
     function LogException(e: Exception): Boolean;
 
     property LastExprResult: TPEGOpRes read FLastResult;
+    function GetResult: TPEGResult;
   public
     constructor Create(ADataSource: TStream; AOwns: boolean;
       ADataSourceFormat: TSourceFormat; ACaseInsensitive: Boolean);
@@ -105,17 +140,8 @@ type
     property CaseInsensitive: Boolean read FCaseInsensitive;
     property RecursionAction: TRecursionAction read FRecursionAction write FRecursionAction;
     property IterationsCounter: integer read FIteration;
+    property Results: TPEGResult read GetResult;
   end;
-
-  TExpressionType = (
-    // strings
-    etString, etAnsiString,
-    // chars
-    etCharSet, etAnsiCharSet,
-    // bytes
-    etBytes, etByteSet,
-    // control
-    etLink, etRepeat, etChoice, etSequence);
 
   TPEGCustom = class
   protected
@@ -345,6 +371,11 @@ begin
   result := FDataSource.Position;
 end;
 
+function TPEGParser.GetResult: TPEGResult;
+begin
+  result := FChildInstance;
+end;
+
 procedure TPEGParser.RecursionError;
 begin
   raise Exception.Create('Left recursion detected');
@@ -352,7 +383,7 @@ end;
 
 procedure TPEGParser.ResetCurrentExpression;
 begin
-  DataSource.Position := FStack.Peek.DataPos;
+  DataSource.Position := FStack.Peek.FDataPos;
 end;
 
 {$IFDEF PEGLOG}
@@ -383,7 +414,7 @@ begin
     while Enum.MoveNext do
       LogStr('  %s : %.2d %s (%s)', [
         THex.PointerToHex(Enum.Current.PEG),
-        Enum.Current.DataPos,
+        Enum.Current.FDataPos,
         Enum.Current.PEG.ClassName,
         Enum.Current.PEG.Name]);
   finally
@@ -419,9 +450,22 @@ begin
 end;
 
 {$IFDEF PEGLOG}
+procedure LogResTree(AResult: TPEGResult; AIndent: integer);
+begin
+  AppLog.Log('%s%s (%d - %d)', [
+    StringOfChar(' ', AIndent),
+    TEnumeration<TExpressionType>.ToString(AResult.ExpressionType).Substring(2),
+    AResult.
+  ]);
+
+  AResult.ExpressionName
+end;
+
 procedure TPEGParser.LogResults;
 begin
-
+  if Results=nil then
+    Exit;
+  LogResTree(Results, 0);
 end;
 {$ENDIF}
 
@@ -446,7 +490,7 @@ function TPEGParser.LogFinishRecursionTrack(APEGInstance: TPEGInstance): Boolean
 begin
   result := True;
   {$IFDEF PEGLOG}
-  LogStr('remove [PEG=%s; POS=%d] from left recursion tracker]', [APEGInstance.PEG.ClassName, APEGInstance.DataPos]);
+  LogStr('remove [PEG=%s; POS=%d] from left recursion tracker]', [APEGInstance.PEG.ClassName, APEGInstance.FDataPos]);
   {$ENDIF}
 end;
 
@@ -470,13 +514,13 @@ begin
   FStack.Clear;
   FRecursionSet.Clear;
   FLastResult := oprFail;
-  ExecSubExpression(nil, AStartPEG);
+  ExecSubExpression(AStartPEG);
   repeat
     Inc(FIteration);
     PEGInstance := FStack.Peek;
     Assert(LogExprStack(PEGInstance));
 
-    if not PEGInstance.Started then
+    if not PEGInstance.FStarted then
     // first step of PEG execution
     begin
 
@@ -493,7 +537,7 @@ begin
       end
       else
       begin
-        PEGInstance.Started := True;
+        PEGInstance.FStarted := True;
         FLastResult := PEGInstance.PEG.FirstOp(PEGInstance);
         Assert(LogFirstOp);
         // We track command only if it has subcommands, otherwise it will be deleted from the stack.
@@ -522,11 +566,11 @@ begin
       // if command placed something to the stack, it must return oprMore
       Assert(PEGInstance = FStack.Peek);
       if FLastResult=oprOkRestoreData then
-        DataSource.Position := PEGInstance.DataPos
+        DataSource.Position := PEGInstance.FDataPos
       else
         if FLastResult=oprFail then
         begin
-          DataSource.Position := PEGInstance.DataPos;
+          DataSource.Position := PEGInstance.FDataPos;
           Assert(LogExprFailed);
         end;
       if not Recursion then
@@ -544,17 +588,12 @@ begin
   if not result then
     FreeAndNil(FChildInstance);
 
-  {$IFDEF PEGLOG}
-  except on e: Exception do begin
-    LogException(e);
-    Raise;
-  end; end;
-  {$ENDIF}
+  {$IFDEF PEGLOG} except on e: Exception do begin LogException(e); Raise; end; end; {$ENDIF}
 end;
 
-procedure TPEGParser.ExecSubExpression(AParent: TPEGInstance; ASubExpression: TPEGCustom);
+procedure TPEGParser.ExecSubExpression(ASubExpression: TPEGCustom);
 begin
-  FStack.Push(TPEGInstance.Create(AParent,ASubExpression, DataSource.Position));
+  FStack.Push(TPEGInstance.Create(ASubExpression, DataSource.Position));
 end;
 
 { TPEGString }
@@ -892,8 +931,8 @@ end;
 function TPEGRepeat.FirstOp(AInstance: TPEGInstance): TPEGOpRes;
 begin
   Result := oprMore;
-  AInstance.EndPos := AInstance.DataPos;
-  Parser.ExecSubExpression(AInstance, FPEG);
+  AInstance.FEndPos := AInstance.FDataPos;
+  Parser.ExecSubExpression(FPEG);
 end;
 
 function TPEGRepeat.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
@@ -905,27 +944,27 @@ begin
   if Parser.LastExprResult=oprOk then
   begin
     AInstance.AddSubExpression(AFinishedChild);
-    inc(AInstance.CurIndex);
-    AInstance.EndPos := FParser.DataPosition;
+    inc(AInstance.FCurIndex);
+    AInstance.FEndPos := FParser.DataPosition;
 
     // we should try to repeat
-    if AInstance.CurIndex<FMaxRep then
+    if AInstance.FCurIndex<FMaxRep then
     begin
       Result := oprMore;
-      Parser.ExecSubExpression(AInstance, FPEG);
+      Parser.ExecSubExpression(FPEG);
       Exit;
     end;
 
     // Count=FMaxRep
     Result := oprOk;
-    AInstance.Len := AInstance.EndPos-AInstance.DataPos;
+    AInstance.Len := AInstance.FEndPos-AInstance.FDataPos;
     Exit;
   end;
 
   Assert(Parser.LastExprResult=oprFail);
 
   // we don't have MinRep items, matching failed
-  if AInstance.CurIndex<FMinRep then
+  if AInstance.FCurIndex<FMinRep then
   begin
     Result := oprFail; // parser will cancel our results automatically
     Exit;
@@ -933,13 +972,13 @@ begin
 
   // we found MinRep matches at least, so we have result
   Result := oprOk;
-  if AInstance.CurIndex>0 then
-    AInstance.Len := AInstance.EndPos-AInstance.DataPos
+  if AInstance.FCurIndex>0 then
+    AInstance.Len := AInstance.FEndPos-AInstance.FDataPos
   else
   begin
     // Repeaters like "x*" return oprOk even if there is no matching for "x" (0 matches found),
     // in such case EndPos is not set and we should use EndPos=FStart.
-    AInstance.EndPos := AInstance.DataPos;
+    AInstance.FEndPos := AInstance.FDataPos;
     AInstance.Len := 0;
   end;
 
@@ -986,7 +1025,7 @@ begin
   end;
 
   Result := oprMore;
-  Parser.ExecSubExpression(AInstance, FSubExpressions[0]);
+  Parser.ExecSubExpression(FSubExpressions[0]);
 end;
 
 function TPEGChoice.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
@@ -1002,13 +1041,13 @@ begin
     begin
       AInstance.AddSubExpression(AFinishedChild);
       Result := oprOk;
-      AInstance.Len := FParser.DataPosition-AInstance.DataPos;
+      AInstance.Len := FParser.DataPosition-AInstance.FDataPos;
       Exit;
     end;
 
   // we checked all expression, no matching
-  inc(AInstance.CurIndex);
-  if AInstance.CurIndex>=FSubExpressions.Count then
+  inc(AInstance.FCurIndex);
+  if AInstance.FCurIndex>=FSubExpressions.Count then
   begin
     Result := oprFail;
     Exit;
@@ -1016,7 +1055,7 @@ begin
 
   // try next expression
   Result := oprMore;
-  Parser.ExecSubExpression(AInstance, FSubExpressions[AInstance.CurIndex]);
+  Parser.ExecSubExpression(FSubExpressions[AInstance.FCurIndex]);
 
 end;
 
@@ -1064,7 +1103,7 @@ begin
   end;
 
   Result := oprMore;
-  Parser.ExecSubExpression(AInstance, FSubExpressions[0]);
+  Parser.ExecSubExpression(FSubExpressions[0]);
 end;
 
 function TPEGSequence.NextOp(AInstance: TPEGInstance; var AFinishedChild: TPEGInstance): TPEGOpRes;
@@ -1075,17 +1114,17 @@ begin
     Exit;
   end;
 
-  inc(AInstance.CurIndex);
-  if AInstance.CurIndex<FSubExpressions.Count then
+  inc(AInstance.FCurIndex);
+  if AInstance.FCurIndex<FSubExpressions.Count then
   begin
     AInstance.AddSubExpression(AFinishedChild);
-    Parser.ExecSubExpression(AInstance, FSubExpressions[AInstance.CurIndex]);
+    Parser.ExecSubExpression(FSubExpressions[AInstance.FCurIndex]);
     Result := oprMore;
     Exit;
   end;
 
   Result := oprOk;
-  AInstance.Len := FParser.DataPosition-AInstance.DataPos;
+  AInstance.Len := FParser.DataPosition-AInstance.FDataPos;
 end;
 
 procedure TPEGSequence.SetParser(AParser: TPEGParser);
@@ -1161,12 +1200,11 @@ begin
   raise Exception.Create('Error');
 end;
 
-constructor TPEGInstance.Create(AParent: TPEGInstance; APEG: TPEGCustom; ADataPos: integer);
+constructor TPEGInstance.Create(APEG: TPEGCustom; ADataPos: integer);
 begin
-  Parent := AParent;
-  PEG := APEG;
-  DataPos := ADataPos;
-  SubExpressions := TList<TPEGInstance>.Create;
+  FPEG := APEG;
+  FDataPos := ADataPos;
+  FSubExpressions := TList<TPEGInstance>.Create;
 end;
 
 destructor TPEGInstance.Destroy;
@@ -1182,29 +1220,29 @@ var
   Instance: TPEGInstance;
   i: Integer;
 begin
-  if SubExpressions=nil then
+  if FSubExpressions=nil then
     Exit;
-  if SubExpressions.Count=0 then
+  if FSubExpressions.Count=0 then
   begin
-    FreeAndNil(SubExpressions);
+    FreeAndNil(FSubExpressions);
     Exit;
   end;
 
   // In order to avoid of deep recursion we use stack to enumerate and free all subexpressions.
   Stack := TStack<TList<TPEGInstance>>.Create;
-  Stack.Push(SubExpressions);
-  SubExpressions := nil;
+  Stack.Push(FSubExpressions);
+  FSubExpressions := nil;
   while Stack.Count>0 do
   begin
     List := Stack.Pop;
     for i := 0 to List.Count-1 do
     begin
       Instance := List[i];
-      Assert(Instance.SubExpressions<>nil);
-      if Instance.SubExpressions.Count>0 then
+      Assert(Instance.FSubExpressions<>nil);
+      if Instance.FSubExpressions.Count>0 then
       begin
-        Stack.Push(Instance.SubExpressions);
-        Instance.SubExpressions := nil;
+        Stack.Push(Instance.FSubExpressions);
+        Instance.FSubExpressions := nil;
       end;
       Instance.Free;
     end;
@@ -1214,7 +1252,7 @@ end;
 
 procedure TPEGInstance.AddSubExpression(var ASubExpression: TPEGInstance);
 begin
-  SubExpressions.Add(ASubExpression);
+  FSubExpressions.Add(ASubExpression);
   ASubExpression := nil;
 end;
 
@@ -1227,19 +1265,39 @@ begin
     if PEG.Kind=etLink then
       PegName := PegName + '.' + TPEGLink(PEG).FValue.ClassName+'.'+TPEGLink(PEG).FValue.Name;
   end;
-  result := Format('%s."%s"[%s][DataPos: %d]', [
-    ClassName, PegName, IfThen(Started, 'RUNNING', 'NEW'), DataPos]);
+  result := Format('%s."%s"[%s][FDataPos: %d]', [
+    ClassName, PegName, IfThen(FStarted, 'RUNNING', 'NEW'), FDataPos]);
 end;
 
 function TPEGInstance.GetInstanceId: TInstanceId;
 begin
   result.PEG := PEG;
-  result.Pos := DataPos;
+  result.Pos := FDataPos;
 end;
 
 function TPEGInstance.GetResultatAsString: string;
 begin
-  result := Format('"%s": %s (Start: %d, Len: %d)', [PEG.Name, PEG.ClassName, DataPos, Len]);
+  result := Format('"%s": %s (Start: %d, Len: %d)', [PEG.Name, PEG.ClassName, FDataPos, Len]);
+end;
+
+function TPEGInstance.GetExpressionType: TExpressionType;
+begin
+  result := FPEG.FKind;
+end;
+
+function TPEGInstance.GetExpressionName: string;
+begin
+  result := FPEG.Name;
+end;
+
+function TPEGInstance.GetSubExprCount: integer;
+begin
+  result := FSubExpressions.Count;
+end;
+
+function TPEGInstance.GetSubExpr(n: integer): TPEGResult;
+begin
+  result := FSubExpressions[n];
 end;
 
 end.
