@@ -7,15 +7,20 @@ uses
 
 type
   TTests = class
+  private
+    class procedure Test_THex; static;
+    class procedure Test_Multimap; static;
   public
     class procedure QuickTest; static;
   end;
+
+procedure RunTestSet;
 
 implementation
 
 { TTests }
 
-class procedure TTests.QuickTest;
+class procedure TTests.Test_THex;
 var
   b1,b2: TBytes;
   i: Integer;
@@ -30,26 +35,70 @@ begin
   Assert((length(b1)=length(b2)) and  CompareMem(@b1[0], @b2[0], length(b1)));
   Assert( THex.Decode<byte>( THex.Encode<byte>(255) ) = 255 );
   Assert( THex.Decode<integer>( THex.Encode<integer>(1000000000) ) = 1000000000 );
-{  with TSyncLog.Create(ChangeFileExt(PAramStr(0), '.log')) do
-    try
-      Log('test 1');
-      Flush;
-      Log('test 2');
-      Log('test 3');
-    finally
-      Free;
-    end;
-  with TLog.Create(ChangeFileExt(PAramStr(0), '.log')) do
-    try
-      Log('test 1');
-      Flush;
-      sleep(7000);
-      Log('test 2');
-      sleep(20000);
-      Log('test 3');
-    finally
-      Free;
-    end;}
+  Assert( THex.HexToPointer( THex.PointerToHex(PChar(s)) ) = PChar(s) );
+end;
+
+class procedure TTests.Test_Multimap;
+var
+  m: TMultimap<string, integer>;
+  e: TMultimap<string, integer>.TValueEnumerator;
+  s: TSet<integer>;
+begin
+  m := nil;
+  s := nil;
+  try
+    m := TMultimap<string, integer>.Create;
+    s := TSet<integer>.Create;
+    m.Add('1.1', [11,12,13]);
+    m.Add('2',2);
+    m.Add('2',2);
+    m.Add('3',3);
+    m.Add('',[5,5]);
+    m.Add('2',3);
+
+    Assert(m.TotalValuesCount=9);
+    Assert(m.ValuesCount['1.1']=3);
+    Assert(m.ValuesCount['2']=3);
+    Assert(m.ValuesCount['3']=1);
+    Assert(m.ValuesCount['']=2);
+    Assert(m.ContainsKey('1.1'));
+    Assert(m.ContainsKeys(['1.1', '2', '3', '']));
+    Assert(not m.ContainsKey('4'));
+    Assert(not m.ContainsKeys(['1.1', '2', '3', '', '4']));
+
+    e := m.Values['1.1'];
+    s := TSet<integer>.Create([11,12,13]);
+    Assert(e.MoveNext and s.Contains(e.Current));
+    Assert(e.MoveNext and s.Contains(e.Current));
+    Assert(e.MoveNext and s.Contains(e.Current));
+    Assert(not e.MoveNext);
+    FreeAndNil(s);
+
+    m.Remove('2');
+    Assert(m.TotalValuesCount=6);
+    Assert(not m.ContainsKey('2'));
+
+    m.RemoveValues('', [6]);
+    Assert(m.TotalValuesCount=6);
+    m.RemoveValues('', [5]);
+    Assert(m.TotalValuesCount=4);
+    e := m.Values[''];
+    Assert(not e.MoveNext);
+  finally
+    FreeAndNil(s);
+    FreeAndNil(m);
+  end;
+end;
+
+class procedure TTests.QuickTest;
+begin
+  Test_THex;
+  Test_Multimap;
+end;
+
+procedure RunTestSet;
+begin
+  TTests.QuickTest;
 end;
 
 end.

@@ -17,7 +17,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.SyncObjs, System.IOUtils,
-  CrossPlatform.Tools, System.Generics.Collections;
+  CrossPlatform.Tools, System.Generics.Collections, System.TypInfo;
 
 type
   // All descandants are thread-safe.

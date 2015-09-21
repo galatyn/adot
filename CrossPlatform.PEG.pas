@@ -9,7 +9,7 @@ uses
   {$ENDIF}
   CrossPlatform.Tools, System.Generics.Collections, System.Generics.Defaults,
   System.SysUtils, System.Classes, System.Types, System.AnsiStrings,
-  System.StrUtils;
+  System.StrUtils, System.TypInfo;
 
 type
   TByteSet = set of Byte;
@@ -451,21 +451,24 @@ end;
 
 {$IFDEF PEGLOG}
 procedure LogResTree(AResult: TPEGResult; AIndent: integer);
+var
+  i: Integer;
 begin
-  AppLog.Log('%s%s (%d - %d)', [
+  AppLog.Log('%s%s: %s [%d - %d]', [
     StringOfChar(' ', AIndent),
+    AResult.ExpressionName,
     TEnumeration<TExpressionType>.ToString(AResult.ExpressionType).Substring(2),
-    AResult.
+    AResult.Pos,
+    AResult.Pos+AResult.Len-1
   ]);
-
-  AResult.ExpressionName
+  for i := 0 to AResult.SubExprCount-1 do
+    LogResTree(AResult[i], AIndent+2);
 end;
 
 procedure TPEGParser.LogResults;
 begin
-  if Results=nil then
-    Exit;
-  LogResTree(Results, 0);
+  if Results<>nil then
+    LogResTree(Results, 0);
 end;
 {$ENDIF}
 

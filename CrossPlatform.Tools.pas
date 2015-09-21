@@ -81,6 +81,7 @@ type
     class function HexToUInt64(const HexEncodedInt: String):UInt64; static; inline;
     class function HexToNativeInt(const HexEncodedInt: String):NativeInt; static;
     class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static; inline;
+    class function HexToPointer(const HexEncodedPointer: String):Pointer; static; inline;
   end;
 
   THash = class
@@ -169,7 +170,8 @@ type
 
     function GetCount: integer; inline;
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(const AValues: array of TValue); overload;
     destructor Destroy; override;
     procedure Add(const AValue: TValue); overload; inline;
     procedure Add(const ASet: TSet<TValue>); overload;
@@ -191,6 +193,17 @@ type
       TMultimapKey = record
         Key: TKey;
         Number: integer;
+      end;
+
+      // TKey can be String for example, so we can't use default comparer for
+      // TMultimapKey record type, we have to implement specific one.
+      TMultimapKeyEqualityComparer = class(TEqualityComparer<TMultimapKey>)
+      private
+        FKeyEquals: IEqualityComparer<TKey>;
+      public
+        constructor Create;
+        function Equals(const Left, Right: TMultimapKey): Boolean; overload; override;
+        function GetHashCode(const Value: TMultimapKey): Integer; overload; override;
       end;
 
   public
@@ -216,19 +229,22 @@ type
     function GetTotalValuesCount: integer;
     function GetValuesCount(const AKey: TKey):Integer;
     function GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
-    function GetContainsKey(const AKey: TKey): Boolean;
 
   public
 
     constructor Create;
     destructor Destroy; override;
 
-    procedure Add(const AKey: TKey; const AValue: TValue);
+    procedure Add(const AKey: TKey; const AValue: TValue); overload;
+    procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
     function Remove(const AKey: TKey):Boolean;
+    procedure RemoveValue(const AEnum: TValueEnumerator);
+    procedure RemoveValues(const AKey: TKey; const AValues: array of TValue);
+    function ContainsKey(const AKey: TKey): Boolean;
+    function ContainsKeys(const AKeys: array of TKey): Boolean;
 
     property TotalValuesCount: integer read GetTotalValuesCount;
     property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
-    property ContainsKey[const AKey: TKey]: boolean read GetContainsKey; // ValuesCount[AKey]>0
     property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
   end;
 
@@ -430,6 +446,11 @@ end;
 class function THex.HexToNativeUInt(const HexEncodedInt: String):NativeUInt;
 begin
   result := NativeUInt(HexToNativeInt(HexEncodedInt));
+end;
+
+class function THex.HexToPointer(const HexEncodedPointer: String): Pointer;
+begin
+  result := Pointer(HexToNativeUInt(HexEncodedPointer));
 end;
 
 class function THex.Int64ToHex(s: Int64): string;
@@ -822,6 +843,12 @@ end;
 function TSet<TValue>.Contains(const AValue: TValue): boolean;
 begin
   result := FSet.ContainsKey(AValue);
+end;
+
+constructor TSet<TValue>.Create(const AValues: array of TValue);
+begin
+  Create;
+  Add(AValues);
 end;
 
 procedure TSet<TValue>.Remove(const AValue: TValue);
@@ -1458,7 +1485,7 @@ end;
 constructor TMultimap<TKey, TValue>.Create;
 begin
   FCount := TDictionary<TKey, integer>.Create;
-  FValues := TDictionary<TMultimapKey, TValue>.Create;
+  FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create);
 end;
 
 destructor TMultimap<TKey, TValue>.Destroy;
@@ -1473,9 +1500,20 @@ begin
   result := FValues.Count;
 end;
 
-function TMultimap<TKey, TValue>.GetContainsKey(const AKey: TKey): Boolean;
+function TMultimap<TKey, TValue>.ContainsKey(const AKey: TKey): Boolean;
 begin
   result := GetValuesCount(AKey)>0;
+end;
+
+function TMultimap<TKey, TValue>.ContainsKeys(
+  const AKeys: array of TKey): Boolean;
+var
+  i: Integer;
+begin
+  for i := Low(AKeys) to High(AKeys) do
+    if not ContainsKey(AKeys[i]) then
+      Exit(False);
+  result := True;
 end;
 
 function TMultimap<TKey, TValue>.GetValuesCount(const AKey: TKey): Integer;
@@ -1491,8 +1529,26 @@ begin
   MKey.Key := AKey;
   if not FCount.TryGetValue(AKey, MKey.Number) then
     MKey.Number := 0;
-  FCount.AddOrSetValue(AKey, MKey.Number+1);
   FValues.Add(MKey, AValue);
+  inc(MKey.Number);
+  FCount.AddOrSetValue(AKey, MKey.Number);
+end;
+
+procedure TMultimap<TKey, TValue>.Add(const AKey: TKey;
+  const AValues: array of TValue);
+var
+  MKey: TMultimapKey;
+  i: Integer;
+begin
+  MKey.Key := AKey;
+  if not FCount.TryGetValue(AKey, MKey.Number) then
+    MKey.Number := 0;
+  for i := Low(AValues) to High(AValues) do
+  begin
+    FValues.Add(MKey, AValues[i]);
+    inc(MKey.Number);
+  end;
+  FCount.AddOrSetValue(AKey, MKey.Number);
 end;
 
 function TMultimap<TKey, TValue>.Remove(const AKey: TKey): Boolean;
@@ -1508,6 +1564,42 @@ begin
   begin
     dec(MKey.Number);
     FValues.Remove(MKey);
+  end;
+end;
+
+procedure TMultimap<TKey, TValue>.RemoveValue(const AEnum: TValueEnumerator);
+var
+  LastKey: TMultimapKey;
+  LastValue: TValue;
+begin
+  if not FValues.ContainsKey(AEnum.FMultimapKey) or not FCount.TryGetValue(AEnum.Key, LastKey.Number) then
+    raise Exception.Create('Error');
+  dec(LastKey.Number);
+  LastKey.Key := AEnum.Key;
+  if not FValues.TryGetValue(LastKey, LastValue) then
+    raise Exception.Create('Error');
+  FValues.AddOrSetValue(AEnum.FMultimapKey, LastValue);
+  FValues.Remove(LastKey);
+  if LastKey.Number=0 then
+    FCount.Remove(AEnum.Key)
+  else
+    FCount.AddOrSetValue(AEnum.Key, LastKey.Number);
+end;
+
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey;
+  const AValues: array of TValue);
+var
+  Enum: TValueEnumerator;
+  s: TSet<TValue>;
+begin
+  s := TSet<TValue>.Create(AValues);
+  try
+    Enum := Values[AKey];
+    while Enum.MoveNext do
+      if s.Contains(Enum.Current) then
+        RemoveValue(Enum);
+  finally
+    FReeAndNil(s);
   end;
 end;
 
@@ -1616,6 +1708,25 @@ begin
   Assert(IsEnumeration);
   ptd := TypeData;
   Result := System.Math.EnsureRange(Value, ptd.MinValue, ptd.MaxValue);
+end;
+
+{ TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer }
+
+constructor TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.Create;
+begin
+  FKeyEquals := TEqualityComparer<TKey>.Default;
+end;
+
+function TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.Equals(const Left,
+  Right: TMultimapKey): Boolean;
+begin
+  result := (Left.Number=Right.Number) and FKeyEquals.Equals(Left.Key, Right.Key);
+end;
+
+function TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
+  const Value: TMultimapKey): Integer;
+begin
+  result := FKeyEquals.GetHashCode(Value.Key) xor Value.Number;
 end;
 
 initialization

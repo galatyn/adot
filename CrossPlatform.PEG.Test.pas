@@ -66,13 +66,15 @@ begin
   Sum.Name     := 'Sum';
   Product.Name := 'Product';
   Value.Name   := 'Value';
-  //Assert(ParseAndLog(Expr, '1+2'));
-  Assert(ParseAndLog(Expr, '12'));
-  Assert(ParseAndLog(Expr, '12'));
+
   Assert(ParseAndLog(Expr, '1+2'));
-  Assert(ParseAndLog(Expr, '1*2'));
-  Assert(ParseAndLog(Expr, '(1+2)*3'));
-  Assert(ParseAndLog(Expr, '(((1+(2*4+3/7)*12-3)+100)+2+3*4)*27'));
+
+//  Assert(ParseAndLog(Expr, '12'));
+//  Assert(ParseAndLog(Expr, '12'));
+//  Assert(ParseAndLog(Expr, '1+2'));
+//  Assert(ParseAndLog(Expr, '1*2'));
+//  Assert(ParseAndLog(Expr, '(1+2)*3'));
+//  Assert(ParseAndLog(Expr, '(((1+(2*4+3/7)*12-3)+100)+2+3*4)*27'));
 end;
 
 procedure Test_Expression2;
@@ -245,7 +247,7 @@ begin
 
   //Test_Num;
   Test_Expression;
-  Test_Expression2;
+//  Test_Expression2;
   //Test_Expression_LeftRecursion;
   exit;
 
