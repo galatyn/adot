@@ -238,9 +238,7 @@ type
         procedure Free; // does nothing, only for kind of "compatibility" with classes.
       end;
 
-      // Implemented in same way as TDictionary:
-      // - Can be requested by GetEnumerator function.
-      // - Must be destroyed after usage.
+      // Don't use it directly, use default enumerator for TMultimap<> instead.
       TPairEnumerator = class(TEnumerator<TPair<TKey,TValue>>)
       private
         FMultimap: TMultimap<TKey,TValue>;
