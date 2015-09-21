@@ -172,22 +172,28 @@ type
   public
     constructor Create; overload;
     constructor Create(const AValues: array of TValue); overload;
+    constructor Create(const AValues: TEnumerable<TValue>); overload;
     destructor Destroy; override;
     procedure Add(const AValue: TValue); overload; inline;
     procedure Add(const ASet: TSet<TValue>); overload;
     procedure Add(const ASet: array of TValue); overload;
+    procedure Add(const AValues: TEnumerable<TValue>); overload;
     procedure Include(const AValue: TValue); overload; inline;
     procedure Include(const ASet: TSet<TValue>); overload;
     procedure Include(const ASet: array of TValue); overload;
+    procedure Include(const AValues: TEnumerable<TValue>); overload;
     procedure Remove(const AValue: TValue); overload; inline;
     procedure Remove(const ASet: TSet<TValue>); overload;
     procedure Remove(const ASet: array of TValue); overload;
-    function Contains(const AValue: TValue): boolean; inline;
+    procedure Remove(const AValues: TEnumerable<TValue>); overload;
+    function Contains(const AValue: TValue): boolean; overload; inline;
+    function Contains(const ASet: array of TValue): boolean; overload;
+    function Contains(const AValues: TEnumerable<TValue>): boolean; overload;
     procedure Clear; inline;
     property Count: integer read GetCount;
   end;
 
-  TMultimap<TKey,TValue> = class
+  TMultimap<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
   protected
     type
       TMultimapKey = record
@@ -199,9 +205,9 @@ type
       // TMultimapKey record type, we have to implement specific one.
       TMultimapKeyEqualityComparer = class(TEqualityComparer<TMultimapKey>)
       private
-        FKeyEquals: IEqualityComparer<TKey>;
+        FKeyComparer: IEqualityComparer<TKey>;
       public
-        constructor Create;
+        constructor Create(AKeyComparer: IEqualityComparer<TKey>);
         function Equals(const Left, Right: TMultimapKey): Boolean; overload; override;
         function GetHashCode(const Value: TMultimapKey): Integer; overload; override;
       end;
@@ -222,30 +228,65 @@ type
         property Key: TKey read GetKey;
       end;
 
+      TPairEnumerator = class(TEnumerator<TPair<TKey,TValue>>)
+      private
+        FMultimap: TMultimap<TKey,TValue>;
+        FCurrentKey: TDictionary<TKey, integer>.TKeyEnumerator;
+        FInEnumKey: boolean;
+        FCurrentValue: TValueEnumerator;
+
+        function GetCurrent: TPair<TKey,TValue>;
+      protected
+        function DoGetCurrent: TPair<TKey,TValue>; override;
+        function DoMoveNext: Boolean; override;
+      public
+        constructor Create(const AMultimap: TMultimap<TKey,TValue>);
+        destructor Destroy; override;
+        property Current: TPair<TKey,TValue> read GetCurrent;
+        function MoveNext: Boolean;
+      end;
+
+      TKeyEnumerator = TDictionary<TKey, integer>.TKeyEnumerator;
+      TKeyCollection = TDictionary<TKey, integer>.TKeyCollection;
+
+  private
+    function GetKeys: TKeyCollection;
+
   protected
     FCount: TDictionary<TKey, integer>;
     FValues: TDictionary<TMultimapKey, TValue>;
+    FKeyCollection: TKeyCollection;
 
     function GetTotalValuesCount: integer;
     function GetValuesCount(const AKey: TKey):Integer;
     function GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
+    function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
 
   public
 
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(const AComparer: IEqualityComparer<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
     destructor Destroy; override;
 
+    procedure Clear;
     procedure Add(const AKey: TKey; const AValue: TValue); overload;
     procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
+    procedure Add(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
+    procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
     function Remove(const AKey: TKey):Boolean;
     procedure RemoveValue(const AEnum: TValueEnumerator);
-    procedure RemoveValues(const AKey: TKey; const AValues: array of TValue);
+    procedure RemoveValues(const AKey: TKey; const AValues: TSet<TValue>); overload;
+    procedure RemoveValues(const AKey: TKey; const AValues: array of TValue); overload;
+    procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
     function ContainsKey(const AKey: TKey): Boolean;
     function ContainsKeys(const AKeys: array of TKey): Boolean;
+    function GetEnumerator: TPairEnumerator; reintroduce;
 
     property TotalValuesCount: integer read GetTotalValuesCount;
     property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
     property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
+    property Keys: TKeyCollection read GetKeys;
   end;
 
   TTiming = class
@@ -782,6 +823,14 @@ begin
     Remove(ASet[i]);
 end;
 
+procedure TSet<TValue>.Remove(const AValues: TEnumerable<TValue>);
+var
+  Item: TValue;
+begin
+  for Item in AValues do
+    Remove(Item);
+end;
+
 procedure TSet<TValue>.Remove(const ASet: TSet<TValue>);
 var
   Value: TValue;
@@ -813,6 +862,14 @@ begin
     Add(ASet[i]);
 end;
 
+procedure TSet<TValue>.Add(const AValues: TEnumerable<TValue>);
+var
+  Item: TValue;
+begin
+  for Item in AValues do
+    Add(Item);
+end;
+
 procedure TSet<TValue>.Include(const AValue: TValue);
 var R: TEmptyRec;
 begin
@@ -835,6 +892,14 @@ begin
     Include(ASet[i]);
 end;
 
+procedure TSet<TValue>.Include(const AValues: TEnumerable<TValue>);
+var
+  Item: TValue;
+begin
+  for Item in AValues do
+    Include(Item);
+end;
+
 procedure TSet<TValue>.Clear;
 begin
   FSet.Clear;
@@ -845,7 +910,33 @@ begin
   result := FSet.ContainsKey(AValue);
 end;
 
+function TSet<TValue>.Contains(const ASet: array of TValue): boolean;
+var
+  i: Integer;
+begin
+  for i := Low(ASet) to High(ASet) do
+    if not Contains(ASet[i]) then
+      Exit(False);
+  result := True;
+end;
+
+function TSet<TValue>.Contains(const AValues: TEnumerable<TValue>): boolean;
+var
+  Item: TValue;
+begin
+  for Item in AValues do
+    if not Contains(Item) then
+      Exit(False);
+  result := True;
+end;
+
 constructor TSet<TValue>.Create(const AValues: array of TValue);
+begin
+  Create;
+  Add(AValues);
+end;
+
+constructor TSet<TValue>.Create(const AValues: TEnumerable<TValue>);
 begin
   Create;
   Add(AValues);
@@ -1484,20 +1575,56 @@ end;
 
 constructor TMultimap<TKey, TValue>.Create;
 begin
-  FCount := TDictionary<TKey, integer>.Create;
-  FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create);
+  Create(IEqualityComparer<TKey>(nil));
+end;
+
+constructor TMultimap<TKey, TValue>.Create(const AComparer: IEqualityComparer<TKey>);
+begin
+  inherited Create;
+  FCount := TDictionary<TKey, integer>.Create(AComparer);
+  FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create(AComparer));
+end;
+
+constructor TMultimap<TKey, TValue>.Create(
+  const ACollection: TEnumerable<TPair<TKey, TValue>>);
+begin
+  Create(IEqualityComparer<TKey>(nil));
 end;
 
 destructor TMultimap<TKey, TValue>.Destroy;
 begin
   FreeAndNil(FCount);
   FreeAndNil(FValues);
+  FreeAndNil(FKeyCollection);
   inherited;
+end;
+
+function TMultimap<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
+begin
+  result := GetEnumerator;
+end;
+
+function TMultimap<TKey, TValue>.GetEnumerator: TPairEnumerator;
+begin
+  Result := TPairEnumerator.Create(Self);
+end;
+
+function TMultimap<TKey, TValue>.GetKeys: TKeyCollection;
+begin
+  if FKeyCollection = nil then
+    FKeyCollection := TKeyCollection.Create(FCount);
+  Result := FKeyCollection;
 end;
 
 function TMultimap<TKey, TValue>.GetTotalValuesCount: integer;
 begin
   result := FValues.Count;
+end;
+
+procedure TMultimap<TKey, TValue>.Clear;
+begin
+  FCount.Clear;
+  FValues.Clear;
 end;
 
 function TMultimap<TKey, TValue>.ContainsKey(const AKey: TKey): Boolean;
@@ -1551,6 +1678,23 @@ begin
   FCount.AddOrSetValue(AKey, MKey.Number);
 end;
 
+procedure TMultimap<TKey, TValue>.Add(const AKey: TKey; const AValues: TEnumerable<TValue>);
+var
+  item: TValue;
+begin
+  for item in AValues do
+    Add(AKey, item);
+end;
+
+procedure TMultimap<TKey, TValue>.Add(
+  const ACollection: TEnumerable<TPair<TKey, TValue>>);
+var
+  item: TPair<TKey,TValue>;
+begin
+  for item in ACollection do
+    Add(item.Key, item.Value);
+end;
+
 function TMultimap<TKey, TValue>.Remove(const AKey: TKey): Boolean;
 var
   MKey: TMultimapKey;
@@ -1586,18 +1730,35 @@ begin
     FCount.AddOrSetValue(AEnum.Key, LastKey.Number);
 end;
 
-procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey;
-  const AValues: array of TValue);
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TSet<TValue>);
 var
   Enum: TValueEnumerator;
+begin
+  Enum := Values[AKey];
+  while Enum.MoveNext do
+    if AValues.Contains(Enum.Current) then
+      RemoveValue(Enum);
+end;
+
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: array of TValue);
+var
   s: TSet<TValue>;
 begin
   s := TSet<TValue>.Create(AValues);
   try
-    Enum := Values[AKey];
-    while Enum.MoveNext do
-      if s.Contains(Enum.Current) then
-        RemoveValue(Enum);
+    RemoveValues(AKey, s);
+  finally
+    FReeAndNil(s);
+  end;
+end;
+
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>);
+var
+  s: TSet<TValue>;
+begin
+  s := TSet<TValue>.Create(AValues);
+  try
+    RemoveValues(AKey, s);
   finally
     FReeAndNil(s);
   end;
@@ -1712,21 +1873,77 @@ end;
 
 { TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer }
 
-constructor TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.Create;
+constructor TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.Create(AKeyComparer: IEqualityComparer<TKey>);
 begin
-  FKeyEquals := TEqualityComparer<TKey>.Default;
+  FKeyComparer := AKeyComparer;
+  if FKeyComparer=nil then
+    FKeyComparer := TEqualityComparer<TKey>.Default;
 end;
 
 function TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.Equals(const Left,
   Right: TMultimapKey): Boolean;
 begin
-  result := (Left.Number=Right.Number) and FKeyEquals.Equals(Left.Key, Right.Key);
+  result := (Left.Number=Right.Number) and FKeyComparer.Equals(Left.Key, Right.Key);
 end;
 
 function TMultimap<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
   const Value: TMultimapKey): Integer;
 begin
-  result := FKeyEquals.GetHashCode(Value.Key) xor Value.Number;
+  result := FKeyComparer.GetHashCode(Value.Key) xor Value.Number;
+end;
+
+{ TMultimap<TKey, TValue>.TPairEnumerator }
+
+constructor TMultimap<TKey, TValue>.TPairEnumerator.Create(
+  const AMultimap: TMultimap<TKey, TValue>);
+begin
+  inherited Create;
+  FMultimap := AMultimap;
+  FCurrentKey := FMultimap.FCount.Keys.GetEnumerator;
+end;
+
+destructor TMultimap<TKey, TValue>.TPairEnumerator.Destroy;
+begin
+  FMultimap := nil;
+  FreeAndNil(FCurrentKey);
+  inherited;
+end;
+
+function TMultimap<TKey, TValue>.TPairEnumerator.DoMoveNext: Boolean;
+begin
+  Result := MoveNext;
+end;
+
+function TMultimap<TKey, TValue>.TPairEnumerator.DoGetCurrent: TPair<TKey, TValue>;
+begin
+  Result := GetCurrent;
+end;
+
+function TMultimap<TKey, TValue>.TPairEnumerator.MoveNext: Boolean;
+begin
+  if not FInEnumKey then
+  begin
+    result := FCurrentKey.MoveNext;
+    if not result then
+      Exit;
+    FCurrentValue := FMultimap.Values[FCurrentKey.Current];
+    result := FCurrentValue.MoveNext;
+    Assert(result); // if key is here, then there must be at least one value
+    FInEnumKey := True;
+    Exit;
+  end;
+  result := FCurrentValue.MoveNext;
+  if not result then
+  begin
+    FInEnumKey := False;
+    result := MoveNext;
+  end;
+end;
+
+function TMultimap<TKey, TValue>.TPairEnumerator.GetCurrent: TPair<TKey, TValue>;
+begin
+  result.Key := FCurrentKey.Current;
+  result.Value := FCurrentValue.Current;
 end;
 
 initialization
