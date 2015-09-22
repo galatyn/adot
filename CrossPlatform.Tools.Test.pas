@@ -52,7 +52,6 @@ begin
   s := nil;
   try
     m := TMultimap<string, integer>.Create;
-    s := TSet<integer>.Create;
     m.Add('1.1', [11,12,13]);
     m.Add('2',2);
     m.Add('2',2);
@@ -77,11 +76,18 @@ begin
 
     e := m.Values['1.1'];
     s := TSet<integer>.Create([11,12,13]);
-    Assert(e.MoveNext and s.Contains(e.Current));
-    Assert(e.MoveNext and s.Contains(e.Current));
-    Assert(e.MoveNext and s.Contains(e.Current));
-    Assert(not e.MoveNext);
-    FreeAndNil(s);
+    try
+      Assert(e.MoveNext and s.Contains(e.Current));
+      Assert(e.MoveNext and s.Contains(e.Current));
+      Assert(e.MoveNext and s.Contains(e.Current));
+      Assert(not e.MoveNext);
+
+      Assert(s.Count=3);
+      for i in s do
+        Assert(i in [11,12,13]);
+    finally
+      FreeAndNil(s);
+    end;
 
     m.Remove('2');
     Assert(m.TotalValuesCount=6);

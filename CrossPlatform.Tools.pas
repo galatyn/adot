@@ -310,7 +310,8 @@ type
     //      if Enum.Current=314 then m.RemoveValue(Enum);
     property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
 
-    // Mostly it is used as simple way to enumerate all keys. Enumerate all values (alternative to default enumerator):
+    // Enumerator of the keys. For example we can enumerate all values this way
+    // (alternative to default enumerator):
     //    for Key in m.Keys do
     //    begin
     //      Enum := m.Values[Key];
@@ -398,6 +399,7 @@ type
     class procedure Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
   end;
 
+  // Simple convertion EnumType->string->EnumType etc.
   // http://stackoverflow.com/questions/31601707/generic-functions-for-converting-an-enumeration-to-string-and-back#31604647
   TEnumeration<T: record> = record
   strict private
@@ -414,6 +416,37 @@ type
     class function InRange(Value: Integer): Boolean; inline; static;
     class function EnsureRange(Value: Integer): Integer; inline; static;
   end;
+
+//  TInputIterator<T> = record
+//  private
+//    type
+//      TGetCurrent = reference to function: T;
+//      TMoveNext = reference to function: Boolean;
+//      TEqualTo = reference to function(const ADst: T): Boolean;
+//      TIteratorState = (isBOF, isItem, isEOF);
+//    var
+//      FGetCurrent: TGetCurrent;
+//      FMoveNext: TMoveNext;
+//      FEqualTo: TEqualTo;
+//      FState: TIteratorState;
+//
+//    function GetCurrent: T;
+//  public
+//    class operator Equal(ALeftOp, ARightOp: TInputIterator<T>): Boolean;
+//
+//    function MoveNext: Boolean;
+//
+//    property Current: T read GetCurrent;
+//
+//  end;
+//
+//  TUnaryPredicate<T> = reference to function(const AValue: T): Boolean;
+//
+//  TAlgo<T> = class
+//  public
+//    // Non-modifying sequence operations:
+//    class function all_of(AFirst, ALast: TInputIterator<T>; APred: TUnaryPredicate<T>): Boolean;
+//  end;
 
 implementation
 
