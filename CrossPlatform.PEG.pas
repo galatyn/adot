@@ -9,7 +9,7 @@ uses
   {$ENDIF}
   CrossPlatform.Tools, System.Generics.Collections, System.Generics.Defaults,
   System.SysUtils, System.Classes, System.Types, System.AnsiStrings,
-  System.StrUtils, System.TypInfo;
+  System.StrUtils, System.TypInfo, CrossPlatform.Containers;
 
 type
   TByteSet = set of Byte;

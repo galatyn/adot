@@ -1,7 +1,7 @@
 ﻿[Closed Files]
-File_0=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.pas',0,1,15697,1,15718,0,0,,
-File_1=TSourceModule,'E:\!components\adot\Test\MainFrm.pas',0,1,1,1,33,0,0,,
-File_2=TSourceModule,'e:\!components\adot\CrossPlatform.Tools.pas',0,1,180,21,201,0,0,,{1
+File_0=TSourceModule,'D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas',0,1,169,1,187,0,0,,{1
+File_1=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.pas',0,1,15697,1,15718,0,0,,
+File_2=TSourceModule,'E:\!components\adot\Test\MainFrm.pas',0,1,1,1,33,0,0,,
 File_3=TSourceModule,'D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\win\Winapi.Windows.pas',0,1,3950,27,3971,0,0,,
 File_4=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.Types.pas',0,1,1306,3,1318,0,0,,
 File_5=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\SOURCE\RTL\SYS\System.SysUtils.pas',0,1,4840,5,4861,0,0,,
@@ -15,13 +15,34 @@ File_12=TSourceModule,'c:\Users\galatyn\GoogleDrive\Knowledgebase\Src\CrossPlatf
 File_13=TSourceModule,'d:\program files (x86)\embarcadero\studio\15.0\source\rtl\common\System.Generics.Defaults.pas',0,1,1,1,38,0,0,,
 
 [Modules]
-Module0=e:\!components\adot\CrossPlatform.PEG.pas
-Module1=E:\!components\adot\CrossPlatform.PEGR.pas
-Module2=E:\!components\adot\CrossPlatform.PEG.Test.pas
-Module3=E:\!components\adot\CrossPlatform.Tools.Test.pas
-Module4=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
-Count=5
+Module0=e:\!components\adot\CrossPlatform.Tools.pas
+Module1=E:\!components\adot\CrossPlatform.Alg.pas
+Module2=E:\!components\adot\CrossPlatform.Tools.Test.pas
+Module3=E:\!components\adot\CrossPlatform.PEG.Test.pas
+Module4=e:\!components\adot\CrossPlatform.PEG.pas
+Module5=E:\!components\adot\CrossPlatform.PEGR.pas
+Count=6
 EditWindowCount=1
+
+[e:\!components\adot\CrossPlatform.Tools.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
+
+[E:\!components\adot\CrossPlatform.Alg.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
+
+[E:\!components\adot\CrossPlatform.Tools.Test.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
+
+[E:\!components\adot\CrossPlatform.PEG.Test.pas]
+ModuleType=TSourceModule
+FormState=0
+FormOnTop=0
 
 [e:\!components\adot\CrossPlatform.PEG.pas]
 ModuleType=TSourceModule
@@ -33,29 +54,15 @@ ModuleType=TSourceModule
 FormState=0
 FormOnTop=0
 
-[E:\!components\adot\CrossPlatform.PEG.Test.pas]
-ModuleType=TSourceModule
-FormState=0
-FormOnTop=0
-
-[E:\!components\adot\CrossPlatform.Tools.Test.pas]
-ModuleType=TSourceModule
-FormState=0
-FormOnTop=0
-
-[D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas]
-ModuleType=TSourceModule
-FormState=0
-FormOnTop=0
-
 [EditWindow0]
-ViewCount=5
-CurrentEditView=e:\!components\adot\CrossPlatform.PEG.pas
+ViewCount=6
+CurrentEditView=e:\!components\adot\CrossPlatform.Tools.pas
 View0=0
 View1=1
 View2=2
 View3=3
 View4=4
+View5=5
 PercentageSizes=1
 Create=1
 Visible=1
@@ -87,16 +94,49 @@ BottomMiddelPanelData=0000080001020200000009000000446F636B5369746530100000004772
 
 [View0]
 CustomEditViewType=TEditView
+Module=e:\!components\adot\CrossPlatform.Tools.pas
+CursorX=1
+CursorY=1971
+TopLine=1971
+LeftCol=1
+Elisions=
+Bookmarks={1,420,1}{2,242,15}
+EditViewName=e:\!components\adot\CrossPlatform.Tools.pas
+
+[View1]
+CustomEditViewType=TEditView
+Module=E:\!components\adot\CrossPlatform.Alg.pas
+CursorX=13
+CursorY=92
+TopLine=70
+LeftCol=1
+Elisions=
+Bookmarks=
+EditViewName=E:\!components\adot\CrossPlatform.Alg.pas
+
+[View2]
+CustomEditViewType=TEditView
+Module=E:\!components\adot\CrossPlatform.Tools.Test.pas
+CursorX=1
+CursorY=76
+TopLine=1
+LeftCol=1
+Elisions=
+Bookmarks=
+EditViewName=E:\!components\adot\CrossPlatform.Tools.Test.pas
+
+[View3]
+CustomEditViewType=TEditView
 Module=E:\!components\adot\CrossPlatform.PEG.Test.pas
 CursorX=10
 CursorY=11
-TopLine=21
+TopLine=46
 LeftCol=1
 Elisions=
 Bookmarks=
 EditViewName=E:\!components\adot\CrossPlatform.PEG.Test.pas
 
-[View1]
+[View4]
 CustomEditViewType=TEditView
 Module=E:\!components\adot\CrossPlatform.PEGR.pas
 CursorX=1
@@ -107,38 +147,16 @@ Elisions=
 Bookmarks=
 EditViewName=E:\!components\adot\CrossPlatform.PEGR.pas
 
-[View2]
+[View5]
 CustomEditViewType=TEditView
 Module=e:\!components\adot\CrossPlatform.PEG.pas
-CursorX=13
-CursorY=458
+CursorX=1
+CursorY=465
 TopLine=442
 LeftCol=1
 Elisions=
-Bookmarks={1,455,6}{2,90,1}{3,304,78}{5,1211,6}
+Bookmarks={1,455,6}{2,90,1}{3,304,78}{5,1211,5}
 EditViewName=e:\!components\adot\CrossPlatform.PEG.pas
-
-[View3]
-CustomEditViewType=TEditView
-Module=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
-CursorX=18
-CursorY=307
-TopLine=286
-LeftCol=1
-Elisions=
-Bookmarks=
-EditViewName=D:\Program Files (x86)\Embarcadero\Studio\15.0\Source\rtl\common\System.Generics.Collections.pas
-
-[View4]
-CustomEditViewType=TEditView
-Module=E:\!components\adot\CrossPlatform.Tools.Test.pas
-CursorX=1
-CursorY=1
-TopLine=1
-LeftCol=1
-Elisions=
-Bookmarks=
-EditViewName=E:\!components\adot\CrossPlatform.Tools.Test.pas
 
 [Watches]
 Count=0
@@ -165,8 +183,7 @@ Dockable=1
 StayOnTop=0
 
 [Breakpoints]
-Count=1
-Breakpoint0='e:\!components\adot\CrossPlatform.PEG.pas',465,'',0,1,'',1,0,0,'',1,'','','',0,''
+Count=0
 
 [EmbarcaderoWin32Debugger_AddressBreakpoints]
 Count=0

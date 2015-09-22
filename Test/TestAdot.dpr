@@ -7,7 +7,9 @@ uses
   CrossPlatform.Tools.Test in '..\CrossPlatform.Tools.Test.pas',
   CrossPlatform.Log in '..\CrossPlatform.Log.pas',
   VCL.Log in '..\VCL.Log.pas',
-  CrossPlatform.Tools in '..\CrossPlatform.Tools.pas';
+  CrossPlatform.Tools in '..\CrossPlatform.Tools.pas',
+  CrossPlatform.Alg in '..\CrossPlatform.Alg.pas',
+  CrossPlatform.Containers in '..\CrossPlatform.Containers.pas';
 
 {$R *.res}
 

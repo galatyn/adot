@@ -4,7 +4,7 @@ interface
 
 uses
   CrossPlatform.Tools, System.SysUtils, System.Generics.Collections,
-  System.Generics.Defaults;
+  System.Generics.Defaults, CrossPlatform.Containers;
 
 type
   TTests = class
