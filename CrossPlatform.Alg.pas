@@ -6,18 +6,27 @@ uses
   System.SysUtils;
 
 type
-  TIteratorType = (itInput, itForward);
+  TIteratorType = (
+    itInput,         // element became invalid after reading (not accessible anymore by other iterators etc)
+    itForward,       // after reading by iterator element is still available for other iterators etc
+    itBidirectional, // itForward + ability move back
+    itRandomAccess,  // itBidirectional + ability to access elements directly by index
+    itContiguous);   // itRandomAccess + all elements are kept in contiguous field of memory
 
   TIterator<T> = record
   private
     type
+      PValuePtr = ^T;
       IInnerIterator = interface(IUnknown)
         function Iterator_Current: T;
         function Iterator_MoveNext: Boolean;
-        function Iterator_EqualTo(const ADst: T): Boolean;
+        function Iterator_Compare(const ADst: T): Integer; // same value
+        function Iterator_PointsSameElement(ADst: IInnerIterator): Boolean;
         function Iterator_Type: TIteratorType;
+        function Iterator_Mutable: Boolean; // +OutputIterator
         function Iterator_EOF: Boolean;
         function Iterator_Copy: IInnerIterator;
+        function Iterator_Pointer: PValuePtr;
       end;
 
     var
@@ -26,22 +35,27 @@ type
     function GetCurrent: T;
     function GetIteratorType: TIteratorType;
     function GetEOF: Boolean;
+    function GetCurrentPtr: PValuePtr;
   public
-    class operator Equal(a, b: TIterator<T>): Boolean;
+    class operator Equal(a, b: TIterator<T>): Boolean; // both are pointing to same element?
     class operator Equal(a: TIterator<T>; const b: T): Boolean;
     class operator Implicit(a: TIterator<T>): T;
     class operator Explicit(a: TIterator<T>): T;
+    class operator Implicit(a: TIterator<T>): PValuePtr;
+    class operator Explicit(a: TIterator<T>): PValuePtr;
 
     function MoveNext: Boolean;
     function Copy: TIterator<T>;
 
     property Current: T read GetCurrent;
+    property CurrentPtr: PValuePtr read GetCurrentPtr;
     property IteratorType: TIteratorType read GetIteratorType;
     property EOF: Boolean read GetEOF;
   end;
 
   TUnaryPredicate<T> = reference to function(const AValue: T): Boolean;
 
+  // All methods should process items not including ALast: [AFirst, ALast)
   TAlg<T> = class
   public
     // Non-modifying sequence operations:
@@ -61,9 +75,14 @@ begin
   result := FIterator.Iterator_Current;
 end;
 
+function TIterator<T>.GetCurrentPtr: PValuePtr;
+begin
+  result := FIterator.Iterator_Pointer;
+end;
+
 function TIterator<T>.GetEOF: Boolean;
 begin
-  result := FIterator.Iterator_EOF;
+  result := (FIterator=nil) or FIterator.Iterator_EOF;
 end;
 
 function TIterator<T>.GetIteratorType: TIteratorType;
@@ -71,9 +90,15 @@ begin
   result := FIterator.Iterator_Type;
 end;
 
+class operator TIterator<T>.Implicit(a: TIterator<T>): PValuePtr;
+begin
+  result := a.FIterator.Iterator_Pointer;
+end;
+
 function TIterator<T>.Copy: TIterator<T>;
 begin
-  result.FIterator := FIterator.Iterator_Copy;
+  if FIterator<>nil then
+    result.FIterator := FIterator.Iterator_Copy;
 end;
 
 class operator TIterator<T>.Equal(a, b: TIterator<T>): Boolean;
@@ -84,12 +109,17 @@ begin
     if b.EOF then
       result := False
     else
-      result := a.FIterator.Iterator_EqualTo(b.FIterator.Iterator_Current);
+      result := a.FIterator.Iterator_PointsSameElement(b.FIterator);
 end;
 
 class operator TIterator<T>.Equal(a: TIterator<T>; const b: T): Boolean;
 begin
-  result := a.FIterator.Iterator_EqualTo(b);
+  result := a.FIterator.Iterator_Compare(b)=0;
+end;
+
+class operator TIterator<T>.Explicit(a: TIterator<T>): PValuePtr;
+begin
+  result := a.FIterator.Iterator_Pointer;
 end;
 
 class operator TIterator<T>.Explicit(a: TIterator<T>): T;
