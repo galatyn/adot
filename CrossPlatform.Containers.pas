@@ -149,20 +149,20 @@ type
     property TotalValuesCount: integer read GetTotalValuesCount;
     property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
 
-    // Enumerator of values for specific Key. Returns records, ne need to destroy. Example:
+    // Enumerator of values for specific Key. Returns records, ne need to destroy.
+    // Example 1:
     //    Enum := m.Values['test'];
     //    While Enum.MoveNext do
     //      if Enum.Current=314 then m.RemoveValue(Enum);
+    // Example 2:
+    //    for s in m.Values['test'] do
+    //      <do something with s>
     property Values[const AKey: TKey]: TValueEnumerator read GetValuesEnumerator; default;
 
     // Enumerator of the keys. For example we can enumerate all values this way
     // (alternative to default enumerator):
     //    for Key in m.Keys do
-    //    begin
-    //      Enum := m.Values[Key];
-    //      while Enum.MoveNext do
-    //        Enum.Current;
-    //    end;
+    //      for Value in m.Values[Key] do
     property Keys: TKeyCollection read GetKeys;
   end;
 

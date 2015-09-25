@@ -28,8 +28,8 @@ begin
     TVCLStringsLog.Create(MemoLog.Lines),
     TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
   ]);
-  //CrossPlatform.PEG.Test.RunTestSet;
   CrossPlatform.Tools.Test.RunTestSet;
+  CrossPlatform.PEG.Test.RunTestSet;
 end;
 
 end.

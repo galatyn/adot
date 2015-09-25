@@ -84,16 +84,32 @@ type
     class function HexToPointer(const HexEncodedPointer: String):Pointer; static; inline;
   end;
 
-  THash = class
+  TCryptoHash = class
   public
-    class function Encode(const Buf; ByteBufSize: integer): TIdBytes; overload; static;
-    class function Encode<T: Record>(const Value: T): TIdBytes; overload; static;
-    class function Encode(s: TIdBytes): TIdBytes; overload; static;
-    class function Encode(s: TBytes): TIdBytes; overload; static;
-    class function Encode(const s: string): TIdBytes; overload; static;
-    class function Encode(s: TStream): TIdBytes; overload; static;
+    type
+      TValue = TIdBytes;
+
+    class function Encode(const Buf; ByteBufSize: integer): TValue; overload; static;
+    class function Encode<T: Record>(const Value: T): TValue; overload; static; inline;
+    class function Encode(const s: TIdBytes): TValue; overload; static;
+    class function Encode(const s: TBytes): TValue; overload; static; inline;
+    class function Encode(const s: string): TValue; overload; static;
+    class function Encode(s: TStream; AOwnsStream: boolean = False): TValue; overload; static;
   end;
-  
+
+  TFastHash = class
+  public
+    type
+      TValue = Integer;
+
+    class function Encode(const Buf; ByteBufSize: integer): TValue; overload; static; inline;
+    class function Encode<T: Record>(const Value: T): TValue; overload; static; inline;
+    class function Encode(const s: TIdBytes): TValue; overload; static; inline;
+    class function Encode(const s: TBytes): TValue; overload; static; inline;
+    class function Encode(const s: string): TValue; overload; static; inline;
+    class function Encode(s: TStream; AOwnsStream: boolean = False): TValue; overload; static;
+  end;
+
   TVar = class
   public
     class function AsString(const v: Variant): String; static;
@@ -139,7 +155,6 @@ type
   // assign Value:=nil to free content immediately.
   TAutoFree<T: class> = record
   private
-    procedure SetAsLink(const Value: T);
     type
       TAutoFreeImpl = class(TInterfacedObject, IUnknown)
       protected
@@ -155,7 +170,17 @@ type
 
     procedure SetValue(const Value: T);
     function GetIsLink: boolean;
+    procedure SetAsLink(const Value: T);
   public
+    class function Create: TAutoFree<T>; overload; static;
+    class function Create(const AValue: T): TAutoFree<T>; overload; static;
+    class operator Equal(const ALeft, ARight: TAutoFree<T>): Boolean;
+    class operator Equal(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+    class operator NotEqual(const ALeft, ARight: TAutoFree<T>): Boolean;
+    class operator NotEqual(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+    class operator Implicit(const AValue: TAutoFree<T>): T;
+    class operator Implicit(const AValue: T): TAutoFree<T>;
+
     property Value: T read FValue write SetValue;
     property AsLink: T read FValue write SetAsLink;
     property IsLink: boolean read GetIsLink;
@@ -175,21 +200,23 @@ type
     procedure SetIsNull(const AIsNull: boolean);
     function GetHasValue: boolean;
     procedure SetHasValue(const AHasValue: boolean);
+    function GetPointer: pointer;
   public
     class function Create: TNullable<T>; overload; static;
     class function Create(const AValue: T): TNullable<T>; overload; static;
-    class operator Equal(ALeft, ARight: TNullable<T>): Boolean;
-    class operator Equal(ALeft: TNullable<T>; ARight: T): Boolean;
-    class operator NotEqual(ALeft, ARight: TNullable<T>): Boolean;
-    class operator NotEqual(ALeft: TNullable<T>; ARight: T): Boolean;
-    class operator Implicit(AValue: TNullable<T>): T;
-    class operator Implicit(AValue: T): TNullable<T>;
-    class operator Implicit(AValue: PT): TNullable<T>;
-    class operator Implicit(AValue: Variant): TNullable<T>;
+    class operator Equal(const ALeft, ARight: TNullable<T>): Boolean;
+    class operator Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
+    class operator NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
+    class operator NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
+    class operator Implicit(const AValue: TNullable<T>): T;
+    class operator Implicit(const AValue: T): TNullable<T>;
+    class operator Implicit(const AValue: PT): TNullable<T>;
+    class operator Implicit(const AValue: Variant): TNullable<T>;
 
     property Value: T read GetValue write SetValue;
     property IsNull: boolean read GetIsNull write SetIsNull;
     property HasValue: boolean read GetHasValue write SetHasValue; // not IsNull
+    property Ptr: pointer read GetPointer;
   end;
 
   TTiming = class
@@ -230,20 +257,26 @@ type
 
     // set Text and IsAlpha predicate (default is IsLetterOrDigit)
     function Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil): PTextWords; overload;
+
     // reset current position (to start search from begin of the text)
     procedure Reset; inline;
+
     // reset and get number of words in the text
     function Count:Integer;
+
     // find next word in the text
     function FindNext(var AStart,ALen: integer):Boolean; overload;
     function FindNext(var AWord: String):Boolean; overload;
     function FindNext: String; overload; inline;
+
     // reset and get all words from the text
     procedure Get(ADst: TStrings); overload;
     procedure Get(var ADst: TArray<String>); overload;
     procedure Get(var ADst: TArray<TWordPosRec>); overload;
+
     // get substring from the text (usually APos is result of FindNext or Get)
     function GetSubStr(const APos: TWordPosRec): String;
+
     // find sequence of strings in the list of words:
     //    r.Prepare('it is test').Get(SearchStrArr);
     //    r.Prepare('word0 word1 it is test xxx xxx xxx').Get(WordList);
@@ -289,11 +322,6 @@ type
   end;
 
 implementation
-
-{$IFDEF QuickTest}
-uses
-  CrossPlatform.Tools_Test;
-{$ENDIF}
 
 function ForEachComponentBrk(AStart: TComponent; ACallback: TDelegatedOnComponentWithBreak):Boolean;
 var
@@ -533,7 +561,7 @@ end;
 
 { THash }
 
-class function THash.Encode(const Buf; ByteBufSize: integer): TIdBytes;
+class function TCryptoHash.Encode(const Buf; ByteBufSize: integer): TValue;
 var
   h: TIdHashMessageDigest5;
   s: TDelegatedMemoryStream;
@@ -550,17 +578,17 @@ begin
   end;
 end;
 
-class function THash.Encode(s: TIdBytes): TIdBytes;
+class function TCryptoHash.Encode(const s: TIdBytes): TValue;
 begin
   result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
 end;
 
-class function THash.Encode(s: TBytes): TIdBytes;
+class function TCryptoHash.Encode(const s: TBytes): TValue;
 begin
   result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
 end;
 
-class function THash.Encode(s: TStream): TIdBytes;
+class function TCryptoHash.Encode(s: TStream; AOwnsStream: boolean = False): TValue;
 var
   h: TIdHashMessageDigest5;
   p: Int64;
@@ -575,18 +603,69 @@ begin
       FreeAndNil(h);
     end;
   finally
-    s.Position := p;
+    if AOwnsStream then
+      s.Free
+    else
+      s.Position := p;
   end;
 end;
 
-class function THash.Encode(const s: string): TIdBytes;
+class function TCryptoHash.Encode(const s: string): TValue;
 begin
   result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
 end;
 
-class function THash.Encode<T>(const Value: T): TIdBytes;
+class function TCryptoHash.Encode<T>(const Value: T): TValue;
 begin
   Result := Encode(Value, SizeOf(Value));
+end;
+
+{ TFastHash }
+
+class function TFastHash.Encode(const Buf; ByteBufSize: integer): TValue;
+begin
+  result := BobJenkinsHash(Buf, ByteBufSize, 0);
+end;
+
+class function TFastHash.Encode(const s: TIdBytes): TValue;
+begin
+  result := Encode(s[Low(s)], Length(s));
+end;
+
+class function TFastHash.Encode(const s: TBytes): TValue;
+begin
+  result := Encode(s[Low(s)], Length(s));
+end;
+
+class function TFastHash.Encode(const s: string): TValue;
+begin
+  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+end;
+
+class function TFastHash.Encode<T>(const Value: T): TValue;
+begin
+  Result := Encode(Value, SizeOf(Value));
+end;
+
+class function TFastHash.Encode(s: TStream; AOwnsStream: boolean): TValue;
+var
+  b: TBytes;
+  p: Int64;
+begin
+  result := 0;
+  p := s.Position;
+  try
+    s.Position := 0;
+    setlength(b, s.Size);
+    if s.Read(b[low(b)], length(b))<>length(b) then
+      raise Exception.Create('Error');
+    result := Encode(b);
+  finally
+    if AOwnsStream then
+      s.Free
+    else
+      s.Position := p;
+  end;
 end;
 
 { TColors }
@@ -682,6 +761,17 @@ end;
 
 { TAutofree<T> }
 
+class function TAutoFree<T>.Create: TAutoFree<T>;
+begin
+  result.FValue := nil;
+  result.FGuard := nil;
+end;
+
+class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
+begin
+  result.Value := AValue;
+end;
+
 procedure TAutofree<T>.SetValue(const Value: T);
 begin
   if FValue = Value then
@@ -692,13 +782,43 @@ end;
 
 procedure TAutoFree<T>.SetAsLink(const Value: T);
 begin
-  FValue := Value;
   FGuard := nil;
+  FValue := Value;
+end;
+
+class operator TAutoFree<T>.Equal(const ALeft, ARight: TAutoFree<T>): Boolean;
+begin
+  result := ALeft.Value=ARight.Value;
+end;
+
+class operator TAutoFree<T>.Equal(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+begin
+  result := ALeft.Value=ARight;
 end;
 
 function TAutoFree<T>.GetIsLink: boolean;
 begin
   result := (FGuard=nil) and (FValue<>nil);
+end;
+
+class operator TAutoFree<T>.Implicit(const AValue: TAutoFree<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TAutoFree<T>.Implicit(const AValue: T): TAutoFree<T>;
+begin
+  result.Value := AValue;
+end;
+
+class operator TAutoFree<T>.NotEqual(const ALeft, ARight: TAutoFree<T>): Boolean;
+begin
+  result := ALeft.Value<>ARight.Value;
+end;
+
+class operator TAutoFree<T>.NotEqual(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+begin
+  result := ALeft.Value<>ARight;
 end;
 
 { TTiming }
@@ -1431,6 +1551,11 @@ begin
   result := FHasValue='';
 end;
 
+function TNullable<T>.GetPointer: pointer;
+begin
+  result := @FValue;
+end;
+
 procedure TNullable<T>.SetIsNull(const AIsNull: boolean);
 begin
   if AIsNull then
@@ -1452,7 +1577,7 @@ begin
   IsNull := not AHasValue;
 end;
 
-class operator TNullable<T>.Equal(ALeft, ARight: TNullable<T>): Boolean;
+class operator TNullable<T>.Equal(const ALeft, ARight: TNullable<T>): Boolean;
 var
   Comparer: IEqualityComparer<T>;
 begin
@@ -1465,7 +1590,7 @@ begin
     Result := ALeft.HasValue = ARight.HasValue;
 end;
 
-class operator TNullable<T>.Equal(ALeft: TNullable<T>; ARight: T): Boolean;
+class operator TNullable<T>.Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
 var
   Comparer: IEqualityComparer<T>;
 begin
@@ -1478,27 +1603,27 @@ begin
   end
 end;
 
-class operator TNullable<T>.NotEqual(ALeft, ARight: TNullable<T>): Boolean;
+class operator TNullable<T>.NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
 begin
   result := not (ALeft=ARight);
 end;
 
-class operator TNullable<T>.NotEqual(ALeft: TNullable<T>; ARight: T): Boolean;
+class operator TNullable<T>.NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
 begin
   result := not (ALeft=ARight);
 end;
 
-class operator TNullable<T>.Implicit(AValue: T): TNullable<T>;
+class operator TNullable<T>.Implicit(const AValue: T): TNullable<T>;
 begin
   result := TNullable<T>.Create(AValue);
 end;
 
-class operator TNullable<T>.Implicit(AValue: TNullable<T>): T;
+class operator TNullable<T>.Implicit(const AValue: TNullable<T>): T;
 begin
   result := AValue.Value;
 end;
 
-class operator TNullable<T>.Implicit(AValue: Variant): TNullable<T>;
+class operator TNullable<T>.Implicit(const AValue: Variant): TNullable<T>;
 begin
   if VarIsClear(AValue) then
     result := TNullable<T>.Create
@@ -1506,7 +1631,7 @@ begin
     Result := TNullable<T>.Create( TValue.FromVariant(AValue).AsType<T> );
 end;
 
-class operator TNullable<T>.Implicit(AValue: PT): TNullable<T>;
+class operator TNullable<T>.Implicit(const AValue: PT): TNullable<T>;
 begin
   if AValue=nil then
     result := TNullable<T>.Create
@@ -1515,9 +1640,6 @@ begin
 end;
 
 initialization
-  {$IFDEF QuickTest}
-  CrossPlatform.Tools_Test.TTests.QuickTest;
-  {$ENDIF}
 
 finalization
   TTiming.Finilaze;

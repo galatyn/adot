@@ -86,7 +86,9 @@ begin
   a := b;
   assert(a=b);
 
+  a := 'test2';
   c := a;
+  assert(c='test2');
 
 end;
 

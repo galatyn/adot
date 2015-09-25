@@ -129,7 +129,7 @@ begin
   if length(AValue)<=40 then
     result := AValue
   else
-    result := format('MD5(%d)=', [length(AValue)]) + String(THex.Encode(THash.Encode(AValue)));
+    result := format('MD5(%d)=', [length(AValue)]) + String(THex.Encode(TCryptoHash.Encode(AValue)));
 end;
 
 class procedure TFormSnapshot.GetControlState(C: TControl; Dst: TStrings);
