@@ -166,6 +166,35 @@ type
     property Keys: TKeyCollection read GetKeys;
   end;
 
+  THeap<T> = class(TEnumerable<T>)
+  private
+  protected
+    FValues: TList<T>;
+    FComparer: IComparer<T>;
+
+    function GetCount: integer;
+    function GetValue(n: integer): T;
+    procedure SetValue(n: integer; const AValue: T);
+    function GetCapacity: integer;
+    procedure SetCapacity(const AValue: integer);
+  public
+    constructor Create(const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
+    constructor Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
+    destructor Destroy; override;
+    function GetEnumerator: TList<T>.TEnumerator;
+
+    function Add(const AValue: T): integer;
+    function Min: T;
+    function RemoveMin: T;
+    function ExtractMin: T;
+
+    property Count: integer read GetCount;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Values[n: integer]: T read GetValue write SetValue;
+  end;
+
+  TPriorityQueue<T> = class(THeap<T>);
+
 implementation
 
 { TSet<TValue> }
@@ -606,6 +635,100 @@ function TMultimap<TKey, TValue>.TPairEnumerator.GetCurrent: TPair<TKey, TValue>
 begin
   result.Key := FCurrentKey.Current;
   result.Value := FCurrentValue.Current;
+end;
+
+{ THeap<T> }
+
+constructor THeap<T>.Create(const AComparer: IComparer<T>; ACapacity: integer);
+begin
+  FValues := TList<T>.Create(AComparer);
+  if ACapacity>0 then
+    FValues.Capacity := ACapacity;
+  FComparer := AComparer;
+  if FComparer=nil then
+    FComparer := TComparer<T>.Default;
+end;
+
+constructor THeap<T>.Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T>;
+  ACapacity: integer);
+var
+  Value: T;
+begin
+  Create(AComparer, ACapacity);
+  for Value in ACollection do
+    Add(Value);
+end;
+
+destructor THeap<T>.Destroy;
+begin
+  FreeAndNil(FValues);
+  inherited;
+end;
+
+function THeap<T>.GetCapacity: integer;
+begin
+  result := FValues.Capacity;
+end;
+
+function THeap<T>.GetCount: integer;
+begin
+  result := FValues.Count;
+end;
+
+function THeap<T>.GetEnumerator: TList<T>.TEnumerator;
+begin
+  result := FValues.GetEnumerator;
+end;
+
+function THeap<T>.GetValue(n: integer): T;
+begin
+  result := FValues[n];
+end;
+
+function THeap<T>.Min: T;
+begin
+  result := FValues[0];
+end;
+
+function THeap<T>.Add(const AValue: T): integer;
+var
+  i: Integer;
+  v: T;
+begin
+  Result := FValues.Add(Default(T));
+  Result := Count;
+  while Result > 1 do
+  begin
+    i := Result shr 1;
+    if FComparer.Compare(FValues[(i-1)], AValue) <= 0 then
+      Break;
+    v := FValues[i-1];
+    FValues[i-1] := FValues[Result-1];
+    FValues[Result-1] := v;
+    Result := i;
+  end;
+  dec(Result);
+  FValues[result] := AValue;
+end;
+
+procedure THeap<T>.SetCapacity(const AValue: integer);
+begin
+  FValues.Capacity := AValue;
+end;
+
+procedure THeap<T>.SetValue(n: integer; const AValue: T);
+begin
+
+end;
+
+function THeap<T>.RemoveMin: T;
+begin
+
+end;
+
+function THeap<T>.ExtractMin: T;
+begin
+  result := FValues[0];
 end;
 
 end.
