@@ -8,7 +8,7 @@ uses
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
   System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo;
+  System.TypInfo, System.Rtti;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -159,6 +159,37 @@ type
     property Value: T read FValue write SetValue;
     property AsLink: T read FValue write SetAsLink;
     property IsLink: boolean read GetIsLink;
+  end;
+
+  TNullable<T> = record
+  private
+    type
+      PT = ^T;
+    var
+      FValue: T;
+      FHasValue: string;
+
+    function GetValue: T;
+    procedure SetValue(const AValue: T);
+    function GetIsNull: boolean;
+    procedure SetIsNull(const AIsNull: boolean);
+    function GetHasValue: boolean;
+    procedure SetHasValue(const AHasValue: boolean);
+  public
+    class function Create: TNullable<T>; overload; static;
+    class function Create(const AValue: T): TNullable<T>; overload; static;
+    class operator Equal(ALeft, ARight: TNullable<T>): Boolean;
+    class operator Equal(ALeft: TNullable<T>; ARight: T): Boolean;
+    class operator NotEqual(ALeft, ARight: TNullable<T>): Boolean;
+    class operator NotEqual(ALeft: TNullable<T>; ARight: T): Boolean;
+    class operator Implicit(AValue: TNullable<T>): T;
+    class operator Implicit(AValue: T): TNullable<T>;
+    class operator Implicit(AValue: PT): TNullable<T>;
+    class operator Implicit(AValue: Variant): TNullable<T>;
+
+    property Value: T read GetValue write SetValue;
+    property IsNull: boolean read GetIsNull write SetIsNull;
+    property HasValue: boolean read GetHasValue write SetHasValue; // not IsNull
   end;
 
   TTiming = class
@@ -1366,6 +1397,121 @@ begin
   Assert(IsEnumeration);
   ptd := TypeData;
   Result := System.Math.EnsureRange(Value, ptd.MinValue, ptd.MaxValue);
+end;
+
+{ TNullable<T> }
+
+class function TNullable<T>.Create: TNullable<T>;
+begin
+  result.FValue := Default(T);
+  result.FHasValue := '';
+end;
+
+class function TNullable<T>.Create(const AValue: T): TNullable<T>;
+begin
+  result.FValue := AValue;
+  result.FHasValue := '1';
+end;
+
+function TNullable<T>.GetValue: T;
+begin
+  if IsNull then
+    raise EInvalidOperation.Create('Var is NULL');
+  result := FValue;
+end;
+
+procedure TNullable<T>.SetValue(const AValue: T);
+begin
+  FValue := AValue;
+  IsNull := False;
+end;
+
+function TNullable<T>.GetIsNull: boolean;
+begin
+  result := FHasValue='';
+end;
+
+procedure TNullable<T>.SetIsNull(const AIsNull: boolean);
+begin
+  if AIsNull then
+  begin
+    FHasValue := '';
+    FValue := Default(T);
+  end
+  else
+    FHasValue := '1';
+end;
+
+function TNullable<T>.GetHasValue: boolean;
+begin
+  result := not IsNull;
+end;
+
+procedure TNullable<T>.SetHasValue(const AHasValue: boolean);
+begin
+  IsNull := not AHasValue;
+end;
+
+class operator TNullable<T>.Equal(ALeft, ARight: TNullable<T>): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+begin
+  if ALeft.HasValue and ARight.HasValue then
+  begin
+    Comparer := TEqualityComparer<T>.Default;
+    Result := Comparer.Equals(ALeft.Value, ARight.Value);
+  end
+  else
+    Result := ALeft.HasValue = ARight.HasValue;
+end;
+
+class operator TNullable<T>.Equal(ALeft: TNullable<T>; ARight: T): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+begin
+  if ALeft.IsNull then
+    result := False
+  else
+  begin
+    Comparer := TEqualityComparer<T>.Default;
+    Result := Comparer.Equals(ALeft.Value, ARight);
+  end
+end;
+
+class operator TNullable<T>.NotEqual(ALeft, ARight: TNullable<T>): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TNullable<T>.NotEqual(ALeft: TNullable<T>; ARight: T): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TNullable<T>.Implicit(AValue: T): TNullable<T>;
+begin
+  result := TNullable<T>.Create(AValue);
+end;
+
+class operator TNullable<T>.Implicit(AValue: TNullable<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TNullable<T>.Implicit(AValue: Variant): TNullable<T>;
+begin
+  if VarIsClear(AValue) then
+    result := TNullable<T>.Create
+  else
+    Result := TNullable<T>.Create( TValue.FromVariant(AValue).AsType<T> );
+end;
+
+class operator TNullable<T>.Implicit(AValue: PT): TNullable<T>;
+begin
+  if AValue=nil then
+    result := TNullable<T>.Create
+  else
+    result := TNullable<T>.Create(AValue^);
 end;
 
 initialization

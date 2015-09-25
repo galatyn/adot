@@ -11,6 +11,7 @@ type
   private
     class procedure Test_THex; static;
     class procedure Test_Multimap; static;
+    class procedure Test_TNUllable; static;
   public
     class procedure QuickTest; static;
   end;
@@ -37,6 +38,56 @@ begin
   Assert( THex.Decode<byte>( THex.Encode<byte>(255) ) = 255 );
   Assert( THex.Decode<integer>( THex.Encode<integer>(1000000000) ) = 1000000000 );
   Assert( THex.HexToPointer( THex.PointerToHex(PChar(s)) ) = PChar(s) );
+end;
+
+class procedure TTests.Test_TNUllable;
+var
+  a: TNullable<string>;
+  b: TNullable<string>;
+  c: string;
+  v: variant;
+begin
+  c := 'test';
+  a.Value := c;
+  assert(not (a=b));
+  assert(a<>b);
+  assert(a=c);
+  assert(not (a<>c));
+  b := a;
+  assert(a=b);
+  assert(not (a<>b));
+  assert(b=c);
+  a := v;
+  assert(a.IsNull and not a.HasValue);
+
+  v := 'qqq';
+  a := v;
+  assert(not a.IsNull and a.HasValue and (a='qqq') and (a=v));
+  a.HasValue := False;
+  assert(a.IsNull and not a.HasValue);
+
+  a := &c;
+  assert(not a.IsNull and a.HasValue and (a='test') and (a=c));
+  a.HasValue := False;
+  assert(a.IsNull and not a.HasValue);
+  a := @c;
+  assert(not a.IsNull and a.HasValue and (a='test') and (a=c));
+  a.HasValue := False;
+  assert(a.IsNull and not a.HasValue);
+  a := addr(c);
+  assert(not a.IsNull and a.HasValue and (a='test') and (a=c));
+
+  b := 'qwerty';
+  assert(a<>b);
+  b.Value := a;
+  assert(a=b);
+  b.HasValue := false;
+  assert(a<>b);
+  a := b;
+  assert(a=b);
+
+  c := a;
+
 end;
 
 class procedure TTests.Test_Multimap;
@@ -127,6 +178,7 @@ class procedure TTests.QuickTest;
 begin
   Test_THex;
   Test_Multimap;
+  Test_TNUllable;
 end;
 
 procedure RunTestSet;
