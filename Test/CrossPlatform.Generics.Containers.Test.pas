@@ -1,9 +1,9 @@
-unit CrossPlatform.Containers.Test;
+unit CrossPlatform.Generics.Containers.Test;
 
 interface
 
 uses
-  CrossPlatform.Containers, System.SysUtils, System.Classes,
+  CrossPlatform.Generics.Collections, System.SysUtils, System.Classes,
   CrossPlatform.Tools;
 
 type
@@ -181,6 +181,12 @@ begin
 
       h.Add(['omp', 'yxx']);
       CheckHeap;
+      rep.Clear;
+      for s in h do
+        rep.Add(s);
+      rep.Sort;
+      assert(rep[0]='omp');
+      assert(rep[1]='yxx');
       h.Clear;
 
       try

@@ -104,8 +104,8 @@
         <DCCReference Include="..\CrossPlatform.Log.pas"/>
         <DCCReference Include="..\VCL.Log.pas"/>
         <DCCReference Include="..\CrossPlatform.Tools.pas"/>
-        <DCCReference Include="..\CrossPlatform.Containers.pas"/>
-        <DCCReference Include="CrossPlatform.Containers.Test.pas"/>
+        <DCCReference Include="..\CrossPlatform.Generics.Collections.pas"/>
+        <DCCReference Include="CrossPlatform.Generics.Containers.Test.pas"/>
         <DCCReference Include="..\CrossPlatform.Strings.pas"/>
         <DCCReference Include="CrossPlatform.Strings.Test.pas"/>
         <BuildConfiguration Include="Release">

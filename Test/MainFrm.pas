@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, CrossPlatform.PEG.Test,
   CrossPlatform.Log, VCL.Log, CrossPlatform.Tools.Test,
-  CrossPlatform.Containers.Test, CrossPlatform.Strings.Test;
+  CrossPlatform.Generics.Containers.Test, CrossPlatform.Strings.Test;
 
 type
   TFormMain = class(TForm)
@@ -30,7 +30,7 @@ begin
     TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
   ]);
   CrossPlatform.Tools.Test.Run;
-  CrossPlatform.Containers.Test.Run;
+  CrossPlatform.Generics.Containers.Test.Run;
   CrossPlatform.Strings.Test.Run;
   CrossPlatform.PEG.Test.Run;
 end;

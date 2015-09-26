@@ -8,8 +8,8 @@ uses
   CrossPlatform.Log in '..\CrossPlatform.Log.pas',
   VCL.Log in '..\VCL.Log.pas',
   CrossPlatform.Tools in '..\CrossPlatform.Tools.pas',
-  CrossPlatform.Containers in '..\CrossPlatform.Containers.pas',
-  CrossPlatform.Containers.Test in 'CrossPlatform.Containers.Test.pas',
+  CrossPlatform.Generics.Collections in '..\CrossPlatform.Generics.Collections.pas',
+  CrossPlatform.Generics.Containers.Test in 'CrossPlatform.Generics.Containers.Test.pas',
   CrossPlatform.Strings in '..\CrossPlatform.Strings.pas',
   CrossPlatform.Strings.Test in 'CrossPlatform.Strings.Test.pas';
 

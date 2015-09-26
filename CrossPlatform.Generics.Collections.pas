@@ -1,5 +1,10 @@
-unit CrossPlatform.Containers;
+unit CrossPlatform.Generics.Collections;
 
+{
+  - TSet<TValue>
+  - TMultimap<TKey,TValue>
+  - THeap<T> (aka TPriorityQueue<T>)
+}
 interface
 
 uses
@@ -21,9 +26,9 @@ type
     function DoGetEnumerator: TEnumerator<TValue>; override;
 
   public
-    constructor Create; overload;
-    constructor Create(const AValues: array of TValue); overload;
-    constructor Create(const AValues: TEnumerable<TValue>); overload;
+    constructor Create(const AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil); overload;
     destructor Destroy; override;
     function GetEnumerator: TEnumerator; reintroduce;
     procedure Add(const AValue: TValue); overload; inline;
@@ -119,16 +124,15 @@ type
 
   public
 
-    constructor Create; overload;
-    constructor Create(const AComparer: IEqualityComparer<TKey>); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
+    constructor Create(const AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair>; const AComparer: IEqualityComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
     procedure Clear;
     procedure Add(const AKey: TKey; const AValue: TValue); overload;
     procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
     procedure Add(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
-    procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
+    procedure Add(const ACollection: TEnumerable<TPair>); overload;
 
     //    e := m.Values[Key];
     //    while e.MoveNext do
@@ -141,7 +145,7 @@ type
     function ContainsKey(const AKey: TKey): Boolean;
     function ContainsKeys(const AKeys: array of TKey): Boolean;
 
-    // Adds default enumerator to the multmap. Example:
+    // Enumerator. Example:
     //    p: TPair<string, integer>;
     //    for p in m do
     //      [do something] p.Key / p.Value;
@@ -178,9 +182,11 @@ type
     function GetCapacity: integer;
     procedure SetCapacity(const AValue: integer);
     procedure Swap(n1, n2: integer); inline;
+    function DoGetEnumerator: TEnumerator<T>; override;
   public
     constructor Create(const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
     constructor Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
+    constructor Create(const AValues: array of T; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
     destructor Destroy; override;
     function GetEnumerator: TList<T>.TEnumerator;
 
@@ -206,9 +212,21 @@ implementation
 
 { TSet<TValue> }
 
-constructor TSet<TValue>.Create;
+constructor TSet<TValue>.Create(const AComparer: IEqualityComparer<TValue> = nil);
 begin
-  FSet := TDictionary<TValue, TEmptyRec>.Create;
+  FSet := TDictionary<TValue, TEmptyRec>.Create(AComparer);
+end;
+
+constructor TSet<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
+begin
+  Create(AComparer);
+  Add(AValues);
+end;
+
+constructor TSet<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
+begin
+  Create(AComparer);
+  Add(AValues);
 end;
 
 destructor TSet<TValue>.Destroy;
@@ -322,18 +340,6 @@ begin
   result := True;
 end;
 
-constructor TSet<TValue>.Create(const AValues: array of TValue);
-begin
-  Create;
-  Add(AValues);
-end;
-
-constructor TSet<TValue>.Create(const AValues: TEnumerable<TValue>);
-begin
-  Create;
-  Add(AValues);
-end;
-
 procedure TSet<TValue>.Remove(const AValue: TValue);
 begin
   FSet.Remove(AValue);
@@ -341,22 +347,17 @@ end;
 
 { TMultimap<TKey, TValue> }
 
-constructor TMultimap<TKey, TValue>.Create;
-begin
-  Create(IEqualityComparer<TKey>(nil));
-end;
-
-constructor TMultimap<TKey, TValue>.Create(const AComparer: IEqualityComparer<TKey>);
+constructor TMultimap<TKey, TValue>.Create(const AComparer: IEqualityComparer<TKey> = nil);
 begin
   inherited Create;
   FCount := TDictionary<TKey, integer>.Create(AComparer);
   FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create(AComparer));
 end;
 
-constructor TMultimap<TKey, TValue>.Create(
-  const ACollection: TEnumerable<TPair<TKey, TValue>>);
+constructor TMultimap<TKey, TValue>.Create(const ACollection: TEnumerable<TPair>; const AComparer: IEqualityComparer<TKey> = nil);
 begin
-  Create(IEqualityComparer<TKey>(nil));
+  Create(AComparer);
+  Add(ACollection);
 end;
 
 destructor TMultimap<TKey, TValue>.Destroy;
@@ -429,8 +430,7 @@ begin
   FCount.AddOrSetValue(AKey, MKey.Number);
 end;
 
-procedure TMultimap<TKey, TValue>.Add(const AKey: TKey;
-  const AValues: array of TValue);
+procedure TMultimap<TKey, TValue>.Add(const AKey: TKey; const AValues: array of TValue);
 var
   MKey: TMultimapKey;
   i: Integer;
@@ -454,10 +454,9 @@ begin
     Add(AKey, item);
 end;
 
-procedure TMultimap<TKey, TValue>.Add(
-  const ACollection: TEnumerable<TPair<TKey, TValue>>);
+procedure TMultimap<TKey, TValue>.Add(const ACollection: TEnumerable<TPair>);
 var
-  item: TPair<TKey,TValue>;
+  item: TPair;
 begin
   for item in ACollection do
     Add(item.Key, item.Value);
@@ -656,11 +655,6 @@ begin
     FComparer := TComparer<T>.Default;
 end;
 
-procedure THeap<T>.Clear;
-begin
-  FValues.Clear;
-end;
-
 constructor THeap<T>.Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T>;
   ACapacity: integer);
 begin
@@ -668,10 +662,27 @@ begin
   Add(ACollection);
 end;
 
+constructor THeap<T>.Create(const AValues: array of T; const AComparer: IComparer<T>;
+  ACapacity: integer);
+begin
+  Create(AComparer, ACapacity);
+  Add(AValues);
+end;
+
 destructor THeap<T>.Destroy;
 begin
   FreeAndNil(FValues);
   inherited;
+end;
+
+function THeap<T>.DoGetEnumerator: TEnumerator<T>;
+begin
+  result := GetEnumerator;
+end;
+
+procedure THeap<T>.Clear;
+begin
+  FValues.Clear;
 end;
 
 function THeap<T>.GetCapacity: integer;
@@ -715,16 +726,14 @@ end;
 function THeap<T>.Add(const AValue: T): integer;
 var
   i: Integer;
-  v: T;
 begin
-  Result := FValues.Add(Default(T));
-  Result := Count;
+  Result := FValues.Add(Default(T))+1;
   while Result > 1 do
   begin
     i := Result shr 1;
-    if FComparer.Compare(FValues[(i-1)], AValue) <= 0 then
+    if FComparer.Compare(FValues[i-1], AValue) <= 0 then
       Break;
-    v := FValues[i-1]; FValues[i-1] := FValues[Result-1]; FValues[Result-1] := v;
+    Swap(i-1, Result-1);
     Result := i;
   end;
   dec(Result);
