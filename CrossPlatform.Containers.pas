@@ -63,6 +63,7 @@ type
 
   public
     type
+      TPair = System.Generics.Collections.TPair<TKey,TValue>;
 
       // Standard containers in Delphi use classes for enumerators.
       // It is ok when we keep single instance of the class inside, but for multimap we
@@ -174,23 +175,29 @@ type
 
     function GetCount: integer;
     function GetValue(n: integer): T;
-    procedure SetValue(n: integer; const AValue: T);
     function GetCapacity: integer;
     procedure SetCapacity(const AValue: integer);
+    procedure Swap(n1, n2: integer); inline;
   public
     constructor Create(const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
     constructor Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
     destructor Destroy; override;
     function GetEnumerator: TList<T>.TEnumerator;
 
-    function Add(const AValue: T): integer;
-    function Min: T;
-    function RemoveMin: T;
-    function ExtractMin: T;
+    procedure Clear; inline;
+    procedure TrimExcess; inline;
+    function Add(const AValue: T): integer; overload;
+    procedure Add(const AValues: array of T); overload;
+    procedure Add(const ACollection: TEnumerable<T>); overload;
+    function Find(const AValue: T): integer; // slow (enumerating of all items)
+    function MinValue: T; inline;
+    procedure Delete(n: integer);
+    procedure DeleteMin; inline;
+    function ExtractMin: T; inline;
 
     property Count: integer read GetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
-    property Values[n: integer]: T read GetValue write SetValue;
+    property Values[n: integer]: T read GetValue; default;
   end;
 
   TPriorityQueue<T> = class(THeap<T>);
@@ -649,14 +656,16 @@ begin
     FComparer := TComparer<T>.Default;
 end;
 
+procedure THeap<T>.Clear;
+begin
+  FValues.Clear;
+end;
+
 constructor THeap<T>.Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T>;
   ACapacity: integer);
-var
-  Value: T;
 begin
   Create(AComparer, ACapacity);
-  for Value in ACollection do
-    Add(Value);
+  Add(ACollection);
 end;
 
 destructor THeap<T>.Destroy;
@@ -685,9 +694,22 @@ begin
   result := FValues[n];
 end;
 
-function THeap<T>.Min: T;
+function THeap<T>.MinValue: T;
 begin
   result := FValues[0];
+end;
+
+function THeap<T>.Find(const AValue: T): integer;
+var
+  i: Integer;
+begin
+  for i := 0 to FValues.Count-1 do
+    if FComparer.Compare(FValues[i], AValue)=0 then
+    begin
+      result := i;
+      exit;
+    end;
+  result := -1;
 end;
 
 function THeap<T>.Add(const AValue: T): integer;
@@ -702,13 +724,27 @@ begin
     i := Result shr 1;
     if FComparer.Compare(FValues[(i-1)], AValue) <= 0 then
       Break;
-    v := FValues[i-1];
-    FValues[i-1] := FValues[Result-1];
-    FValues[Result-1] := v;
+    v := FValues[i-1]; FValues[i-1] := FValues[Result-1]; FValues[Result-1] := v;
     Result := i;
   end;
   dec(Result);
   FValues[result] := AValue;
+end;
+
+procedure THeap<T>.Add(const AValues: array of T);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    Add(AValues[i]);
+end;
+
+procedure THeap<T>.Add(const ACollection: TEnumerable<T>);
+var
+  v: T;
+begin
+  for v in ACollection do
+    Add(v);
 end;
 
 procedure THeap<T>.SetCapacity(const AValue: integer);
@@ -716,19 +752,59 @@ begin
   FValues.Capacity := AValue;
 end;
 
-procedure THeap<T>.SetValue(n: integer; const AValue: T);
+procedure THeap<T>.Swap(n1,n2: integer);
+var
+  Temp: T;
 begin
-
+  Temp := FValues[n1];
+  FValues[n1] := FValues[n2];
+  FValues[n2] := Temp;
 end;
 
-function THeap<T>.RemoveMin: T;
+procedure THeap<T>.TrimExcess;
 begin
+  FValues.TrimExcess;
+end;
 
+procedure THeap<T>.Delete(n: integer);
+var
+  c: integer;
+begin
+  c := Count;
+  inc(n);
+  while n * 2 < c do
+  begin
+    n := n * 2;
+    if FComparer.Compare(FValues[n], FValues[n - 1]) < 0 then
+      Inc(n);
+    Swap(n - 1, (n shr 1) - 1);
+  end;
+  if n * 2 <= c then
+  begin
+    n := n * 2;
+    Swap(n - 1, (n shr 1) - 1);
+  end;
+  while n > 1 do
+    if FComparer.Compare(FValues[(n shr 1) - 1], FValues[c - 1]) <= 0 then
+      break
+    else
+    begin
+      Swap((n shr 1) - 1, n - 1);
+      n := n shr 1;
+    end;
+  Swap(c - 1, n - 1);
+  FValues.Delete(c-1);
+end;
+
+procedure THeap<T>.DeleteMin;
+begin
+  Delete(0);
 end;
 
 function THeap<T>.ExtractMin: T;
 begin
-  result := FValues[0];
+  result := MinValue;
+  DeleteMin;
 end;
 
 end.

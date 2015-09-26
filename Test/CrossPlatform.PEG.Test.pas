@@ -8,11 +8,30 @@ uses
   {$ENDIF}
   CrossPlatform.PEG, CrossPlatform.PEGR;
 
-procedure RunTestSet;
+type
+  TTests = class
+  private
+    class procedure Test_Num; static;
+    class procedure Test_LeftRecursion; static;
+    class procedure Test_ExpressionParser; static;
+    class procedure Test_ExpressionParserExt; static;
+    class procedure Test_ExpressionParserExt2; static;
+  end;
+
+procedure Run;
 
 implementation
 
-procedure Test_Num;
+procedure Run;
+begin
+//  TTests.Test_Num;
+//  TTests.Test_LeftRecursion;
+  TTests.Test_ExpressionParser;
+//  TTests.Test_ExpressionParserExt;
+//  TTests.Test_ExpressionParserExt2;
+end;
+
+class procedure TTests.Test_Num;
 var
   Num, Digits: TExpr;
 begin
@@ -32,7 +51,7 @@ begin
   Assert(ParseAndLog(Num, '12'));
 end;
 
-procedure Test_Expression;
+class procedure TTests.Test_ExpressionParser;
 var
   Expr, Sum, Product, Value: TExpr;
 begin
@@ -77,7 +96,7 @@ begin
 //  Assert(ParseAndLog(Expr, '(((1+(2*4+3/7)*12-3)+100)+2+3*4)*27'));
 end;
 
-procedure Test_Expression2;
+class procedure TTests.Test_ExpressionParserExt;
 var
   Expr, Sum, Product, Value, Num, IntNum: TExpr;
 begin
@@ -120,7 +139,7 @@ end;
   With simple recursive grammar we will have to go may require 7 recursive calles without cursor movement
   to parse if.
 }
-procedure Test_Expression_LeftRecursion;
+class procedure TTests.Test_LeftRecursion;
 var
   FORML,PAR,MUL,MULOP,SUM,SUMOP,NUM: TExpr;
 //  psum: TPEGSequence;
@@ -239,19 +258,11 @@ begin
 
 end;
 
-procedure RunTestSet;
+class procedure TTests.Test_ExpressionParserExt2;
 var
   S, Expr, Sum, Product, Value: TExpr;
   Syntax, Rule, OptWhitespace, Expression, LineEnd, List, Term, Literal, EOL, RuleName, NameChar, Digit: TExpr;
 begin
-
-  //Test_Num;
-  Test_Expression;
-//  Test_Expression2;
-  //Test_Expression_LeftRecursion;
-  exit;
-
-
   {
     PEG with left-recursion (can not be processed by most of PEG parsers):
 
