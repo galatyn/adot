@@ -25,6 +25,10 @@ implementation
 
 procedure TFormMain.FormCreate(Sender: TObject);
 begin
+  Top := Screen.WorkAreaTop;
+  Height := Screen.WorkAreaHeight;
+  Left := Screen.WorkAreaWidth-Width;
+
   AppLog := TMixLog.Create([
     TVCLStringsLog.Create(MemoLog.Lines),
     TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))

@@ -16,6 +16,7 @@ type
     class procedure Test_ExpressionParser; static;
     class procedure Test_ExpressionParserExt; static;
     class procedure Test_ExpressionParserExt2; static;
+    class procedure Test_ExpressionPrimitive; static;
   end;
 
 procedure Run;
@@ -26,6 +27,7 @@ procedure Run;
 begin
 //  TTests.Test_Num;
 //  TTests.Test_LeftRecursion;
+//  TTests.Test_ExpressionPrimitive;
   TTests.Test_ExpressionParser;
 //  TTests.Test_ExpressionParserExt;
 //  TTests.Test_ExpressionParserExt2;
@@ -51,6 +53,28 @@ begin
   Assert(ParseAndLog(Num, '12'));
 end;
 
+class procedure TTests.Test_ExpressionPrimitive;
+var
+  Number, Digit: TExpr;
+begin
+  {$IFDEF PEGLOG}
+  AppLog.Log('');
+  AppLog.Log('Number  ← Digit Digit*');
+  AppLog.Log('Digit   ← "1"');
+  {$ENDIF}
+
+  // Friendly names
+  Number.Name  := 'Number';
+  Digit.Name   := 'Digit';
+
+  // Grammar
+  Number  := @Digit and E.Rep0( @Digit );
+  Digit   := E('1');
+
+  Assert(ParseAndLog(Number, '11'));
+
+end;
+
 class procedure TTests.Test_ExpressionParser;
 var
   Expr, Sum, Product, Value: TExpr;
@@ -72,6 +96,13 @@ begin
     Value   ← [0-9]+ / '(' Expr ')'
 
   }
+
+  // Friendly names
+  Expr.Name    := 'Expr';
+  Sum.Name     := 'Sum';
+  Product.Name := 'Product';
+  Value.Name   := 'Value';
+
   // Grammar
   Expr    := @Sum;
   Sum     := @Product and E.Rep0( (E('+') or E('-')) and @Product );
@@ -79,12 +110,6 @@ begin
   Value   :=
     E.Rep1( E(['0'..'9']) ) or
     E('(') and @Expr and E(')');
-
-  // Friendly names
-  Expr.Name    := 'Expr';
-  Sum.Name     := 'Sum';
-  Product.Name := 'Product';
-  Value.Name   := 'Value';
 
   Assert(ParseAndLog(Expr, '1+2'));
 

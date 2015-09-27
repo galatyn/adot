@@ -128,6 +128,7 @@ begin
   result.Command := ecLink;
   result.ValueLink := a;
   result.Initialized := '1';
+  result.Name := a.Name;
 end;
 
 class operator TExpr.LogicalAnd(const a, b: TExpr): TExpr;

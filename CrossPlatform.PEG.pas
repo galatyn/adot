@@ -9,7 +9,8 @@ uses
   {$ENDIF}
   CrossPlatform.Tools, System.Generics.Collections, System.Generics.Defaults,
   System.SysUtils, System.Classes, System.Types, System.AnsiStrings,
-  System.StrUtils, System.TypInfo, CrossPlatform.Generics.Collections;
+  System.StrUtils, System.TypInfo, CrossPlatform.Generics.Collections,
+  System.SyncObjs;
 
 type
   TByteSet = set of Byte;
@@ -43,14 +44,19 @@ type
   TPEGInstance = class;
   TPEGResult = class
   protected
-    FDataPos : integer;      // start position (used to rollback data stream, calculate len etc)
-    FLen     : integer;      // Len bytes at DataPos are matched
+    class var
+      FInstCount: int64;
+    var
+      FDataPos : integer;      // start position (used to rollback data stream, calculate len etc)
+      FLen     : integer;      // Len bytes at DataPos are matched
+      FInstId              : int64;
 
     function GetExpressionType: TExpressionType; virtual; abstract;
     function GetExpressionName: string; virtual; abstract;
     function GetSubExprCount: integer; virtual; abstract;
     function GetSubExpr(n: integer): TPEGResult; virtual; abstract;
   public
+    constructor Create;
     property ExpressionType: TExpressionType read GetExpressionType;
     property ExpressionName: string read GetExpressionName;
     property Pos: integer read FDataPos;
@@ -62,17 +68,18 @@ type
   // Item of parsing stack (keeps PEG, instance variables, rollback position etc).
   TPEGInstance = class(TPEGResult)
   protected
-    FPEG            : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
-    FStarted        : Boolean;      // False=first call, True=subsequent call
-    FCurIndex       : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
-    FEndPos         : integer;      // repeat/... keep here internal state (end position for last op)
-    FSubExpressions : TList<TPEGInstance>; // can be used to extract detailed information about subexpressions
+    var
+      FPEG                 : TPEGCustom;   // single TPEGxxx can be shared by many TPEGInstance at the stack
+      FStarted             : Boolean;      // False=first call, True=subsequent call
+      FCurIndex            : integer;      // repeat/choice/sequence/... keep here internal state (usually subexpression index)
+      FEndPos              : integer;      // repeat/... keep here internal state (end position for last op)
+      FFoundSubExpressions : TList<TPEGInstance>; // can be used to extract detailed information about subexpressions
 
     function GetInstanceId: TInstanceId;
     function GetAsString: string;
     function GetResultatAsString: string;
-    procedure AddSubExpression(var ASubExpression: TPEGInstance);
-    procedure FreeSubExpressions;
+    procedure AddFoundSubExpression(var ASubExpression: TPEGInstance);
+    procedure FreeFoundSubExpression;
 
     function GetExpressionType: TExpressionType; override;
     function GetExpressionName: string; override;
@@ -454,9 +461,10 @@ procedure LogResTree(AResult: TPEGResult; AIndent: integer);
 var
   i: Integer;
 begin
-  AppLog.Log('%s%s: %s [%d - %d]', [
+  AppLog.Log('%s%s(%d): %s [%d - %d]', [
     StringOfChar(' ', AIndent),
-    AResult.ExpressionName,
+    IfThen(AResult.ExpressionName='', '???', AResult.ExpressionName),
+    AResult.FInstId,
     TEnumeration<TExpressionType>.ToString(AResult.ExpressionType).Substring(2),
     AResult.Pos,
     AResult.Pos+AResult.Len-1
@@ -946,7 +954,7 @@ begin
   // greeby repeater never go forward and never stop.
   if Parser.LastExprResult=oprOk then
   begin
-    AInstance.AddSubExpression(AFinishedChild);
+    AInstance.AddFoundSubExpression(AFinishedChild);
     inc(AInstance.FCurIndex);
     AInstance.FEndPos := FParser.DataPosition;
 
@@ -1042,7 +1050,7 @@ begin
       Parser.ResetCurrentExpression  // we will try another subexpression to consume all input
     else
     begin
-      AInstance.AddSubExpression(AFinishedChild);
+      AInstance.AddFoundSubExpression(AFinishedChild);
       Result := oprOk;
       AInstance.Len := FParser.DataPosition-AInstance.FDataPos;
       Exit;
@@ -1116,11 +1124,11 @@ begin
     Result := oprFail;
     Exit;
   end;
+  AInstance.AddFoundSubExpression(AFinishedChild);
 
   inc(AInstance.FCurIndex);
   if AInstance.FCurIndex<FSubExpressions.Count then
   begin
-    AInstance.AddSubExpression(AFinishedChild);
     Parser.ExecSubExpression(FSubExpressions[AInstance.FCurIndex]);
     Result := oprMore;
     Exit;
@@ -1205,47 +1213,48 @@ end;
 
 constructor TPEGInstance.Create(APEG: TPEGCustom; ADataPos: integer);
 begin
+  inherited Create;
   FPEG := APEG;
   FDataPos := ADataPos;
-  FSubExpressions := TList<TPEGInstance>.Create;
+  FFoundSubExpressions := TList<TPEGInstance>.Create;
 end;
 
 destructor TPEGInstance.Destroy;
 begin
-  FreeSubExpressions;
+  FreeFoundSubExpression;
   inherited;
 end;
 
-procedure TPEGInstance.FreeSubExpressions;
+procedure TPEGInstance.FreeFoundSubExpression;
 var
   Stack: TStack<TList<TPEGInstance>>;
   List: TList<TPEGInstance>;
   Instance: TPEGInstance;
   i: Integer;
 begin
-  if FSubExpressions=nil then
+  if FFoundSubExpressions=nil then
     Exit;
-  if FSubExpressions.Count=0 then
+  if FFoundSubExpressions.Count=0 then
   begin
-    FreeAndNil(FSubExpressions);
+    FreeAndNil(FFoundSubExpressions);
     Exit;
   end;
 
   // In order to avoid of deep recursion we use stack to enumerate and free all subexpressions.
   Stack := TStack<TList<TPEGInstance>>.Create;
-  Stack.Push(FSubExpressions);
-  FSubExpressions := nil;
+  Stack.Push(FFoundSubExpressions);
+  FFoundSubExpressions := nil;
   while Stack.Count>0 do
   begin
     List := Stack.Pop;
     for i := 0 to List.Count-1 do
     begin
       Instance := List[i];
-      Assert(Instance.FSubExpressions<>nil);
-      if Instance.FSubExpressions.Count>0 then
+      Assert(Instance.FFoundSubExpressions<>nil);
+      if Instance.FFoundSubExpressions.Count>0 then
       begin
-        Stack.Push(Instance.FSubExpressions);
-        Instance.FSubExpressions := nil;
+        Stack.Push(Instance.FFoundSubExpressions);
+        Instance.FFoundSubExpressions := nil;
       end;
       Instance.Free;
     end;
@@ -1253,9 +1262,9 @@ begin
   end;
 end;
 
-procedure TPEGInstance.AddSubExpression(var ASubExpression: TPEGInstance);
+procedure TPEGInstance.AddFoundSubExpression(var ASubExpression: TPEGInstance);
 begin
-  FSubExpressions.Add(ASubExpression);
+  FFoundSubExpressions.Add(ASubExpression);
   ASubExpression := nil;
 end;
 
@@ -1295,12 +1304,19 @@ end;
 
 function TPEGInstance.GetSubExprCount: integer;
 begin
-  result := FSubExpressions.Count;
+  result := FFoundSubExpressions.Count;
 end;
 
 function TPEGInstance.GetSubExpr(n: integer): TPEGResult;
 begin
-  result := FSubExpressions[n];
+  result := FFoundSubExpressions[n];
+end;
+
+{ TPEGResult }
+
+constructor TPEGResult.Create;
+begin
+  FInstId := TInterlocked.Increment(FInstCount);
 end;
 
 end.

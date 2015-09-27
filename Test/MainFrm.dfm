@@ -2,8 +2,8 @@ object FormMain: TFormMain
   Left = 0
   Top = 0
   Caption = 'FormMain'
-  ClientHeight = 378
-  ClientWidth = 667
+  ClientHeight = 508
+  ClientWidth = 900
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -17,8 +17,8 @@ object FormMain: TFormMain
   object MemoLog: TMemo
     Left = 0
     Top = 0
-    Width = 667
-    Height = 378
+    Width = 900
+    Height = 508
     Align = alClient
     Font.Charset = DEFAULT_CHARSET
     Font.Color = clWindowText
@@ -31,5 +31,7 @@ object FormMain: TFormMain
     ScrollBars = ssBoth
     TabOrder = 0
     WordWrap = False
+    ExplicitWidth = 667
+    ExplicitHeight = 378
   end
 end
