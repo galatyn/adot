@@ -1,4 +1,4 @@
-unit CrossPlatform.Tools;
+unit adot.Tools;
 // compatible with all delphi platforms (Win x32/x64, Android, iOS)
 
 interface

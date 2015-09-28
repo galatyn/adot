@@ -4,9 +4,9 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, CrossPlatform.PEG.Test,
-  CrossPlatform.Log, VCL.Log, CrossPlatform.Tools.Test,
-  CrossPlatform.Generics.Containers.Test, CrossPlatform.Strings.Test;
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, adot.PEG.Test,
+  adot.Log, adot.VCL.Log, adot.Tools.Test,
+  adot.Generics.Containers.Test, adot.Strings.Test;
 
 type
   TFormMain = class(TForm)
@@ -33,10 +33,10 @@ begin
     TVCLStringsLog.Create(MemoLog.Lines),
     TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
   ]);
-  CrossPlatform.Tools.Test.Run;
-  CrossPlatform.Generics.Containers.Test.Run;
-  CrossPlatform.Strings.Test.Run;
-  CrossPlatform.PEG.Test.Run;
+  adot.Tools.Test.Run;
+  adot.Generics.Containers.Test.Run;
+  adot.Strings.Test.Run;
+  adot.PEG.Test.Run;
 end;
 
 end.

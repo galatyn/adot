@@ -1,4 +1,4 @@
-unit VCL.Tools;
+unit adot.VCL.Tools;
 
 interface
 
@@ -10,7 +10,7 @@ uses
   cxStyles,
   {$ENDIF}
   System.StrUtils, Vcl.Graphics, System.Math, System.UITypes,
-  Vcl.ActnList, Winapi.Windows, Winapi.Messages, CrossPlatform.Tools;
+  Vcl.ActnList, Winapi.Windows, Winapi.Messages, adot.Tools;
 
 type
   TDelegatedOnControlWithBreak = reference to procedure(AControl: TControl; var ABreak: boolean);

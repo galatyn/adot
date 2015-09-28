@@ -1,12 +1,12 @@
-﻿unit CrossPlatform.PEG.Test;
+﻿unit adot.PEG.Test;
 
 interface
 
 uses
   {$IFDEF PEGLOG}
-  CrossPlatform.Log, VCL.Log,
+  adot.Log, adot.VCL.Log,
   {$ENDIF}
-  CrossPlatform.PEG, CrossPlatform.PEGR;
+  adot.PEG, adot.PEGR;
 
 type
   TTests = class

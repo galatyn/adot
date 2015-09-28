@@ -1,4 +1,4 @@
-unit CrossPlatform.Strings;
+unit adot.Strings;
 
 interface
 
@@ -68,7 +68,7 @@ function RandomString(ALen: integer; const AChars: string): string; overload;
 implementation
 
 uses
-  CrossPlatform.Tools;
+  adot.Tools;
 
 function CharsToString(const AChars: TAnsiChars): string;
 var

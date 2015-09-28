@@ -31,7 +31,5 @@ object FormMain: TFormMain
     ScrollBars = ssBoth
     TabOrder = 0
     WordWrap = False
-    ExplicitWidth = 667
-    ExplicitHeight = 378
   end
 end

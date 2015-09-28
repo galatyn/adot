@@ -3,15 +3,15 @@ program TestAdot;
 uses
   Vcl.Forms,
   MainFrm in 'MainFrm.pas' {FormMain},
-  CrossPlatform.PEG.Test in 'CrossPlatform.PEG.Test.pas',
-  CrossPlatform.Tools.Test in 'CrossPlatform.Tools.Test.pas',
-  CrossPlatform.Log in '..\CrossPlatform.Log.pas',
-  VCL.Log in '..\VCL.Log.pas',
-  CrossPlatform.Tools in '..\CrossPlatform.Tools.pas',
-  CrossPlatform.Generics.Collections in '..\CrossPlatform.Generics.Collections.pas',
-  CrossPlatform.Generics.Containers.Test in 'CrossPlatform.Generics.Containers.Test.pas',
-  CrossPlatform.Strings in '..\CrossPlatform.Strings.pas',
-  CrossPlatform.Strings.Test in 'CrossPlatform.Strings.Test.pas';
+  adot.PEG.Test in 'adot.PEG.Test.pas',
+  adot.Tools.Test in 'adot.Tools.Test.pas',
+  adot.Log in '..\adot.Log.pas',
+  adot.VCL.Log in '..\adot.VCL.Log.pas',
+  adot.Tools in '..\adot.Tools.pas',
+  adot.Generics.Collections in '..\adot.Generics.Collections.pas',
+  adot.Generics.Containers.Test in 'adot.Generics.Containers.Test.pas',
+  adot.Strings in '..\adot.Strings.pas',
+  adot.Strings.Test in 'adot.Strings.Test.pas';
 
 {$R *.res}
 
