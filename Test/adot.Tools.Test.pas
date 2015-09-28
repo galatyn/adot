@@ -1,10 +1,10 @@
-unit CrossPlatform.Tools.Test;
+unit adot.Tools.Test;
 
 interface
 
 uses
-  CrossPlatform.Tools, System.SysUtils, System.Generics.Collections,
-  System.Generics.Defaults, CrossPlatform.Generics.Collections;
+  adot.Tools, System.SysUtils, System.Generics.Collections,
+  System.Generics.Defaults, adot.Generics.Collections;
 
 type
   TTests = class

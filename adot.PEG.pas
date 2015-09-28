@@ -1,15 +1,15 @@
-﻿unit CrossPlatform.PEG;
+﻿unit adot.PEG;
 // Parsing expression grammar (PEG) for Delphi.
 
 interface
 
 uses
   {$IFDEF PEGLOG}
-  CrossPlatform.Log, VCL.Log,
+  adot.Log, adot.VCL.Log,
   {$ENDIF}
-  CrossPlatform.Tools, System.Generics.Collections, System.Generics.Defaults,
+  adot.Tools, System.Generics.Collections, System.Generics.Defaults,
   System.SysUtils, System.Classes, System.Types, System.AnsiStrings,
-  System.StrUtils, System.TypInfo, CrossPlatform.Generics.Collections,
+  System.StrUtils, System.TypInfo, adot.Generics.Collections,
   System.SyncObjs;
 
 type

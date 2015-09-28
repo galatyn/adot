@@ -99,15 +99,15 @@
             <Form>FormMain</Form>
             <FormType>dfm</FormType>
         </DCCReference>
-        <DCCReference Include="CrossPlatform.PEG.Test.pas"/>
-        <DCCReference Include="CrossPlatform.Tools.Test.pas"/>
-        <DCCReference Include="..\CrossPlatform.Log.pas"/>
-        <DCCReference Include="..\VCL.Log.pas"/>
-        <DCCReference Include="..\CrossPlatform.Tools.pas"/>
-        <DCCReference Include="..\CrossPlatform.Generics.Collections.pas"/>
-        <DCCReference Include="CrossPlatform.Generics.Containers.Test.pas"/>
-        <DCCReference Include="..\CrossPlatform.Strings.pas"/>
-        <DCCReference Include="CrossPlatform.Strings.Test.pas"/>
+        <DCCReference Include="adot.PEG.Test.pas"/>
+        <DCCReference Include="adot.Tools.Test.pas"/>
+        <DCCReference Include="..\adot.Log.pas"/>
+        <DCCReference Include="..\adot.VCL.Log.pas"/>
+        <DCCReference Include="..\adot.Tools.pas"/>
+        <DCCReference Include="..\adot.Generics.Collections.pas"/>
+        <DCCReference Include="adot.Generics.Containers.Test.pas"/>
+        <DCCReference Include="..\adot.Strings.pas"/>
+        <DCCReference Include="adot.Strings.Test.pas"/>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>

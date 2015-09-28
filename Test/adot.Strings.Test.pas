@@ -1,4 +1,4 @@
-unit CrossPlatform.Strings.Test;
+unit adot.Strings.Test;
 
 interface
 

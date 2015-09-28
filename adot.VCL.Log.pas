@@ -1,9 +1,9 @@
-unit VCL.Log;
+unit adot.VCL.Log;
 
 interface
 
 uses
-  CrossPlatform.Log, VCL.Tools, System.SysUtils, Winapi.Messages,
+  adot.Log, adot.VCL.Tools, System.SysUtils, Winapi.Messages,
   Winapi.Windows, System.SyncObjs, System.Classes, System.StrUtils;
 
 type

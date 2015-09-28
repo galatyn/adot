@@ -1,4 +1,4 @@
-unit CrossPlatform.Generics.Collections;
+unit adot.Generics.Collections;
 
 {
   - TSet<TValue>

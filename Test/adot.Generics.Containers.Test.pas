@@ -1,10 +1,10 @@
-unit CrossPlatform.Generics.Containers.Test;
+unit adot.Generics.Containers.Test;
 
 interface
 
 uses
-  CrossPlatform.Generics.Collections, System.SysUtils, System.Classes,
-  CrossPlatform.Tools;
+  adot.Generics.Collections, System.SysUtils, System.Classes,
+  adot.Tools;
 
 type
   TTests = class
@@ -18,7 +18,7 @@ procedure Run;
 implementation
 
 uses
-  CrossPlatform.Strings, System.Generics.Collections, System.Generics.Defaults;
+  adot.Strings, System.Generics.Collections, System.Generics.Defaults;
 
 procedure Run;
 begin
