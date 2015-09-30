@@ -210,7 +210,11 @@ type
   end;
   
 var
-  AppLog: TCustomLog;  
+  AppLog: TCustomLog;
+
+function CreateDefaultLogger: TCustomLog;
+procedure InitDefaultLogger;
+procedure AddLogger(ALogger: TCustomLog);
 
 implementation
 
@@ -646,5 +650,31 @@ begin
   if Assigned(FOnLogMessage) then
     FOnLogMessage(DataAsString(AData, ASize));
 end;
+
+function CreateDefaultLogger: TCustomLog;
+begin
+  result := TSyncFileLog.Create(TCustomLog.GetLogFileName(lpCommonFolder, ''));
+end;
+
+procedure InitDefaultLogger;
+begin
+  if AppLog=nil then
+    AppLog := CreateDefaultLogger;
+end;
+
+procedure AddLogger(ALogger: TCustomLog);
+begin
+  InitDefaultLogger;
+  if AppLog is TMixLog then
+    TMixLog(AppLog).Add(ALogger)
+  else
+    AppLog := TMixLog.Create([
+      AppLog,
+      ALogger
+     ]);
+end;
+
+initialization
+  InitDefaultLogger;
 
 end.

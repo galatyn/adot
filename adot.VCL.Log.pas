@@ -40,6 +40,8 @@ type
     constructor Create(AStrings: TStrings);
   end;
 
+procedure AddMemoLog(ALines: TStrings);
+
 implementation
 
 { TVCLDelegatedLog }
@@ -132,6 +134,11 @@ begin
   finally
     FStrings.EndUpdate;
   end;
+end;
+
+procedure AddMemoLog(ALines: TStrings);
+begin
+  adot.Log.AddLogger(TVCLStringsLog.Create(ALines));
 end;
 
 end.

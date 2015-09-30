@@ -1,4 +1,4 @@
-unit Win.Tools;
+unit adot.Win.Tools;
 
 interface
 
@@ -488,5 +488,7 @@ begin
     UnmapViewOfFile(FFileView);
   inherited Destroy;
 end;
+
+// http://stackoverflow.com/questions/8726906/delphi-finding-the-process-that-is-accessing-a-file-from-my-program
 
 end.
