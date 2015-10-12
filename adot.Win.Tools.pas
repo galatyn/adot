@@ -8,7 +8,7 @@ interface
 uses
   Winapi.TlHelp32, Winapi.Windows, Winapi.PsAPI, System.Generics.Collections,
   System.Generics.Defaults, System.Masks, System.SysUtils, System.SyncObjs,
-  System.Math;
+  System.Math, System.Threading, adot.Generics.Collections, System.Classes;
 
 const
   MAX_PATH_LEN                         = MAX_PATH*8;
@@ -297,24 +297,36 @@ type
   end;
 
   TLockedFiles = class
+  private
+    function RunTask(ParamIdx: integer): ITask;
+    function EmptyTask: ITask;
   protected
-    FApi: TWinApiExt;
+    type
+      TTaskParams = record
+        FileHandle: THandle;
+        FileName: string;
+      end;
+
+    var
+      FApi: TWinApiExt;
+      FTaskParams: array of TTaskParams;
 
     function DoZwQuerySystemInformation(ASysInfoClass: DWORD; var AData: Pointer): Boolean;
     function GetFileHandles(var AHandleInfo: PSYSTEM_HANDLE_INFORMATION_EX; var AFileType: Byte): Boolean;
 
     // GetFileInformationByHandleEx
-    function GetFileNameFromHandleV3(hFile: THandle): string;
+    procedure GetFileNameFromHandleV3(hFile: THandle; Idx: integer);
 
     // NtQueryObject
-    function GetFileNameFromHandleV2(hFile: THandle): string;
+    procedure GetFileNameFromHandleV2(hFile: THandle; Idx: integer);
 
     // NtQueryInformationFile
-    function GetFileNameFromHandleV1(hFile: THandle): string;
+    procedure GetFileNameFromHandleV1(hFile: THandle; Idx: integer);
 
     //GetFinalPathNameByHandle
-    function GetFileNameFromHandleV0(hFile: THandle): string;
+    procedure GetFileNameFromHandleV0(hFile: THandle; Idx: integer);
 
+    procedure GetFileNameFromHandle(hFile: THandle; Idx: integer);
   public
     type
       TFileInfo = record
@@ -325,7 +337,6 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    function GetFileNameFromHandle(hFile: THandle): string;
     function GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
   end;
 
@@ -877,59 +888,50 @@ end;
 // This function provides better (readable) names for files from network, for example
 // NtQueryInformationFile : '\MA-OSL-F01\Felles\Andrei\09.01\DelphiFeatures.docx'
 // NtQueryObject          : '\Device\Mup\MA-OSL-F01\Felles\Andrei\09.01\DelphiFeatures.docx'
-function TLockedFiles.GetFileNameFromHandleV1(hFile: THandle): string;
+procedure TLockedFiles.GetFileNameFromHandleV1(hFile: THandle; Idx: integer);
 var
   FileNameInfo: FILE_NAME_INFORMATION;
   IoStatusBlock: IO_STATUS_BLOCK;
   Status: NT_STATUS;
 begin
+  FTaskParams[Idx].FileName := '';
   ZeroMemory(@FileNameInfo, SizeOf(FILE_NAME_INFORMATION));
   Status := FAPI.NtQueryInformationFile(hFile, @IoStatusBlock, @FileNameInfo, SizeOf(FileNameInfo.FileName), FileNameInformation);
   if Status = STATUS_SUCCESS then
-    result := FileNameInfo.FileName
-  else
-    result := GetFileNameFromHandleV3(hFile);
+    FTaskParams[Idx].FileName := FileNameInfo.FileName;
 end;
 
 // NtQueryObject to get filename from handle
-function TLockedFiles.GetFileNameFromHandleV2(hFile: THandle): string;
+procedure TLockedFiles.GetFileNameFromHandleV2(hFile: THandle; Idx: integer);
 var
   ObjectNameInfo: TOBJECT_NAME_INFORMATION;
   dwReturn: DWORD;
   Status: NT_STATUS;
 begin
-  result := '';
+  FTaskParams[Idx].FileName := '';
   ZeroMemory(@ObjectNameInfo, SizeOf(ObjectNameInfo));
   Status := FAPI.NtQueryObject(hFile, ObjectNameInformation, @ObjectNameInfo, SizeOf(ObjectNameInfo.Name.Buffer), @dwReturn);
   if Status = STATUS_SUCCESS then
-    result := ObjectNameInfo.Name.Buffer;
-  if result = '' then
-    result := GetFileNameFromHandleV3(hFile);
+    FTaskParams[Idx].FileName := ObjectNameInfo.Name.Buffer;
 end;
 
 // This function GetFileInformationByHandleEx to get filename from handle
 // it also hangs and result files in format:
 // \Windows\winsxs\amd64_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.18946_none_2b27281071eac12c
-function TLockedFiles.GetFileNameFromHandleV3(hFile: THandle): string;
+procedure TLockedFiles.GetFileNameFromHandleV3(hFile: THandle; Idx: integer);
 const
   FileNameInfo = 2;
 var
-  Info: PFILE_NAME_INFORMATION;
+  FNInfo: FILE_NAME_INFORMATION;
 begin
-  Info := AllocMem(SizeOf(FILE_NAME_INFORMATION));
-  try
-    if FAPI.GetFileInformationByHandleEx(hFile, FileNameInfo, Info, SizeOF(FILE_NAME_INFORMATION)) then
-      result := Info.FileName
-    else
-      result := '';
-  finally
-    ReallocMem(Info, 0);
-  end;
+  FTaskParams[Idx].FileName := '';
+  if FAPI.GetFileInformationByHandleEx(hFile, FileNameInfo, @FNInfo, SizeOF(FILE_NAME_INFORMATION)) then
+    FTaskParams[Idx].FileName := FNInfo.FileName;
 end;
 
 // GetFinalPathNameByHandle to get filename from handle
 // this function is very good option, when available
-function TLockedFiles.GetFileNameFromHandleV0(hFile: THandle): string;
+procedure TLockedFiles.GetFileNameFromHandleV0(hFile: THandle; Idx: integer);
 begin
 
   // \Device\HarddiskVolume2\Windows\winsxs\...
@@ -938,12 +940,12 @@ begin
 //  setlength(result, GetFinalPathNameByHandle(hFile, PChar(result), Length(result), FILE_NAME_NORMALIZED or VOLUME_NAME_NT));
 
   // \\?\C:\Windows\winsxs\... -> C:\Windows\winsxs\...
-  setlength(result, MAX_PATH*8);
-  setlength(result, GetFinalPathNameByHandle(hFile, PChar(result), Length(result), FILE_NAME_NORMALIZED or VOLUME_NAME_DOS));
-  if result.StartsWith('\\?\') then
-    result := '\' + result.Substring(3);
-  if result.StartsWith('\\') and (result.SubString(3,1)=':') then
-    result := result.SubString(2);
+  setlength(FTaskParams[Idx].FileName, MAX_PATH*8);
+  setlength(FTaskParams[Idx].FileName, GetFinalPathNameByHandle(hFile, PChar(FTaskParams[Idx].FileName), Length(FTaskParams[Idx].FileName), FILE_NAME_NORMALIZED or VOLUME_NAME_DOS));
+  if FTaskParams[Idx].FileName.StartsWith('\\?\') then
+    FTaskParams[Idx].FileName := '\' + FTaskParams[Idx].FileName.Substring(3);
+  if FTaskParams[Idx].FileName.StartsWith('\\') and (FTaskParams[Idx].FileName.SubString(3,1)=':') then
+    FTaskParams[Idx].FileName := FTaskParams[Idx].FileName.SubString(2);
 end;
 
 function TLockedFiles.GetFileHandles(var AHandleInfo: PSYSTEM_HANDLE_INFORMATION_EX; var AFileType: Byte): Boolean;
@@ -976,25 +978,51 @@ begin
   end;
 end;
 
-function TLockedFiles.GetFileNameFromHandle(hFile: THandle): string;
+procedure TLockedFiles.GetFileNameFromHandle(hFile: THandle; Idx: integer);
 begin
-  result := GetFileNameFromHandleV0(hFile);
-  if result<>'' then Exit;
-  result := GetFileNameFromHandleV1(hFile);
-  if result<>'' then Exit;
-  result := GetFileNameFromHandleV2(hFile);
-  if result<>'' then Exit;
-  result := GetFileNameFromHandleV3(hFile);
+  FTaskParams[Idx].FileName := '';
+  GetFileNameFromHandleV0(hFile, Idx);
+  if FTaskParams[Idx].FileName<>'' then Exit;
+  GetFileNameFromHandleV1(hFile, Idx);
+  if FTaskParams[Idx].FileName<>'' then Exit;
+  GetFileNameFromHandleV2(hFile, Idx);
+  if FTaskParams[Idx].FileName<>'' then Exit;
+  GetFileNameFromHandleV3(hFile, Idx);
+end;
+
+function TLockedFiles.RunTask(ParamIdx: integer): ITask;
+begin
+  result := TTask.Create(
+    procedure
+    begin
+      GetFileNameFromHandle(FTaskParams[ParamIdx].FileHandle, ParamIdx);
+    end);
+  result.Start;
+end;
+
+function TLockedFiles.EmptyTask: ITask;
+begin
+  result := TTask.Create(
+    procedure
+    begin
+    end);
+  result.Start;
 end;
 
 function TLockedFiles.GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
+const
+  PoolSize = 64;
 var
   hDupFile, hProcess: THandle;
   HandleInfo: PSYSTEM_HANDLE_INFORMATION_EX;
-  I: Integer;
+  I,J: Integer;
   ObjectTypeOfFile: Byte;
   Letters: TDiskLetters;
   Rec: TFileInfo;
+  Tasks: array of ITask;
+  Files: TMultimap<DWord, THandle>;
+  Keys: TMultimap<DWord, THandle>.TKeyEnumerator; // ProcessId -> Remote handle of file
+  Values: TMultimap<DWord, THandle>.TValueEnumerator;
 begin
   result := TList<TFileInfo>.Create(TDelegatedComparer<TFileInfo>.Create(
     function(const A,B: TFileInfo): integer
@@ -1004,11 +1032,13 @@ begin
         result := AnsiCompareText(A.FilePath, B.FilePath);
     end));
   try
+    SetLength(FTaskParams, PoolSize);
+    SetLength(Tasks, PoolSize);
     HandleInfo := nil;
     Letters := nil;
+    Files := nil;
     try
-      if not GetFileHandles(HandleInfo, ObjectTypeOfFile) then
-        Exit;
+      Files := TMultimap<DWord, THandle>.Create;
       Letters := TDiskLetters.Create;
 
       // https://msdn.microsoft.com/en-us/library/windows/hardware/ff567052%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
@@ -1020,8 +1050,56 @@ begin
         TSecurity.addPrivilege('SeChangeNotifyPrivilege');
       end;
 
-      for I := 0 to HandleInfo^.NumberOfHandles - 1 do
-        if HandleInfo.Information[I].ProcessId=7848 then
+      if not GetFileHandles(HandleInfo, ObjectTypeOfFile) then
+        Exit;
+      for I := 0 to Min(PoolSize, HandleInfo.NumberOfHandles) - 1 do
+        if (HandleInfo.Information[I].ProcessId=3788) and
+          (HandleInfo.Information[I].ObjectTypeNumber = ObjectTypeOfFile)
+        then
+          Files.Add(HandleInfo.Information[I].ProcessId, HandleInfo.Information[I].Handle);
+      ReallocMem(HandleInfo, 0);
+
+      for I := 0 to PoolSize-1 do
+        Tasks[i] := EmptyTask;
+      Keys := Files.Keys.GetEnumerator;
+      while Keys.MoveNext do
+      begin
+        hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, Keys.Current);
+        if hProcess > 0 then
+        try
+          Values := Files.Values[Keys.Current];
+          while Values.MoveNext do
+            if DuplicateHandle(hProcess, Values.Current, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
+            begin
+
+              J := TTask.WaitForAny(Tasks, 500);
+              if J<0 then
+              begin
+                for J := 0 to PoolSize-1 do
+                  Tasks[J].Cancel;
+                J := 0;
+              end;
+              if (Tasks[J].Status=TTaskStatus.Completed) and (FTaskParams[J].FileName<>'') then
+              begin
+                Rec.FilePath := Letters.ResolvePath(FTaskParams[J].FileName);
+                Rec.PID := Keys.Current;
+                result.Add(Rec);
+              end;
+              if FTaskParams[J].FileHandle<>0 then
+                CloseHandle(FTaskParams[J].FileHandle);
+              FTaskParams[J].FileHandle := hDupFile;
+              FTaskParams[J].FileName := '';
+              Tasks[J] := RunTask(I);
+
+            end;
+        finally
+          CloseHandle(hProcess);
+        end;
+      end;
+      TTask.WaitForAll(Tasks, 500);
+
+(*      for I := 0 to HandleInfo.NumberOfHandles - 1 do
+        if HandleInfo.Information[I].ProcessId=3788 then
         if HandleInfo.Information[I].ObjectTypeNumber = ObjectTypeOfFile then
         begin
           hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, HandleInfo.Information[I].ProcessId);
@@ -1029,7 +1107,7 @@ begin
           try
             if DuplicateHandle(hProcess, HandleInfo.Information[I].Handle, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
             try
-              Rec.FilePath := GetFileNameFromHandleV0(hDupFile);
+              Rec.FilePath := GetFileNameFromHandle(hDupFile);
               if Rec.FilePath <> '' then
               begin
                 Rec.FilePath := Letters.ResolvePath(Rec.FilePath);
@@ -1042,11 +1120,15 @@ begin
           finally
             CloseHandle(hProcess);
           end;
-        end;
+        end;  *)
 
     finally
       ReallocMem(HandleInfo, 0);
       FreeAndNil(Letters);
+      FreeAndNil(Files);
+      for i := 0 to High(FTaskParams) do
+        if FTaskParams[i].FileHandle<>0 then
+          CloseHandle(FTaskParams[i].FileHandle);
     end;
 
     result.Sort;
