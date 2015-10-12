@@ -4,11 +4,12 @@ unit adot.Tools;
 interface
 
 uses
+  {$IFDEF CompilerVersion>=30} System.Hash, {$ENDIF}
   IdGlobal, System.Classes, IdHashMessageDigest, System.SysUtils,
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
   System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo, System.Rtti, System.Hash;
+  System.TypInfo, System.Rtti;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -606,7 +607,11 @@ end;
 
 class function TFastHash.Encode(const Buf; ByteBufSize: integer): TValue;
 begin
+  {$IFDEF CompilerVersion>=30}
   result := System.Hash.THashBobJenkins.GetHashValue(Buf, ByteBufSize, 0);
+  {$ELSE}
+  result := BobJenkinsHash(Buf, ByteBufSize, 0);
+  {$ENDIF}
 end;
 
 class function TFastHash.Encode(const s: TIdBytes): TValue;

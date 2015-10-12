@@ -1087,6 +1087,8 @@ begin
                   Tasks[J].Cancel;
                 J := 0;
               end;
+
+              // collect old result from FTaskParams[J]
               if (Tasks[J].Status=TTaskStatus.Completed) and (FTaskParams[J].FileName<>'') then
               begin
                 Rec.PID := FTaskParams[J].PID;
