@@ -8,7 +8,7 @@ uses
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
   System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo, System.Rtti;
+  System.TypInfo, System.Rtti, System.Hash;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -217,6 +217,40 @@ type
     property IsNull: boolean read GetIsNull write SetIsNull;
     property HasValue: boolean read GetHasValue write SetHasValue; // not IsNull
     property Ptr: pointer read GetPointer;
+  end;
+
+  TThreadSafe<T: record> = record
+  public
+    type
+      TCopyProc = reference to procedure(const ASrc: T; var Dst: T);
+  private
+    var
+      FValue: T;
+      FCriticalSection: TAutoFree<TCriticalSection>;
+      FComparer: IEqualityComparer<T>;
+      FCopyProc: TCopyProc;
+
+    function GetCriticalSection: TCriticalSection;
+    function GetComparer: IEqualityComparer<T>;
+    function GetValue: T;
+    procedure SetValue(const AValue: T);
+    procedure SetComparer(const Value: IEqualityComparer<T>);
+    procedure SetCopyProc(const Value: TCopyProc);
+  public
+    class function Create: TThreadSafe<T>; overload; static;
+    class function Create(const AValue: T): TThreadSafe<T>; overload; static;
+    class operator Equal(const ALeft, ARight: TThreadSafe<T>): Boolean;
+    class operator Equal(const ALeft: TThreadSafe<T>; const ARight: T): Boolean;
+    class operator NotEqual(const ALeft, ARight: TThreadSafe<T>): Boolean;
+    class operator NotEqual(const ALeft: TThreadSafe<T>; const ARight: T): Boolean;
+    class operator Implicit(const AValue: TThreadSafe<T>): T;
+    class operator Implicit(const AValue: T): TThreadSafe<T>;
+    class operator Implicit(const AValue: Variant): TThreadSafe<T>;
+
+    property Value: T read GetValue write SetValue;
+    property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
+    property CopyProc: TCopyProc read FCopyProc write SetCopyProc;
+    property CriticalSection: TCriticalSection read GetCriticalSection;
   end;
 
   TTiming = class
@@ -572,7 +606,7 @@ end;
 
 class function TFastHash.Encode(const Buf; ByteBufSize: integer): TValue;
 begin
-  result := BobJenkinsHash(Buf, ByteBufSize, 0);
+  result := System.Hash.THashBobJenkins.GetHashValue(Buf, ByteBufSize, 0);
 end;
 
 class function TFastHash.Encode(const s: TIdBytes): TValue;
@@ -1423,6 +1457,123 @@ begin
     result := TNullable<T>.Create
   else
     result := TNullable<T>.Create(AValue^);
+end;
+
+{ TThreadSafe<T> }
+
+class function TThreadSafe<T>.Create: TThreadSafe<T>;
+begin
+  result := Create(Default(T));
+end;
+
+class function TThreadSafe<T>.Create(const AValue: T): TThreadSafe<T>;
+begin
+  result.FValue := AValue;
+  result.FCriticalSection.Value := TCriticalSection.Create;
+end;
+
+function TThreadSafe<T>.GetComparer: IEqualityComparer<T>;
+begin
+  CriticalSection.Acquire;
+  try
+    if FComparer=nil then
+      FComparer := TEqualityComparer<T>.Default;
+    result := FComparer;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+function TThreadSafe<T>.GetCriticalSection: TCriticalSection;
+begin
+  result := FCriticalSection.Value;
+end;
+
+class operator TThreadSafe<T>.Equal(const ALeft,
+  ARight: TThreadSafe<T>): Boolean;
+begin
+  Result := ALeft=ARight.Value;
+end;
+
+class operator TThreadSafe<T>.Equal(const ALeft: TThreadSafe<T>;
+  const ARight: T): Boolean;
+begin
+  ALeft.CriticalSection.Acquire;
+  try
+    Result := ALeft.Comparer.Equals(ALeft.Value, ARight);
+  finally
+    ALeft.CriticalSection.Leave;
+  end;
+end;
+
+function TThreadSafe<T>.GetValue: T;
+begin
+  CriticalSection.Acquire;
+  try
+    result := FValue;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetComparer(const Value: IEqualityComparer<T>);
+begin
+  CriticalSection.Acquire;
+  try
+    FComparer := Value;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetCopyProc(const Value: TCopyProc);
+begin
+  CriticalSection.Acquire;
+  try
+    FCopyProc := Value;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetValue(const AValue: T);
+begin
+  CriticalSection.Acquire;
+  try
+    FValue := AValue;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: TThreadSafe<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: Variant): TThreadSafe<T>;
+begin
+  if VarIsClear(AValue) then
+    result := TThreadSafe<T>.Create
+  else
+    Result := TThreadSafe<T>.Create( TValue.FromVariant(AValue).AsType<T> );
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: T): TThreadSafe<T>;
+begin
+  result.Value := AValue;
+end;
+
+class operator TThreadSafe<T>.NotEqual(const ALeft,
+  ARight: TThreadSafe<T>): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
+  const ARight: T): Boolean;
+begin
+  result := not (ALeft=ARight);
 end;
 
 initialization
