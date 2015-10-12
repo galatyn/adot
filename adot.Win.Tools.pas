@@ -303,6 +303,7 @@ type
   protected
     type
       TTaskParams = record
+        PID: DWord;
         FileHandle: THandle;
         FileName: string;
       end;
@@ -1011,7 +1012,7 @@ end;
 
 function TLockedFiles.GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
 const
-  PoolSize = 64;
+  PoolSize = 8;
 var
   hDupFile, hProcess: THandle;
   HandleInfo: PSYSTEM_HANDLE_INFORMATION_EX;
@@ -1020,15 +1021,20 @@ var
   Letters: TDiskLetters;
   Rec: TFileInfo;
   Tasks: array of ITask;
-  Files: TMultimap<DWord, THandle>;
-  Keys: TMultimap<DWord, THandle>.TKeyEnumerator; // ProcessId -> Remote handle of file
-  Values: TMultimap<DWord, THandle>.TValueEnumerator;
+  Files: TMultimap<DWord, THandle>; // ProcessId -> Remote handle of file
+  PIDEnum: TMultimap<DWord, THandle>.TKeyEnumerator;
+  RemoteFileHandleEnum: TMultimap<DWord, THandle>.TValueEnumerator;
+  PID: DWord;
 begin
   result := TList<TFileInfo>.Create(TDelegatedComparer<TFileInfo>.Create(
     function(const A,B: TFileInfo): integer
     begin
-      result := Sign(A.PID-B.PID);
-      if result=0 then
+      if A.PID<B.PID then
+        result := -1
+      else
+      if A.PID>B.PID then
+        result := 1
+      else
         result := AnsiCompareText(A.FilePath, B.FilePath);
     end));
   try
@@ -1050,10 +1056,11 @@ begin
         TSecurity.addPrivilege('SeChangeNotifyPrivilege');
       end;
 
+      // load all handles of all processes
       if not GetFileHandles(HandleInfo, ObjectTypeOfFile) then
         Exit;
-      for I := 0 to Min(PoolSize, HandleInfo.NumberOfHandles) - 1 do
-        if (HandleInfo.Information[I].ProcessId=3788) and
+      for I := 0 to HandleInfo.NumberOfHandles-1 do
+        if //(HandleInfo.Information[I].ProcessId=3788) and
           (HandleInfo.Information[I].ObjectTypeNumber = ObjectTypeOfFile)
         then
           Files.Add(HandleInfo.Information[I].ProcessId, HandleInfo.Information[I].Handle);
@@ -1061,15 +1068,16 @@ begin
 
       for I := 0 to PoolSize-1 do
         Tasks[i] := EmptyTask;
-      Keys := Files.Keys.GetEnumerator;
-      while Keys.MoveNext do
+      PIDEnum := Files.Keys.GetEnumerator;
+      while PIDEnum.MoveNext do
       begin
-        hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, Keys.Current);
+        PID := PIDEnum.Current;
+        hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, PID);
         if hProcess > 0 then
         try
-          Values := Files.Values[Keys.Current];
-          while Values.MoveNext do
-            if DuplicateHandle(hProcess, Values.Current, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
+          RemoteFileHandleEnum := Files.Values[PID];
+          while RemoteFileHandleEnum.MoveNext do
+            if DuplicateHandle(hProcess, RemoteFileHandleEnum.Current, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
             begin
 
               J := TTask.WaitForAny(Tasks, 500);
@@ -1081,46 +1089,37 @@ begin
               end;
               if (Tasks[J].Status=TTaskStatus.Completed) and (FTaskParams[J].FileName<>'') then
               begin
+                Rec.PID := FTaskParams[J].PID;
                 Rec.FilePath := Letters.ResolvePath(FTaskParams[J].FileName);
-                Rec.PID := Keys.Current;
                 result.Add(Rec);
               end;
+
+              // when we reuse slot in FTaskParams, we should close current handle
               if FTaskParams[J].FileHandle<>0 then
                 CloseHandle(FTaskParams[J].FileHandle);
               FTaskParams[J].FileHandle := hDupFile;
               FTaskParams[J].FileName := '';
-              Tasks[J] := RunTask(I);
+              FTaskParams[J].PID := PID;
+              Tasks[J] := RunTask(J);
 
             end;
         finally
           CloseHandle(hProcess);
         end;
       end;
-      TTask.WaitForAll(Tasks, 500);
 
-(*      for I := 0 to HandleInfo.NumberOfHandles - 1 do
-        if HandleInfo.Information[I].ProcessId=3788 then
-        if HandleInfo.Information[I].ObjectTypeNumber = ObjectTypeOfFile then
+      // wait for remain tasks and collect results
+      TTask.WaitForAll(Tasks, 500);
+      for J := 0 to PoolSize-1 do
+        if Tasks[J].Status<>TTaskStatus.Completed then
+          Tasks[J].Cancel
+        else
+        if FTaskParams[J].FileName<>'' then
         begin
-          hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, HandleInfo.Information[I].ProcessId);
-          if hProcess > 0 then
-          try
-            if DuplicateHandle(hProcess, HandleInfo.Information[I].Handle, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
-            try
-              Rec.FilePath := GetFileNameFromHandle(hDupFile);
-              if Rec.FilePath <> '' then
-              begin
-                Rec.FilePath := Letters.ResolvePath(Rec.FilePath);
-                Rec.PID := HandleInfo.Information[I].ProcessId;
-                result.Add(Rec);
-              end;
-            finally
-              CloseHandle(hDupFile);
-            end;
-          finally
-            CloseHandle(hProcess);
-          end;
-        end;  *)
+          Rec.PID := FTaskParams[J].PID;
+          Rec.FilePath := Letters.ResolvePath(FTaskParams[J].FileName);
+          result.Add(Rec);
+        end;
 
     finally
       ReallocMem(HandleInfo, 0);
