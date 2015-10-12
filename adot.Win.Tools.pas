@@ -983,12 +983,12 @@ procedure TLockedFiles.GetFileNameFromHandle(hFile: THandle; Idx: integer);
 begin
   FTaskParams[Idx].FileName := '';
   GetFileNameFromHandleV0(hFile, Idx);
-  if FTaskParams[Idx].FileName<>'' then Exit;
-  GetFileNameFromHandleV1(hFile, Idx);
-  if FTaskParams[Idx].FileName<>'' then Exit;
-  GetFileNameFromHandleV2(hFile, Idx);
-  if FTaskParams[Idx].FileName<>'' then Exit;
-  GetFileNameFromHandleV3(hFile, Idx);
+//  if FTaskParams[Idx].FileName<>'' then Exit;
+//  GetFileNameFromHandleV1(hFile, Idx);
+//  if FTaskParams[Idx].FileName<>'' then Exit;
+//  GetFileNameFromHandleV2(hFile, Idx);
+//  if FTaskParams[Idx].FileName<>'' then Exit;
+//  GetFileNameFromHandleV3(hFile, Idx);
 end;
 
 function TLockedFiles.RunTask(ParamIdx: integer): ITask;
@@ -1012,7 +1012,7 @@ end;
 
 function TLockedFiles.GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
 const
-  PoolSize = 8;
+  PoolSize = 1;
 var
   hDupFile, hProcess: THandle;
   HandleInfo: PSYSTEM_HANDLE_INFORMATION_EX;

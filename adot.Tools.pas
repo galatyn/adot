@@ -4,7 +4,7 @@ unit adot.Tools;
 interface
 
 uses
-  {$IFDEF CompilerVersion>=30} System.Hash, {$ENDIF}
+  {$IF CompilerVersion>=30} System.Hash, {$ENDIF}
   IdGlobal, System.Classes, IdHashMessageDigest, System.SysUtils,
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
@@ -607,7 +607,7 @@ end;
 
 class function TFastHash.Encode(const Buf; ByteBufSize: integer): TValue;
 begin
-  {$IFDEF CompilerVersion>=30}
+  {$IF CompilerVersion>=30}
   result := System.Hash.THashBobJenkins.GetHashValue(Buf, ByteBufSize, 0);
   {$ELSE}
   result := BobJenkinsHash(Buf, ByteBufSize, 0);
