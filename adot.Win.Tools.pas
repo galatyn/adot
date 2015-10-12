@@ -1,12 +1,125 @@
-unit adot.Win.Tools;
+﻿unit adot.Win.Tools;
+{$ALIGN ON}
+{$MINENUMSIZE 4}
+{$WARN SYMBOL_PLATFORM OFF}
 
 interface
 
 uses
   Winapi.TlHelp32, Winapi.Windows, Winapi.PsAPI, System.Generics.Collections,
-  System.Generics.Defaults, System.Masks, System.SysUtils, System.SyncObjs;
+  System.Generics.Defaults, System.Masks, System.SysUtils, System.SyncObjs,
+  System.Math;
+
+const
+  MAX_PATH_LEN                         = MAX_PATH*8;
+  STATUS_SUCCESS                       = $00000000;
+  STATUS_INVALID_INFO_CLASS            = $C0000003;
+  STATUS_INFO_LENGTH_MISMATCH          = $C0000004;
+  STATUS_INVALID_DEVICE_REQUEST        = $C0000010;
+  STATUS_FUNCTION_IS_NOT_AVAILABLE     = $CFFFFFFF;
+  ObjectNameInformation                = 1;
+  FileDirectoryInformation             = 1;
+  FileNameInformation                  = 9;
+  SystemProcessesAndThreadsInformation = 5;
+  SystemHandleInformation              = 16;
 
 type
+  NT_STATUS = Cardinal;
+
+  PSYSTEM_THREADS = ^SYSTEM_THREADS;
+  SYSTEM_THREADS  = record
+    KernelTime         : LARGE_INTEGER;
+    UserTime           : LARGE_INTEGER;
+    CreateTime         : LARGE_INTEGER;
+    WaitTime           : ULONG;
+    StartAddress       : Pointer;
+    UniqueProcess      : DWORD;
+    UniqueThread       : DWORD;
+    Priority           : Integer;
+    BasePriority       : Integer;
+    ContextSwitchCount : ULONG;
+    State              : Longint;
+    WaitReason         : Longint;
+  end;
+
+  PSYSTEM_PROCESS_INFORMATION = ^SYSTEM_PROCESS_INFORMATION;
+  SYSTEM_PROCESS_INFORMATION = record
+    NextOffset                   : ULONG;
+    ThreadCount                  : ULONG;
+    Reserved1                    : array [0..5] of ULONG; // Что такое, пока не понятно...
+    CreateTime                   : FILETIME;
+    UserTime                     : FILETIME;
+    KernelTime                   : FILETIME;
+    ModuleNameLength             : WORD;
+    ModuleNameMaxLength          : WORD;
+    ModuleName                   : PWideChar;
+    BasePriority                 : ULONG;
+    ProcessID                    : ULONG;
+    InheritedFromUniqueProcessID : ULONG;
+    HandleCount                  : ULONG;
+    Reserved2                    : array[0..1] of ULONG; // Что такое, пока не понятно...
+    PeakVirtualSize              : ULONG;
+    VirtualSize                  : ULONG;
+    PageFaultCount               : ULONG;
+    PeakWorkingSetSize           : ULONG;
+    WorkingSetSize               : ULONG;
+    QuotaPeakPagedPoolUsage      : ULONG;
+    QuotaPagedPoolUsage          : ULONG;
+    QuotaPeakNonPagedPoolUsage   : ULONG;
+    QuotaNonPagedPoolUsage       : ULONG;
+    PageFileUsage                : ULONG;
+    PeakPageFileUsage            : ULONG;
+    PrivatePageCount             : ULONG;
+    ReadOperationCount           : LARGE_INTEGER;
+    WriteOperationCount          : LARGE_INTEGER;
+    OtherOperationCount          : LARGE_INTEGER;
+    ReadTransferCount            : LARGE_INTEGER;
+    WriteTransferCount           : LARGE_INTEGER;
+    OtherTransferCount           : LARGE_INTEGER;
+    ThreadInfo                   : array [0..0] of SYSTEM_THREADS;
+  end;
+
+  PSYSTEM_HANDLE_INFORMATION = ^SYSTEM_HANDLE_INFORMATION;
+  SYSTEM_HANDLE_INFORMATION = record
+    ProcessId        : DWORD;
+    ObjectTypeNumber : Byte;
+    Flags            : Byte;
+    Handle           : Word;
+    pObject          : Pointer;
+    GrantedAccess    : DWORD;
+  end;
+
+  PSYSTEM_HANDLE_INFORMATION_EX = ^SYSTEM_HANDLE_INFORMATION_EX;
+  SYSTEM_HANDLE_INFORMATION_EX = record
+    NumberOfHandles : dword;
+    Information     : array [0..0] of SYSTEM_HANDLE_INFORMATION;
+  end;
+
+  PFILE_NAME_INFORMATION = ^FILE_NAME_INFORMATION;
+  FILE_NAME_INFORMATION = record
+    FileNameLength : ULONG;
+    FileName       : array [0..MAX_PATH_LEN - 1] of WideChar;
+  end;
+
+  PUNICODE_STRING = ^TUNICODE_STRING;
+  TUNICODE_STRING = record
+    Length        : WORD;
+    MaximumLength : WORD;
+    Pad           : DWORD;
+    Buffer        : array [0..MAX_PATH_LEN - 1] of WideChar;
+  end;
+
+  POBJECT_NAME_INFORMATION = ^TOBJECT_NAME_INFORMATION;
+  TOBJECT_NAME_INFORMATION = record
+    Name : TUNICODE_STRING;
+  end;
+
+  PIO_STATUS_BLOCK = ^IO_STATUS_BLOCK;
+  IO_STATUS_BLOCK = record
+    Status      : NT_STATUS;
+    Information : DWORD;
+  end;
+
   TProcess = class
   public
     type
@@ -123,6 +236,97 @@ type
     property Size: Cardinal read FSize;
     property Memory: Pointer read FFileView;
     property Created: Boolean read FCreated;
+  end;
+
+  TWinApiExt = class
+  protected
+    type
+      NT_STATUS = Cardinal;
+      TZwQuerySystemInformation = function(ASystemInformationClass: DWORD;
+        ASystemInformation: Pointer; ASystemInformationLength: DWORD;
+        AReturnLength: PDWORD): NT_STATUS; stdcall;
+      TNtQueryInformationFile = function(FileHandle: THandle;
+        IoStatusBlock: PIO_STATUS_BLOCK; FileInformation: Pointer;
+        Length: DWORD; FileInformationClass: DWORD): NT_STATUS; stdcall;
+      TNtQueryObject = function(ObjectHandle: THandle;
+        ObjectInformationClass: DWORD; ObjectInformation: Pointer;
+        ObjectInformationLength: ULONG;ReturnLength: PDWORD): NT_STATUS; stdcall;
+      TGetFileInformationByHandleEx = function(hFile: THandle;
+        FileInformationClass: DWord; lpFileInformation: pointer;
+        dwBufferSize: DWord): BOOL; stdcall;
+    var
+      FNtDllLib, FKernel32Lib: THandle;
+      FZwQuerySystemInformation: TZwQuerySystemInformation;
+      FNtQueryInformationFile: TNtQueryInformationFile;
+      FNtQueryObject: TNtQueryObject;
+      FGetFileInformationByHandleEx: TGetFileInformationByHandleEx;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function ZwQuerySystemInformation(ASystemInformationClass: DWORD;
+      ASystemInformation: Pointer; ASystemInformationLength: DWORD;
+      AReturnLength: PDWORD): NT_STATUS;
+
+    function NtQueryInformationFile(FileHandle: THandle;
+      IoStatusBlock: PIO_STATUS_BLOCK; FileInformation: Pointer;
+      Length: DWORD; FileInformationClass: DWORD
+    ): NT_STATUS;
+
+    function NtQueryObject(ObjectHandle: THandle;
+      ObjectInformationClass: DWORD; ObjectInformation: Pointer;
+      ObjectInformationLength: ULONG; ReturnLength: PDWORD): NT_STATUS;
+
+    function GetFileInformationByHandleEx(hFile: THandle;
+      FileInformationClass: DWord; lpFileInformation: pointer;
+      dwBufferSize: DWord): BOOL;
+  end;
+
+  TDiskLetters = class
+  private
+    FLetters: TDictionary<string, char>;
+    class function NormalizePath(const APath: string): String; static;
+    class procedure GetDiskLetters(var ALetters: TDictionary<string, char>); static;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function DiskPathToLetter(const APath: string): String;
+    function ResolvePath(const APath: string): String;
+  end;
+
+  TLockedFiles = class
+  protected
+    FApi: TWinApiExt;
+
+    function DoZwQuerySystemInformation(ASysInfoClass: DWORD; var AData: Pointer): Boolean;
+    function GetFileHandles(var AHandleInfo: PSYSTEM_HANDLE_INFORMATION_EX; var AFileType: Byte): Boolean;
+
+    // GetFileInformationByHandleEx
+    function GetFileNameFromHandleV3(hFile: THandle): string;
+
+    // NtQueryObject
+    function GetFileNameFromHandleV2(hFile: THandle): string;
+
+    // NtQueryInformationFile
+    function GetFileNameFromHandleV1(hFile: THandle): string;
+
+    //GetFinalPathNameByHandle
+    function GetFileNameFromHandleV0(hFile: THandle): string;
+
+  public
+    type
+      TFileInfo = record
+        PID: THandle;
+        FilePath: string;
+      end;
+
+    constructor Create;
+    destructor Destroy; override;
+
+    function GetFileNameFromHandle(hFile: THandle): string;
+    function GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
   end;
 
 // AH: We should remove it when Embarcadero include it into Winapi.Windows
@@ -490,5 +694,366 @@ begin
 end;
 
 // http://stackoverflow.com/questions/8726906/delphi-finding-the-process-that-is-accessing-a-file-from-my-program
+
+{ TWinApiExt }
+
+constructor TWinApiExt.Create;
+begin
+  FNtDllLib := LoadLibrary('ntdll.dll');
+  FKernel32Lib := LoadLibrary(kernel32);
+  FZwQuerySystemInformation := GetProcAddress(FNtDllLib, 'ZwQuerySystemInformation');
+  FNtQueryInformationFile := GetProcAddress(FNtDllLib, 'NtQueryInformationFile');
+  FNtQueryObject := GetProcAddress(FNtDllLib, 'NtQueryObject');
+  FGetFileInformationByHandleEx := GetProcAddress(FKernel32Lib, 'GetFileInformationByHandleEx');
+end;
+
+destructor TWinApiExt.Destroy;
+begin
+  FZwQuerySystemInformation := nil;
+  FNtQueryInformationFile := nil;
+  FNtQueryObject := nil;
+  FGetFileInformationByHandleEx := nil;
+  if FNtDllLib<>0 then
+    FreeLibrary(FNtDllLib);
+  if FKernel32Lib<>0 then
+    FreeLibrary(FKernel32Lib);
+  inherited;
+end;
+
+function TWinApiExt.GetFileInformationByHandleEx(hFile: THandle;
+  FileInformationClass: DWord; lpFileInformation: pointer;
+  dwBufferSize: DWord): BOOL;
+begin
+  result := Assigned(FGetFileInformationByHandleEx) and
+    FGetFileInformationByHandleEx(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
+end;
+
+function TWinApiExt.NtQueryInformationFile(FileHandle: THandle;
+  IoStatusBlock: PIO_STATUS_BLOCK; FileInformation: Pointer;
+  Length,FileInformationClass: DWORD): NT_STATUS;
+begin
+  if not Assigned(FNtQueryInformationFile) then
+    result := STATUS_FUNCTION_IS_NOT_AVAILABLE
+  else
+    result := FNtQueryInformationFile(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+end;
+
+function TWinApiExt.NtQueryObject(ObjectHandle: THandle;
+  ObjectInformationClass: DWORD; ObjectInformation: Pointer;
+  ObjectInformationLength: ULONG; ReturnLength: PDWORD): NT_STATUS;
+begin
+  if not Assigned(FNtQueryObject) then
+    result := STATUS_FUNCTION_IS_NOT_AVAILABLE
+  else
+    result := FNtQueryObject(ObjectHandle, ObjectInformationClass, ObjectInformation, ObjectInformationLength, ReturnLength);
+end;
+
+function TWinApiExt.ZwQuerySystemInformation(ASystemInformationClass: DWORD;
+  ASystemInformation: Pointer; ASystemInformationLength: DWORD;
+  AReturnLength: PDWORD): NT_STATUS;
+begin
+  if not Assigned(FZwQuerySystemInformation) then
+    result := STATUS_FUNCTION_IS_NOT_AVAILABLE
+  else
+    result := FZwQuerySystemInformation(ASystemInformationClass, ASystemInformation, ASystemInformationLength, AReturnLength);
+end;
+
+{ TDiskLetters }
+
+constructor TDiskLetters.Create;
+begin
+  FLetters := TDictionary<string, char>.Create;
+  GetDiskLetters(FLetters);
+end;
+
+destructor TDiskLetters.Destroy;
+begin
+  FreeAndNil(FLetters);
+  inherited;
+end;
+
+// \device\mup\ma-osl-f01\felles\andrei\09.01\delphifeatures.docx
+// '\Device\LanmanRedirector\;V:000000000007d3bd\MA-OSL-F01\Felles
+class procedure TDiskLetters.GetDiskLetters(var ALetters: TDictionary<string, char>);
+const
+  Lan = '\device\lanmanredirector\;';
+var
+  Letter: Char;
+  Src,Dst,s: string;
+  i: Integer;
+begin
+  ALetters.Clear;
+  for Letter := 'a' to 'z' do
+  begin
+    Src := Letter + ':';
+    SetLength(Dst, MAX_PATH_LEN);
+    SetLength(Dst, QueryDosDevice(PChar(Src), PChar(Dst), Length(Dst)));
+    if Dst='' then
+      Continue;
+    Dst := NormalizePath(Dst);
+    ALetters.Add(Dst, Letter);
+    if Dst.StartsWith(Lan) and (Dst.Substring(Length(Lan)+1, 1)=':') then
+    begin
+      i := Dst.IndexOf('\', Length(Lan) + 1);
+      if i>0 then
+      begin
+        s := '\device\mup\' + Dst.Substring(i+1);
+        ALetters.Add(s, Letter);
+        s := '\' + Dst.Substring(i+1);
+        ALetters.Add(s, Letter);
+      end;
+    end;
+  end;
+end;
+
+class function TDiskLetters.NormalizePath(const APath: string): String;
+begin
+  result := AnsiLowerCase(Trim(ExcludeTrailingPathDelimiter(APath)));
+end;
+
+function TDiskLetters.DiskPathToLetter(const APath: string): String;
+var
+  Letter: Char;
+begin
+  if FLetters.TryGetValue(NormalizePath(APath), Letter) then
+    result := Letter
+  else
+    result := '';
+end;
+
+function TDiskLetters.ResolvePath(const APath: string): String;
+var
+  s,l: string;
+  i,j: Integer;
+begin
+  result := NormalizePath(APath);
+  s := result;
+  while s<>'' do
+  begin
+    l := DiskPathToLetter(s);
+    if l<>'' then
+      Exit(l + ':' + Copy(result, length(s)+low(result), high(integer)));
+    j := -1;
+    for i := High(s) downto Low(s) do
+      if (s[i]='\') or (s[i]='/') then
+      begin
+        j := i;
+        Break;
+      end;
+    SetLength(s, Max(0,j-Low(s)));
+  end;
+end;
+
+{ TLockedFiles }
+
+constructor TLockedFiles.Create;
+begin
+  FApi := TWinApiExt.Create;
+end;
+
+destructor TLockedFiles.Destroy;
+begin
+  FreeAndNil(FApi);
+  inherited;
+end;
+
+function TLockedFiles.DoZwQuerySystemInformation(ASysInfoClass: DWORD;
+  var AData: Pointer): Boolean;
+var
+  dwSize: DWORD;
+  ntStatus: NT_STATUS;
+begin
+  AData := nil;
+  dwSize := $40000;
+  repeat
+    dwSize := dwSize * 2;
+    ReallocMem(AData, dwSize);
+    ntStatus := FAPI.ZwQuerySystemInformation(ASysInfoClass, AData, dwSize, nil);
+  until ntStatus <> STATUS_INFO_LENGTH_MISMATCH;
+  result := ntStatus = STATUS_SUCCESS;
+end;
+
+// NtQueryInformationFile to get filename from handle
+// This function provides better (readable) names for files from network, for example
+// NtQueryInformationFile : '\MA-OSL-F01\Felles\Andrei\09.01\DelphiFeatures.docx'
+// NtQueryObject          : '\Device\Mup\MA-OSL-F01\Felles\Andrei\09.01\DelphiFeatures.docx'
+function TLockedFiles.GetFileNameFromHandleV1(hFile: THandle): string;
+var
+  FileNameInfo: FILE_NAME_INFORMATION;
+  IoStatusBlock: IO_STATUS_BLOCK;
+  Status: NT_STATUS;
+begin
+  ZeroMemory(@FileNameInfo, SizeOf(FILE_NAME_INFORMATION));
+  Status := FAPI.NtQueryInformationFile(hFile, @IoStatusBlock, @FileNameInfo, SizeOf(FileNameInfo.FileName), FileNameInformation);
+  if Status = STATUS_SUCCESS then
+    result := FileNameInfo.FileName
+  else
+    result := GetFileNameFromHandleV3(hFile);
+end;
+
+// NtQueryObject to get filename from handle
+function TLockedFiles.GetFileNameFromHandleV2(hFile: THandle): string;
+var
+  ObjectNameInfo: TOBJECT_NAME_INFORMATION;
+  dwReturn: DWORD;
+  Status: NT_STATUS;
+begin
+  result := '';
+  ZeroMemory(@ObjectNameInfo, SizeOf(ObjectNameInfo));
+  Status := FAPI.NtQueryObject(hFile, ObjectNameInformation, @ObjectNameInfo, SizeOf(ObjectNameInfo.Name.Buffer), @dwReturn);
+  if Status = STATUS_SUCCESS then
+    result := ObjectNameInfo.Name.Buffer;
+  if result = '' then
+    result := GetFileNameFromHandleV3(hFile);
+end;
+
+// This function GetFileInformationByHandleEx to get filename from handle
+// it also hangs and result files in format:
+// \Windows\winsxs\amd64_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.18946_none_2b27281071eac12c
+function TLockedFiles.GetFileNameFromHandleV3(hFile: THandle): string;
+const
+  FileNameInfo = 2;
+var
+  Info: PFILE_NAME_INFORMATION;
+begin
+  Info := AllocMem(SizeOf(FILE_NAME_INFORMATION));
+  try
+    if FAPI.GetFileInformationByHandleEx(hFile, FileNameInfo, Info, SizeOF(FILE_NAME_INFORMATION)) then
+      result := Info.FileName
+    else
+      result := '';
+  finally
+    ReallocMem(Info, 0);
+  end;
+end;
+
+// GetFinalPathNameByHandle to get filename from handle
+// this function is very good option, when available
+function TLockedFiles.GetFileNameFromHandleV0(hFile: THandle): string;
+begin
+
+  // \Device\HarddiskVolume2\Windows\winsxs\...
+  // TDiskLetters class can be used to resolve to regular filename
+//  setlength(result, MAX_PATH*8);
+//  setlength(result, GetFinalPathNameByHandle(hFile, PChar(result), Length(result), FILE_NAME_NORMALIZED or VOLUME_NAME_NT));
+
+  // \\?\C:\Windows\winsxs\... -> C:\Windows\winsxs\...
+  setlength(result, MAX_PATH*8);
+  setlength(result, GetFinalPathNameByHandle(hFile, PChar(result), Length(result), FILE_NAME_NORMALIZED or VOLUME_NAME_DOS));
+  if result.StartsWith('\\?\') then
+    result := '\' + result.Substring(3);
+  if result.StartsWith('\\') and (result.SubString(3,1)=':') then
+    result := result.SubString(2);
+end;
+
+function TLockedFiles.GetFileHandles(var AHandleInfo: PSYSTEM_HANDLE_INFORMATION_EX; var AFileType: Byte): Boolean;
+var
+  hFile: THandle;
+  I: Integer;
+  p: SYSTEM_HANDLE_INFORMATION;
+  CurProcessId: DWord;
+begin
+  result := False;
+  AHandleInfo := nil;
+  AFileType := 255;
+  hFile := CreateFile('NUL', GENERIC_READ, 0, nil, OPEN_EXISTING, 0, 0);
+  if hFile <> INVALID_HANDLE_VALUE then
+  try
+    CurProcessId := GetCurrentProcessId;
+    if DoZwQuerySystemInformation(SystemHandleInformation, pointer(AHandleInfo)) then
+      for I := 0 to AHandleInfo.NumberOfHandles - 1 do
+      begin
+        p := AHandleInfo.Information[I];
+        if (p.Handle = hFile) and (p.ProcessId = CurProcessId) then
+        begin
+          AFileType := p.ObjectTypeNumber;
+          result := True;
+          Break;
+        end;
+      end;
+  finally
+    CloseHandle(hFile);
+  end;
+end;
+
+function TLockedFiles.GetFileNameFromHandle(hFile: THandle): string;
+begin
+  result := GetFileNameFromHandleV0(hFile);
+  if result<>'' then Exit;
+  result := GetFileNameFromHandleV1(hFile);
+  if result<>'' then Exit;
+  result := GetFileNameFromHandleV2(hFile);
+  if result<>'' then Exit;
+  result := GetFileNameFromHandleV3(hFile);
+end;
+
+function TLockedFiles.GetFilesOpenedByProcesses(AAddPrivileges: Boolean = True): TList<TFileInfo>;
+var
+  hDupFile, hProcess: THandle;
+  HandleInfo: PSYSTEM_HANDLE_INFORMATION_EX;
+  I: Integer;
+  ObjectTypeOfFile: Byte;
+  Letters: TDiskLetters;
+  Rec: TFileInfo;
+begin
+  result := TList<TFileInfo>.Create(TDelegatedComparer<TFileInfo>.Create(
+    function(const A,B: TFileInfo): integer
+    begin
+      result := Sign(A.PID-B.PID);
+      if result=0 then
+        result := AnsiCompareText(A.FilePath, B.FilePath);
+    end));
+  try
+    HandleInfo := nil;
+    Letters := nil;
+    try
+      if not GetFileHandles(HandleInfo, ObjectTypeOfFile) then
+        Exit;
+      Letters := TDiskLetters.Create;
+
+      // https://msdn.microsoft.com/en-us/library/windows/hardware/ff567052%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
+      // if the user has SeChangeNotifyPrivilege (described in the Microsoft Windows SDK documentation),
+      // ZwQueryInformationFile returns the full path in all cases.
+      if AAddPrivileges then
+      begin
+        TSecurity.addPrivilege('SeDebugPrivilege');
+        TSecurity.addPrivilege('SeChangeNotifyPrivilege');
+      end;
+
+      for I := 0 to HandleInfo^.NumberOfHandles - 1 do
+        if HandleInfo.Information[I].ProcessId=7848 then
+        if HandleInfo.Information[I].ObjectTypeNumber = ObjectTypeOfFile then
+        begin
+          hProcess := OpenProcess(PROCESS_DUP_HANDLE, True, HandleInfo.Information[I].ProcessId);
+          if hProcess > 0 then
+          try
+            if DuplicateHandle(hProcess, HandleInfo.Information[I].Handle, GetCurrentProcess, @hDupFile, 0, False, DUPLICATE_SAME_ACCESS) then
+            try
+              Rec.FilePath := GetFileNameFromHandleV0(hDupFile);
+              if Rec.FilePath <> '' then
+              begin
+                Rec.FilePath := Letters.ResolvePath(Rec.FilePath);
+                Rec.PID := HandleInfo.Information[I].ProcessId;
+                result.Add(Rec);
+              end;
+            finally
+              CloseHandle(hDupFile);
+            end;
+          finally
+            CloseHandle(hProcess);
+          end;
+        end;
+
+    finally
+      ReallocMem(HandleInfo, 0);
+      FreeAndNil(Letters);
+    end;
+
+    result.Sort;
+  except
+    result.Free;
+    raise;
+  end;
+end;
 
 end.
