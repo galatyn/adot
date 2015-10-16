@@ -9,7 +9,7 @@ uses
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
   System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo, System.Rtti;
+  System.TypInfo, System.Rtti, System.Contnrs;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -153,7 +153,38 @@ type
     class function GetBaseColorName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
   end;
 
-  // assign Value:=nil to free content immediately.
+  // This generic type implements automatic destroying of inner object.
+  // It helps to avoid of try-finally sections in the code. Also can be used to destroy
+  // inner objects of some class (instead of explicit destroying in destructor).
+  // Example:
+  //
+  // var
+  //   A: T1;
+  //   B: T2;
+  // begin
+  //   A := T1.Create;
+  //   try
+  //     B := T2.Create;
+  //     try
+  //       [ do something with A and B]
+  //     finally
+  //       B.Free;
+  //     end;
+  //   finally
+  //     A.Free;
+  //   end;
+  // End;
+  //
+  // can be rewritten as follow:
+  //
+  // var
+  //   A: TAutoFree<T1>;
+  //   B: TAutoFree<T2>;
+  // begin
+  //   A := T1.Create;
+  //   B := T2.Create;
+  //   [ do something with A.Value and B.Value]
+  // End;
   TAutoFree<T: class> = record
   private
     type
@@ -182,9 +213,48 @@ type
     class operator Implicit(const AValue: TAutoFree<T>): T;
     class operator Implicit(const AValue: T): TAutoFree<T>;
 
+    procedure Clear;
+    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
+
     property Value: T read FValue write SetValue;
     property AsLink: T read FValue write SetAsLink;
     property IsLink: boolean read GetIsLink;
+  end;
+
+  // All objects placed in TAutoFreeCollection will be destroyed automatically
+  // when collection goes out of the scope. Example (based on example from TAutoFree):
+  // var
+  //   C: TAutoFreeCollection;
+  //   A: TAutoFree<T1>;
+  //   B: TAutoFree<T2>;
+  // begin
+  //   A := C.Add( T1.Create );
+  //   B := C.Add( T2.Create );
+  //   [do something with A and B]
+  // End;
+  TAutoFreeCollection = record
+  private
+    type
+      IAutoFreeCollection = interface(IUnknown)
+        procedure Add(AObject: TObject);
+      end;
+
+      TAutoFreeCollectionImpl = class(TInterfacedObject, IAutoFreeCollection)
+      protected
+        FList: TObjectList;
+      public
+        constructor Create;
+        destructor Destroy; override;
+        procedure Add(AObject: TObject);
+      end;
+
+    var
+      FGuard: IAutoFreeCollection;
+
+  public
+    function Add<T: class>(AObject: T):T;
+    procedure Clear;
+    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
   end;
 
   TNullable<T> = record
@@ -754,6 +824,12 @@ begin
   result.FGuard := nil;
 end;
 
+procedure TAutoFree<T>.Clear;
+begin
+  FValue := nil;
+  FGuard := nil;
+end;
+
 class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
 begin
   result.Value := AValue;
@@ -783,6 +859,11 @@ begin
   result := ALeft.Value=ARight;
 end;
 
+procedure TAutoFree<T>.Free;
+begin
+  Clear;
+end;
+
 function TAutoFree<T>.GetIsLink: boolean;
 begin
   result := (FGuard=nil) and (FValue<>nil);
@@ -806,6 +887,45 @@ end;
 class operator TAutoFree<T>.NotEqual(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
 begin
   result := ALeft.Value<>ARight;
+end;
+
+{ TAutoFreeCollection }
+
+function TAutoFreeCollection.Add<T>(AObject: T): T;
+begin
+  if FGuard=nil then
+    FGuard := TAutoFreeCollectionImpl.Create;
+  FGuard.Add(AObject);
+  result := AObject;
+end;
+
+procedure TAutoFreeCollection.Clear;
+begin
+  FGuard := nil;
+end;
+
+procedure TAutoFreeCollection.Free;
+begin
+  Clear;
+end;
+
+{ TAutoFreeCollection.TAutoFreeCollectionImpl }
+
+constructor TAutoFreeCollection.TAutoFreeCollectionImpl.Create;
+begin
+  inherited Create;
+  FList := TObjectList.Create(True);
+end;
+
+destructor TAutoFreeCollection.TAutoFreeCollectionImpl.Destroy;
+begin
+  FreeAndNil(FList);
+  inherited;
+end;
+
+procedure TAutoFreeCollection.TAutoFreeCollectionImpl.Add(AObject: TObject);
+begin
+  FList.Add(AObject);
 end;
 
 { TTiming }
