@@ -8,7 +8,19 @@ uses
 type
   TAnsiChars = set of AnsiChar;
 
-  // Search words inside of text (to extract words/numbers etc)
+  // Class to search words inside of text (to extract words/numbers etc).
+  // Example 1:
+  //   TTextWords.Get('list of 7 words and 2 numbers', Arr, TTextWords.IsPartOfNumber) -> Arr=['7', '2']
+  //   TTextWords.Get('list of 7 words and 2 numbers', Arr) -> Arr=['list', 'of', '7', 'words', 'and', '2', 'numbers']
+  // Example 2:
+  //   W := TTextWords.Create(AText);
+  //   while W.findNext(Str) do
+  //     <do something with> Str
+  // Example 3:
+  //   W := TTextWords.Create(AText);
+  //   W.Get(L); // L: TArray<TWordPosRec>
+  //   for i := 0 to High(l) do
+  //     <do something with> W.Words[l[i]]
   PTextWords = ^TTextWords;
   TTextWords = record
   public
@@ -22,42 +34,47 @@ type
       Position: integer;
       IsAlphaChar: TIsAlphaPredicate;
 
-    // set Text and IsAlpha predicate (default is IsLetterOrDigit)
-    function Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil): PTextWords; overload;
+    // Set Text and IsAlpha predicate (default is IsLetterOrDigit).
+    constructor Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil);
+    function Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil): PTextWords;
 
-    // reset current position (to start search from begin of the text)
-    procedure Reset; inline;
-
-    // reset and get number of words in the text
-    function Count:Integer;
-
-    // find next word in the text
+    // Find next word in the text.
     function FindNext(var AStart,ALen: integer):Boolean; overload;
     function FindNext(var AWord: String):Boolean; overload;
     function FindNext: String; overload; inline;
 
-    // reset and get all words from the text
+    // Find all words in the text (from begin to end).
     procedure Get(ADst: TStrings); overload;
     procedure Get(var ADst: TArray<String>); overload;
     procedure Get(var ADst: TArray<TWordPosRec>); overload;
 
-    // get substring from the text (usually APos is result of FindNext or Get)
+    // Helpers
+    class procedure Get(const AText: string; ADst: TStrings; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
+    class procedure Get(const AText: string; var ADst: TArray<String>; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
+    class procedure Get(const AText: string; var ADst: TArray<TWordPosRec>; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
+
+    // Start search from begin of the text
+    procedure Reset; inline;
+
+    // Get number of words in the text (doesn't change current position)
+    function Count:Integer;
+
+    // Get substring from the assigned text (usually APos is result of FindNext or Get)
     function GetSubStr(const APos: TWordPosRec): String;
 
-    // find sequence of strings in the list of words:
-    //    r.Prepare('it is test').Get(SearchStrArr);
-    //    r.Prepare('word0 word1 it is test xxx xxx xxx').Get(WordList);
-    //    Assert(r.Find(SearchStrArr, WordList) = 2);
+    // Find subsequence of strings in the list of words:
+    //    r.Prepare('word0 word1 it is test xxx xxx xxx').Get( WordList );
     //    Assert(r.Find(['it', 'is', 'test'], WordList) = 2);
     function Find(const ASubSequence: array of string; const ASequence: TArray<TWordPosRec>): integer;
 
-    // most common TIsAlphaPredicate functions
+    // Most common TIsAlphaPredicate functions
     class function IsNonSpace(const C: Char): Boolean; static;
     class function IsLetter(const C: Char): Boolean; static;
-    class function IsDigit(const C: Char): Boolean; static;
     class function IsLetterOrDigit(const C: Char): Boolean; static;
+    class function IsDigit(const C: Char): Boolean; static;
+    class function IsPartOfNumber(const C: Char): Boolean; static; // digit or DecimalSeparator
 
-    class function StrToPrintable(const S: string): string; static;
+    property Words[const APos: TWordPosRec]: string read GetSubStr; default;
   end;
 
 function CharsToString(const AChars: TAnsiChars): string;
@@ -134,25 +151,16 @@ begin
   Position := Low(Text);
 end;
 
-class function TTextWords.StrToPrintable(const S: string): string;
-var
-  i: Integer;
-begin
-  for i := Low(s) to High(s) do
-    if (s[i]=' ') or IsLetterOrDigit(s[i]) then
-      result := result + s[i]
-    else
-      result := result + '#$'+THex.Encode(s[i], SizeOf(Char));
-end;
-
 function TTextWords.Count: Integer;
 var
-  Start, Len: Integer;
+  OldPosition, Start, Len: Integer;
 begin
+  OldPosition := Position;
   Reset;
   Result := 0;
   while FindNext(Start, Len) do
     Inc(Result);
+  Position := OldPosition;
 end;
 
 function TTextWords.FindNext(var AStart, ALen: integer): Boolean;
@@ -198,6 +206,11 @@ end;
 function TTextWords.FindNext: String;
 begin
   FindNext(Result);
+end;
+
+constructor TTextWords.Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate);
+begin
+  Prepare(AText, AIsAlphaPredicate);
 end;
 
 function TTextWords.Find(const ASubSequence: array of string;
@@ -258,14 +271,14 @@ begin
   result := C>' ';
 end;
 
+class function TTextWords.IsPartOfNumber(const C: Char): Boolean;
+begin
+  result := C.IsDigit or (C=FormatSettings.DecimalSeparator);
+end;
+
 class function TTextWords.IsLetter(const C: Char): Boolean;
 begin
   Result := C.IsLetter;
-end;
-
-class function TTextWords.IsDigit(const C: Char): Boolean;
-begin
-  Result := C.IsDigit;
 end;
 
 class function TTextWords.IsLetterOrDigit(const C: Char): Boolean;
@@ -273,9 +286,38 @@ begin
   Result := C.IsLetter or C.IsDigit;
 end;
 
+class function TTextWords.IsDigit(const C: Char): Boolean;
+begin
+  Result := C.IsDigit;
+end;
+
 function TTextWords.GetSubStr(const APos: TWordPosRec): String;
 begin
   Result := Copy(Text, APos.Start, APos.Len);
+end;
+
+class procedure TTextWords.Get(const AText: string; ADst: TStrings; AIsAlphaPredicate: TIsAlphaPredicate);
+var
+  w: TTextWords;
+begin
+  w.Prepare(AText, AIsAlphaPredicate);
+  w.Get(ADst);
+end;
+
+class procedure TTextWords.Get(const AText: string; var ADst: TArray<String>; AIsAlphaPredicate: TIsAlphaPredicate);
+var
+  w: TTextWords;
+begin
+  w.Prepare(AText, AIsAlphaPredicate);
+  w.Get(ADst);
+end;
+
+class procedure TTextWords.Get(const AText: string; var ADst: TArray<TWordPosRec>; AIsAlphaPredicate: TIsAlphaPredicate);
+var
+  w: TTextWords;
+begin
+  w.Prepare(AText, AIsAlphaPredicate);
+  w.Get(ADst);
 end;
 
 end.
