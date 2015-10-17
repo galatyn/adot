@@ -18,8 +18,15 @@ type
     class procedure FillMap(m: TDIPDictionary; maxdepth: integer); static;
     class procedure TestArray; static;
     class procedure FillArray(m: TDIPArray; maxdepth: integer); static;
+
+    {$IFNDEF DisableJSON}
     class procedure TestJSON; static;
+    {$ENDIF}
+
+    {$IFNDEF DisableXML}
     class procedure TestXML; static;
+    {$ENDIF}
+
   protected
     class procedure TestInt; static;
     class procedure TestMap; static;
@@ -103,8 +110,15 @@ begin
   TestInt;
   TestArray;
   TestMap;
+
+  {$IFNDEF DisableJSON}
   TestJSON;
+  {$ENDIF}
+
+  {$IFNDEF DisableXML}
   TestXML;
+  {$ENDIF}
+
 end;
 
 class procedure TTestCases.QuickTest;
@@ -336,6 +350,7 @@ begin
   end;
 end;
 
+{$IFNDEF DisableJSON}
 class procedure TTestCases.TestJSON;
 var
   j: TJSONValue;
@@ -355,7 +370,7 @@ begin
     FreeAndNil(m);
   end;
 
-  s := 'c:\work\!components\adot\Test\adot.dip.test.json';
+  s := ExtractFilePath(paramstr(0)) + '..\..\adot.dip.test.json';
   v := TDIPValue.LoadFromFile(s);
   try
     v.SaveToFile(ChangefileExt(s, '.dip'));
@@ -366,7 +381,8 @@ begin
   t := TMemoryStream.Create;
   try
     // load test JSON
-    t.LoadFromFile(ExtractFilePath(paramstr(0))+'..\..\..\src\demo\speed-test.json');
+    s := ExtractFilePath(paramstr(0)) + '..\..\adot.dip.test.performancetest.json';
+    t.LoadFromFile(s);
     t.Position := 0;
     setlength(UTF8Str, t.Size);
     t.Read(UTF8Str[Low(UTF8Str)], Length(UTF8Str));
@@ -381,7 +397,8 @@ begin
       try
         t.Clear;
         dip.SaveToStream(t);
-        t.SaveToFile(ExtractFilePath(paramstr(0))+'..\..\..\src\demo\speed-test.dip');
+        s := ExtractFilePath(paramstr(0)) + '..\..\adot.dip.test.performancetest.dip';
+        t.SaveToFile(s);
       finally
         FreeAndNil(dip);
       end;
@@ -417,7 +434,9 @@ begin
   end;}
 
 end;
+{$ENDIF}
 
+{$IFNDEF DisableXML}
 class procedure TTestCases.TestXML;
 const
   xml: array[1..4] of string = (
@@ -464,8 +483,10 @@ begin
   begin
     d := TDIPValue.LoadFromXML(xml[i]);
     try
-      d.SaveToFile(format('e:\Work\SimpleBinaryProtocol\src\demo\test.xml.%d.dip', [i]));
-      d.SaveToFile(format('e:\Work\SimpleBinaryProtocol\src\demo\test.xml.%d.json', [i]));
+      d.SaveToFile(ExtractFilePath(PAramStr(0)) +  format('test.xml.%d.dip', [i]));
+      {$IFNDEF DisableJSON}
+      d.SaveToFile(ExtractFilePath(PAramStr(0)) +  format('test.xml.%d.json', [i]));
+      {$ENDIF}
     finally
       FreeAndNil(d);
     end;
@@ -487,5 +508,6 @@ begin
     FreeAndNil(d);
   end;}
 end;
+{$ENDIF}
 
 end.

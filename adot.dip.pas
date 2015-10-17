@@ -1,25 +1,4 @@
 ﻿unit adot.dip;
-{
-  Copyright (c) 2015 Andrei Galatyn (RedBeeSoft).
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
-  in the Software without restriction, including without limitation the rights
-  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
-
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  SOFTWARE.
-}
 
 interface
 
@@ -39,8 +18,7 @@ interface
   + Native support for arrays and dictionaries with unlimited nesting and binary
     keys (similar to JSON, but key of dictionary is sequence of bytes, string
     can be used as key aswell).
-  + Import/export to JSON (System.JSON in Delphi). Can be used as more compact
-    format for JSON.
+  + Import/export to JSON (System.JSON in Delphi). 
   + Import from XML (Xml.* in Delphi).
   + Supports streaming of all basic types (arrays, dictionaries, integers etc).
   + Sequence of DIP-objects can be streamed with zero overhead (stream with
@@ -49,7 +27,8 @@ interface
   - Supports partial parsing, unneccesary objects can be skiped without
     parsing/loading. For example if you need to read only "header" item from
     dictionary, all other items can be ignored. NOT IMPLEMENTED YET.
-  - NULL variable (dtNull)	
+  - NULL variable (dtNull)
+  - ZLIB compression (dtZLIB)
 
   Compatibility:
   + Supports all Delphi platforms (Windows X32/X64, OSX, iOS, Android).
@@ -62,8 +41,15 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
   System.Generics.Defaults, System.Math,
+
+  {$IFNDEF DisableJSON}
   System.JSON, System.JSONConsts,
+  {$ENDIF}
+
+  {$IFNDEF DisableXML}
   Xml.XMLDoc, Xml.XMLIntf, Xml.xmldom, Xml.adomxmldom,
+  {$ENDIF}
+
   Soap.EncdDecd, System.NetEncoding;
 
 const
@@ -148,24 +134,41 @@ type
     property EstimatedByteSize: UInt64 read FEstimatedByteSize write FEstimatedByteSize;
 
     class function CompareBytes(const A, B: TBytes): Boolean; static;
+
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; virtual;
+    {$ENDIF}
+
+    {$IFNDEF DisableXML}
     class function NewXMLDocument: IXMLDocument; static;
+    {$ENDIF}
 
   public
     procedure SaveToStream(ADst: TStream); overload; inline; // save with default encoder (TDIPBinaryWriter)
     procedure SaveToStream(ADst: TStream; AEncoder: TDIPEncoder); overload; inline;
     procedure SaveToStream(ADst: TStream; AEncoderClass: CDIPEncoder); overload;
     procedure SaveToFile(AFileName: string); overload;
+
+    {$IFNDEF DisableJSON}
     function SaveToJSON: TJSONValue;
+    {$ENDIF}
+
     class function LoadFromStream(ASrc: TStream): TDIPValue; overload; static; // load with deault decoder (TDIPBinaryReader)
     class function LoadFromStream(ASrc: TStream; ADecoder: TDIPDecoder): TDIPValue; overload; static;
     class function LoadFromStream(ASrc: TStream; ADecoderClass: CDIPDecoder): TDIPValue; overload; static;
+
+    {$IFNDEF DisableJSON}
     class function LoadFromJSON(ASrc: TJSONValue): TDIPValue; overload; static;
+    {$ENDIF}
+
+    {$IFNDEF DisableXML}
     class function LoadFromXML(ASrc: IXMLNode): TDIPArray; overload; static;
     class function LoadFromXML(ASrc: IXMLDocument): TDIPArray; overload; static;
     class function LoadFromXML(const AXML: string): TDIPArray; overload; static;
     class function LoadFromXML(AXML: TStream): TDIPArray; overload; static;
     class function LoadFromXMLFile(const AXMLfileName: string): TDIPArray; overload; static;
+    {$ENDIF}
+
     class function LoadFromFile(AFileName: string): TDIPValue; static; // .dip, .json, .xml
     function EqualTo(AValue: TDIPValue): Boolean; virtual; abstract;
     function IsConsistent: Boolean; virtual;
@@ -205,7 +208,9 @@ type
     property AsDictionary:TDIPDictionary read GetDictionary;
     property AsArray:TDIPArray read GetArray;
 
+    {$IFNDEF DisableJSON}
     property AsJSON: TJSONValue read GetAsJSON;
+    {$ENDIF}
     property DataType: TDataType read FDataType;
   end;
 
@@ -215,7 +220,9 @@ type
     procedure SetInt64(const AValue: Int64); override;
     function GetUInt64: UInt64; override;
     procedure SetUInt64(const AValue: UInt64); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: Int64;
 
@@ -232,7 +239,9 @@ type
     procedure SetDouble(const AValue: Double); override;
     function GetCurrency: Currency; override;
     procedure SetCurrency(const AValue: Currency); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: Single;
 
@@ -249,7 +258,9 @@ type
     procedure SetDouble(const AValue: Double); override;
     function GetCurrency: Currency; override;
     procedure SetCurrency(const AValue: Currency); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: Double;
 
@@ -266,7 +277,9 @@ type
     procedure SetDouble(const AValue: Double); override;
     function GetCurrency: Currency; override;
     procedure SetCurrency(const AValue: Currency); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: Currency;
 
@@ -279,7 +292,9 @@ type
   protected
     function GetDateTime: TDateTime; override;
     procedure SetDateTime(const AValue: TDateTime); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: TDateTime;
 
@@ -292,7 +307,9 @@ type
   protected
     function GetBoolean: Boolean; override;
     procedure SetBoolean(const AValue: Boolean); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: Boolean;
 
@@ -305,7 +322,9 @@ type
   protected
     function GetBytes: TBytes; override;
     procedure SetBytes(const AValue: TBytes); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: TBytes;
 
@@ -320,7 +339,9 @@ type
   protected
     function GetUnicodeString: UnicodeString; override;
     procedure SetUnicodeString(const AValue: UnicodeString); override;
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
   public
     Value: UnicodeString;
 
@@ -376,7 +397,9 @@ type
     function GetKeyByIndex(AIndex: integer): TBytes;
     procedure SetKeyByIndex(AIndex: integer; const Value: TBytes);
 
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
 
   public
     constructor Create;
@@ -478,7 +501,9 @@ type
     function GetValue       (AIndex: integer): TDIPValue; inline;
     procedure SetValue      (AIndex: integer; const Value: TDIPValue); inline;
 
+    {$IFNDEF DisableJSON}
     function GetAsJSON: TJSONValue; override;
+    {$ENDIF}
 
     property List: TObjectList<TDIPValue> read FList write FList;
   public
@@ -503,6 +528,25 @@ type
     function  Add(const AValue: UnicodeString): TDIPUnicodeString; overload; inline;
     function  Add(const AValue: Boolean): TDIPBoolean; overload; inline;
     function  Add(const AValue: TBytes): TDIPBytes; overload; inline;
+
+    procedure Add(AValues: TEnumerable<byte>); overload;
+    procedure Add(AValues: TEnumerable<integer>); overload;
+    procedure Add(AValues: TEnumerable<cardinal>); overload;
+    procedure Add(AValues: TEnumerable<int64>); overload;
+    procedure Add(AValues: TEnumerable<string>); overload;
+    procedure Add(AValues: TEnumerable<single>); overload;
+    procedure Add(AValues: TEnumerable<double>); overload;
+    procedure Add(AValues: TEnumerable<currency>); overload;
+    procedure Add(AValues: TEnumerable<TDateTime>); overload;
+    procedure Add(const AValues: array of byte); overload;
+    procedure Add(const AValues: array of integer); overload;
+    procedure Add(const AValues: array of cardinal); overload;
+    procedure Add(const AValues: array of int64); overload;
+    procedure Add(const AValues: array of string); overload;
+    procedure Add(const AValues: array of single); overload;
+    procedure Add(const AValues: array of double); overload;
+    procedure Add(const AValues: array of currency); overload;
+    procedure Add(const AValues: array of TDateTime); overload;
 
     procedure Delete(AIndex: integer); inline;
     function Extract(AIndex: integer; AShiftArray: Boolean): TDIPValue; inline; // delete without freing
@@ -802,11 +846,13 @@ begin
   result := nil;
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPValue.GetAsJSON: TJSONValue;
 begin
   RaiseError;
   result := nil;
 end;
+{$ENDIF}
 
 function TDIPValue.GetBoolean: Boolean;
 begin
@@ -872,6 +918,7 @@ begin
   Result := true;
 end;
 
+{$IFNDEF DisableXML}
 class function TDIPValue.NewXMLDocument: IXMLDocument;
 var
   XMLDoc: TXMLDocument;
@@ -882,13 +929,16 @@ begin
   // applications, set the DOMVendor property to ADOM XML v4.
   XMLDoc.DOMVendor := GetDOMVendor(sAdom4XmlVendor);
 end;
+{$ENDIF}
 
 class function TDIPValue.LoadFromFile(AFileName: string): TDIPValue;
 var
   Ext: string;
   UTF8Str: TUTF8String;
   S: TStream;
+{$IFNDEF DisableJSON}
   J: TJSONValue;
+{$ENDIF}
   T: UnicodeString;
 begin
   AFileName := Trim(AFileName);
@@ -902,6 +952,8 @@ begin
       FreeAndNil(S);
     end;
   end
+
+  {$IFNDEF DisableJSON}
   else if Ext='.json' then
   begin
     S := TFileStream.Create(AFileName, fmOpenRead);
@@ -921,12 +973,18 @@ begin
       FreeAndNil(J);
     end;
   end
+  {$ENDIF}
+
+  {$IFNDEF DisableXML}
   else if Ext='.xml' then
     result := LoadFromXMLFile(AFileName)
+  {$ENDIF}
+
   else
     raise Exception.Create('Error');
 end;
 
+{$IFNDEF DisableXML}
 class function TDIPValue.LoadFromXML(const AXML: string): TDIPArray;
 var
   XMLDoc: IXMLDocument;
@@ -953,7 +1011,9 @@ begin
   XMLDoc.LoadFromFile(AXMLfileName);
   Result := LoadFromXML(XMLDoc);
 end;
+{$ENDIF}
 
+{$IFNDEF DisableJSON}
 class function TDIPValue.LoadFromJSON(
   ASrc: TJSONValue): TDIPValue;
 var
@@ -995,6 +1055,7 @@ begin
   else
     raise Exception.Create('Error');
 end;
+{$ENDIF}
 
 (*
   <app v1="1" v2="2"> text <\app>
@@ -1009,6 +1070,7 @@ end;
     "title", "RAD Studio",
   ]]
 *)
+{$IFNDEF DisableXML}
 class function TDIPValue.LoadFromXML(ASrc: IXMLNode): TDIPArray;
 var
   i: Integer;
@@ -1071,6 +1133,7 @@ class function TDIPValue.LoadFromXML(ASrc: IXMLDocument): TDIPArray;
 begin
   result := LoadFromXML(ASrc.DocumentElement);
 end;
+{$ENDIF}
 
 class function TDIPValue.LoadFromStream(ASrc: TStream): TDIPValue;
 begin
@@ -1110,7 +1173,9 @@ procedure TDIPValue.SaveToFile(AFileName: string);
 var
   Ext: string;
   S: TStream;
+  {$IFNDEF DisableJSON}
   J: TJSONValue;
+  {$ENDIF}
   UTF8Str: TUTF8String;
   T: UnicodeString;
 begin
@@ -1125,6 +1190,7 @@ begin
       FreeAndNil(S);
     end;
   end
+  {$IFNDEF DisableJSON}
   else if Ext='.json' then
   begin
     J := SaveToJSON;
@@ -1142,14 +1208,17 @@ begin
       FreeAndNil(S);
     end;
   end
+  {$ENDIF}
   else
     raise Exception.Create('Error');
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPValue.SaveToJSON: TJSONValue;
 begin
   Result := AsJSON;
 end;
+{$ENDIF}
 
 procedure TDIPValue.SaveToStream(ADst: TStream; AEncoder: TDIPEncoder);
 begin
@@ -1393,6 +1462,7 @@ begin
     end;
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPDictionary.GetAsJSON: TJSONValue;
 var
   p: TJSONObject;
@@ -1404,6 +1474,7 @@ begin
     with Pairs[i] do
       p.AddPair(KeyToJSONString(Key), Value.AsJSON);
 end;
+{$ENDIF}
 
 function TDIPDictionary.GetDictionary: TDIPDictionary;
 begin
@@ -1807,6 +1878,7 @@ begin
   Result := Self;
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPArray.GetAsJSON: TJSONValue;
 var
   p: TJSONArray;
@@ -1817,6 +1889,7 @@ begin
   for i := 0 to Count-1 do
     p.AddElement(Values[i].AsJSON);
 end;
+{$ENDIF}
 
 function TDIPArray.GetCount: integer;
 begin
@@ -1896,6 +1969,150 @@ begin
   Result := List.IndexOf(Value);
 end;
 
+procedure TDIPArray.Add(AValues: TEnumerable<double>);
+var
+  v: double;
+begin
+  for v in AValues do
+    AddDouble(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<single>);
+var
+  v: single;
+begin
+  for v in AValues do
+    AddSingle(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<TDateTime>);
+var
+  v: TDateTime;
+begin
+  for v in AValues do
+    AddDateTime(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<currency>);
+var
+  v: Currency;
+begin
+  for v in AValues do
+    AddCurrency(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<string>);
+var
+  v: String;
+begin
+  for v in AValues do
+    AddString(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<integer>);
+var
+  v: Integer;
+begin
+  for v in AValues do
+    AddInteger(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<byte>);
+var
+  v: Byte;
+begin
+  for v in AValues do
+    AddInteger(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<int64>);
+var
+  v: Int64;
+begin
+  for v in AValues do
+    AddInteger(v);
+end;
+
+procedure TDIPArray.Add(AValues: TEnumerable<cardinal>);
+var
+  v: cardinal;
+begin
+  for v in AValues do
+    AddInteger(v);
+end;
+
+procedure TDIPArray.Add(const AValues: array of double);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddDouble(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of single);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddSingle(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of TDateTime);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddDateTime(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of currency);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddCurrency(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of string);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddString(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of integer);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddInteger(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of byte);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddInteger(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of int64);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddInteger(AValues[i]);
+end;
+
+procedure TDIPArray.Add(const AValues: array of cardinal);
+var
+  i: Integer;
+begin
+  for i := Low(AValues) to High(AValues) do
+    AddInteger(AValues[i]);
+end;
+
 { TDIPInteger }
 
 constructor TDIPInteger.Create;
@@ -1914,10 +2131,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPInteger(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPInteger.GetAsJSON: TJSONValue;
 begin
   result := TJSONNumber.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPInteger.GetInt64: Int64;
 begin
@@ -1957,10 +2176,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPSingle(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPSingle.GetAsJSON: TJSONValue;
 begin
   result := TJSONNumber.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPSingle.GetCurrency: Currency;
 begin
@@ -2010,10 +2231,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPDouble(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPDouble.GetAsJSON: TJSONValue;
 begin
   result := TJSONNumber.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPDouble.GetCurrency: Currency;
 begin
@@ -2063,10 +2286,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPCurrency(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPCurrency.GetAsJSON: TJSONValue;
 begin
   result := TJSONNumber.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPCurrency.GetCurrency: Currency;
 begin
@@ -2116,10 +2341,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPDateTime(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPDateTime.GetAsJSON: TJSONValue;
 begin
   result := TJSONNumber.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPDateTime.GetDateTime: TDateTime;
 begin
@@ -2149,6 +2376,7 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPBoolean(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPBoolean.GetAsJSON: TJSONValue;
 begin
   if Value then
@@ -2156,6 +2384,7 @@ begin
   else
     result := TJSONFalse.Create;
 end;
+{$ENDIF}
 
 function TDIPBoolean.GetBoolean: Boolean;
 begin
@@ -2196,10 +2425,12 @@ begin
   System.Move(Value[0], Result, SizeOf(T));
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPBytes.GetAsJSON: TJSONValue;
 begin
   result := TJSONString.Create(String(EncodeBase64(@Value[0], Length(Value))));
 end;
+{$ENDIF}
 
 procedure TDIPBytes.SetBytes(const AValue: TBytes);
 begin
@@ -2230,10 +2461,12 @@ begin
   Result := (AValue.DataType=DataType) and (TDIPUnicodeString(AValue).Value=Value);
 end;
 
+{$IFNDEF DisableJSON}
 function TDIPUnicodeString.GetAsJSON: TJSONValue;
 begin
   result := TJSONString.Create(Value);
 end;
+{$ENDIF}
 
 function TDIPUnicodeString.GetUnicodeString: UnicodeString;
 begin
