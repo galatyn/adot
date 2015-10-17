@@ -34,7 +34,7 @@ var
   e: TMultimap<string, integer>.TValueEnumerator;
   s: TSet<integer>;
   Key: string;
-  i: Integer;
+  i,v: Integer;
   p: TMultimap<string, integer>.TPair;
 begin
   m := nil;
@@ -56,11 +56,19 @@ begin
     Assert(m.ContainsKey('1.1'));
     Assert(m.ContainsKeys(['1.1', '2', '3', '']));
     Assert(not m.ContainsKey('4'));
-    Assert(not m.ContainsKeys(['1.1', '2', '3', '', '4']));
+    Assert(not m.ContainsKeys(['1.1', '2', '3', '', '4'], cctAll));
+    Assert(m.ContainsKeys(['1.1', '2', '3', '', '4'], cctAnyOf));
+    Assert(m.ContainsKeys(['1.1', '2', '3', ''], cctAll));
 
     i := 0;
     for p in m do
       i := i + p.Value;
+    assert(i=56);
+
+    i := 0;
+    for key in m.Keys do
+      for v in m[key] do
+        inc(i, v);
     assert(i=56);
 
     e := m.Values['1.1'];

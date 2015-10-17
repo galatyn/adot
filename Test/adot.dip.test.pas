@@ -4,7 +4,8 @@ interface
 
 uses
   adot.dip, System.SysUtils, System.Classes, System.Math,
-  System.JSON, System.JSONConsts, Xml.XMLDoc, Xml.XMLIntf;
+  System.JSON, System.JSONConsts, Xml.XMLDoc, Xml.XMLIntf,
+  System.Generics.Collections, System.Generics.Defaults;
 
 type
   TTestCases = class
@@ -354,9 +355,10 @@ begin
     FreeAndNil(m);
   end;
 
-  v := TDIPValue.LoadFromFile('d:\DB\JSON.examples\AllSets-x.json');
+  s := 'c:\work\!components\adot\Test\adot.dip.test.json';
+  v := TDIPValue.LoadFromFile(s);
   try
-    v.SaveToFile('d:\DB\JSON.examples\AllSets-x.dip');
+    v.SaveToFile(ChangefileExt(s, '.dip'));
   finally
     FreeAndNil(v);
   end;

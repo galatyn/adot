@@ -66,6 +66,7 @@ type
   TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
 
   // Unsorted multimap container (one key -> many values).
+  TContainsCheckType = (cctAll, cctAnyOf);
   TMultimap<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
   protected
     type
@@ -138,8 +139,6 @@ type
 
       TKeyEnumerator = TDictionary<TKey, integer>.TKeyEnumerator;
       TKeyCollection = TDictionary<TKey, integer>.TKeyCollection;
-
-      TContainsCheckType = (cctAll, cctAnyOf);
 
   protected
     FCount: TDictionary<TKey, integer>;

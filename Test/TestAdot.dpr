@@ -11,7 +11,8 @@ uses
   adot.Generics.Collections in '..\adot.Generics.Collections.pas',
   adot.Generics.Containers.Test in 'adot.Generics.Containers.Test.pas',
   adot.Strings in '..\adot.Strings.pas',
-  adot.Strings.Test in 'adot.Strings.Test.pas';
+  adot.Strings.Test in 'adot.Strings.Test.pas',
+  adot.dip.test in 'adot.dip.test.pas';
 
 {$R *.res}
 
