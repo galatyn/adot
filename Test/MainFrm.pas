@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, adot.PEG.Test,
   adot.Log, adot.VCL.Log, adot.Tools.Test,
-  adot.Generics.Containers.Test, adot.Strings.Test, adot.dip.test;
+  adot.Generics.Containers.Test, adot.Strings.Test;
 
 type
   TFormMain = class(TForm)
@@ -37,7 +37,7 @@ begin
   adot.Generics.Containers.Test.Run;
   adot.Strings.Test.Run;
   adot.PEG.Test.Run;
-  adot.dip.test.TTestCases.Run;
+  //adot.dip.test.TTestCases.Run;
 end;
 
 end.
