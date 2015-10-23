@@ -1,5 +1,24 @@
 unit adot.Tools;
-// compatible with all delphi platforms (Win x32/x64, Android, iOS)
+{
+  Compatible with all delphi platforms (Win x32/x64, Android, iOS).
+
+  TDelegatedMemoryStream
+  THex
+  TCryptoHash
+  TFastHash
+  TVar
+  TNumbers
+  TColors
+  TAutoFree<T>
+  TAuto<T>
+  TAutoFreeCollection
+  TNullable<T>
+  TThreadSafe<T>
+  TTiming
+  TFileTools
+  TRLE
+  TEnumeration<T>
+}
 
 interface
 
@@ -201,8 +220,6 @@ type
       FGuard: IUnknown;
 
     procedure SetValue(const Value: T);
-    function GetIsLink: boolean;
-    procedure SetAsLink(const Value: T);
   public
     class function Create: TAutoFree<T>; overload; static;
     class function Create(const AValue: T): TAutoFree<T>; overload; static;
@@ -217,16 +234,47 @@ type
     procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
 
     property Value: T read FValue write SetValue;
-    property AsLink: T read FValue write SetAsLink;
-    property IsLink: boolean read GetIsLink;
+  end;
+
+  // The only difference from TAutoFree is that TAuto creates instance at first request
+  // with default constructor ("Create" without parameters). It allows to use many classes
+  // without explicit creating/destroying:
+  // var
+  //   Lines: TAuto<TStringList>;
+  // begin
+  //   Lines.Value.Text := 'Test';
+  //   Lines.Value.SaveToFile('test.txt');
+  // end;
+  TAuto<T: class> = record
+  private
+    FValue: T;
+    FGuard: IUnknown;
+
+    procedure SetValue(const Value: T);
+    function CreateInstance: T;
+    function GetValue: T;
+  public
+    class function Create: TAutoFree<T>; overload; static;
+    class function Create(const AValue: T): TAutoFree<T>; overload; static;
+    class operator Equal(const ALeft, ARight: TAuto<T>): Boolean;
+    class operator Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
+    class operator NotEqual(const ALeft, ARight: TAuto<T>): Boolean;
+    class operator NotEqual(const ALeft: TAuto<T>; const ARight: T): Boolean;
+    class operator Implicit(const AValue: TAuto<T>): T;
+    class operator Implicit(const AValue: T): TAuto<T>;
+
+    procedure Clear;
+    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
+
+    property Value: T read GetValue write SetValue;
   end;
 
   // All objects placed in TAutoFreeCollection will be destroyed automatically
   // when collection goes out of the scope. Example (based on example from TAutoFree):
   // var
   //   C: TAutoFreeCollection;
-  //   A: TAutoFree<T1>;
-  //   B: TAutoFree<T2>;
+  //   A: T1;
+  //   B: T2;
   // begin
   //   A := C.Add( T1.Create );
   //   B := C.Add( T2.Create );
@@ -843,12 +891,6 @@ begin
   FGuard := TAutoFreeImpl.Create(FValue);
 end;
 
-procedure TAutoFree<T>.SetAsLink(const Value: T);
-begin
-  FGuard := nil;
-  FValue := Value;
-end;
-
 class operator TAutoFree<T>.Equal(const ALeft, ARight: TAutoFree<T>): Boolean;
 begin
   result := ALeft.Value=ARight.Value;
@@ -862,11 +904,6 @@ end;
 procedure TAutoFree<T>.Free;
 begin
   Clear;
-end;
-
-function TAutoFree<T>.GetIsLink: boolean;
-begin
-  result := (FGuard=nil) and (FValue<>nil);
 end;
 
 class operator TAutoFree<T>.Implicit(const AValue: TAutoFree<T>): T;
@@ -1699,6 +1736,101 @@ class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
   const ARight: T): Boolean;
 begin
   result := not (ALeft=ARight);
+end;
+
+{ TAuto<T> }
+
+procedure TAuto<T>.Clear;
+begin
+  FValue := nil;
+  FGuard := nil;
+end;
+
+class function TAuto<T>.Create: TAutoFree<T>;
+begin
+  result.FValue := nil;
+  result.FGuard := nil;
+end;
+
+class function TAuto<T>.Create(const AValue: T): TAutoFree<T>;
+begin
+  result.Value := AValue;
+end;
+
+class operator TAuto<T>.Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
+begin
+  result := ALeft.Value=ARight;
+end;
+
+class operator TAuto<T>.Equal(const ALeft, ARight: TAuto<T>): Boolean;
+begin
+  result := ALeft.Value=ARight.Value;
+end;
+
+procedure TAuto<T>.Free;
+begin
+  Clear;
+end;
+
+function TAuto<T>.CreateInstance: T;
+var
+  Value: TValue;
+  RttiContext: TRttiContext;
+  RttiType: TRttiType;
+  RttiInstanceType: TRttiInstanceType;
+  DefaultCreate: TRttiMethod;
+  i: TRttiMethod;
+begin
+  RttiContext := TRttiContext.Create;
+  RttiType := RttiContext.GetType(TypeInfo(T));
+
+  // First "Create" without parameters is the latest one, closest to type
+  // (there are can be inherited "create" methods without parameters).
+  DefaultCreate := RttiType.GetMethod('Create');
+
+  if Assigned(DefaultCreate) and RttiType.IsInstance then
+  begin
+    RttiInstanceType := RttiType.AsInstance;
+    Value := DefaultCreate.Invoke(RttiInstanceType.MetaclassType, []);
+    Result := Value.AsType<T>;
+  end
+  else
+    raise Exception.Create('"Create" constructor is not found');
+end;
+
+function TAuto<T>.GetValue: T;
+begin
+  if FGuard=nil then
+    Value := CreateInstance;
+  result := FValue;
+end;
+
+class operator TAuto<T>.Implicit(const AValue: T): TAuto<T>;
+begin
+  result.Value := AValue;
+end;
+
+class operator TAuto<T>.Implicit(const AValue: TAuto<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TAuto<T>.NotEqual(const ALeft: TAuto<T>; const ARight: T): Boolean;
+begin
+  result := ALeft.Value<>ARight;
+end;
+
+class operator TAuto<T>.NotEqual(const ALeft, ARight: TAuto<T>): Boolean;
+begin
+  result := ALeft.Value<>ARight.Value;
+end;
+
+procedure TAuto<T>.SetValue(const Value: T);
+begin
+  if FValue = Value then
+    Exit;
+  FValue := Value;
+  FGuard := TAutofree<T>.TAutoFreeImpl.Create(FValue);
 end;
 
 initialization

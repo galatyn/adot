@@ -61,6 +61,7 @@ type
   public
     constructor Create;
   end;
+  TTextMap<ValueType> = class(TTextDictionary<ValueType>);
 
   // Alias to dictionary.
   TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);

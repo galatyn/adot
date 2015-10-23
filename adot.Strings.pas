@@ -3,7 +3,8 @@ unit adot.Strings;
 interface
 
 uses
-  System.Classes, System.SysUtils, System.Character;
+  System.Classes, System.SysUtils, System.Character, adot.Tools,
+  adot.Generics.Collections;
 
 type
   TAnsiChars = set of AnsiChar;
@@ -25,18 +26,23 @@ type
   TTextWords = record
   public
     type
+
       TIsAlphaPredicate = reference to function(const C: Char):Boolean;
       TWordPosRec = record
         Start, Len: Integer;
       end;
+
     var
       Text: String;
       Position: integer;
       IsAlphaChar: TIsAlphaPredicate;
+      AlphaChars: TAutoFree<TSet<Char>>;
+      AlphaCharsIsWhitespaces: Boolean;
 
     // Set Text and IsAlpha predicate (default is IsLetterOrDigit).
-    constructor Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil);
-    function Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil): PTextWords;
+    constructor Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload;
+    constructor Create(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean); overload;
+    constructor Create(const AText: string; const ACharSet: string; AIsWhitespaces: Boolean); overload;
 
     // Find next word in the text.
     function FindNext(var AStart,ALen: integer):Boolean; overload;
@@ -84,8 +90,7 @@ function RandomString(ALen: integer; const AChars: string): string; overload;
 
 implementation
 
-uses
-  adot.Tools;
+
 
 function CharsToString(const AChars: TAnsiChars): string;
 var
@@ -135,17 +140,6 @@ end;
 
 { TTextWords }
 
-function TTextWords.Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil): PTextWords;
-begin
-  result := @Self;
-  Text := AText;
-  if Assigned(AIsAlphaPredicate) then
-    IsAlphaChar := AIsAlphaPredicate
-  else
-    IsAlphaChar := IsLetterOrDigit;
-  Reset;
-end;
-
 procedure TTextWords.Reset;
 begin
   Position := Low(Text);
@@ -167,13 +161,26 @@ function TTextWords.FindNext(var AStart, ALen: integer): Boolean;
 var
   i, Finish: integer;
 begin
+  Assert(Assigned(IsAlphaChar) or Assigned(AlphaChars.Value));
   AStart := -1;
-  for i := Position to Length(Text) do
-    if IsAlphaChar(Text[i]) then
-    begin
-      AStart := i;
-      Break;
-    end;
+
+  if Assigned(IsAlphaChar) then
+  begin
+    for i := Position to Length(Text) do
+      if IsAlphaChar(Text[i]) then
+      begin
+        AStart := i;
+        Break;
+      end
+  end
+  else
+    for i := Position to Length(Text) do
+      if AlphaCharsIsWhitespaces xor AlphaChars.Value.Contains(Text[i]) then
+      begin
+        AStart := i;
+        Break;
+      end;
+
   Result := AStart>=Low(Text);
   if not Result then
   begin
@@ -182,12 +189,24 @@ begin
     Exit;
   end;
   Finish := High(Text);
-  for i := AStart+1 to High(Text) do
-    if not IsAlphaChar(Text[i]) then
-    begin
-      Finish := i-1;
-      Break;
-    end;
+
+  if Assigned(IsAlphaChar) then
+  begin
+    for i := AStart+1 to High(Text) do
+      if not IsAlphaChar(Text[i]) then
+      begin
+        Finish := i-1;
+        Break;
+      end;
+  end
+  else
+    for i := AStart+1 to High(Text) do
+      if not (AlphaCharsIsWhitespaces xor AlphaChars.Value.Contains(Text[i])) then
+      begin
+        Finish := i-1;
+        Break;
+      end;
+
   Position := Finish+1;
   ALen := Finish-AStart+1;
 end;
@@ -210,7 +229,39 @@ end;
 
 constructor TTextWords.Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate);
 begin
-  Prepare(AText, AIsAlphaPredicate);
+  Text := AText;
+  if Assigned(AIsAlphaPredicate) then
+    IsAlphaChar := AIsAlphaPredicate
+  else
+    IsAlphaChar := IsLetterOrDigit;
+  Reset;
+end;
+
+constructor TTextWords.Create(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean);
+var
+  C: AnsiChar;
+begin
+  Text := AText;
+  AlphaChars := TSet<Char>.Create;
+  for C := Low(AnsiChar) to High(AnsiChar) do
+    if C in ACharSet then
+      AlphaChars.Value.Include(Char(C));
+  AlphaCharsIsWhitespaces := AIsWhitespaces;
+  IsAlphaChar := nil;
+  Reset;
+end;
+
+constructor TTextWords.Create(const AText, ACharSet: string; AIsWhitespaces: Boolean);
+var
+  i: Integer;
+begin
+  Text := AText;
+  AlphaChars := TSet<Char>.Create;
+  for i := Low(ACharSet) to High(ACharSet) do
+    AlphaChars.Value.Include(ACharSet[i]);
+  AlphaCharsIsWhitespaces := AIsWhitespaces;
+  IsAlphaChar := nil;
+  Reset;
 end;
 
 function TTextWords.Find(const ASubSequence: array of string;
@@ -300,7 +351,7 @@ class procedure TTextWords.Get(const AText: string; ADst: TStrings; AIsAlphaPred
 var
   w: TTextWords;
 begin
-  w.Prepare(AText, AIsAlphaPredicate);
+  w := TTextWords.Create(AText, AIsAlphaPredicate);
   w.Get(ADst);
 end;
 
@@ -308,7 +359,7 @@ class procedure TTextWords.Get(const AText: string; var ADst: TArray<String>; AI
 var
   w: TTextWords;
 begin
-  w.Prepare(AText, AIsAlphaPredicate);
+  w := TTextWords.Create(AText, AIsAlphaPredicate);
   w.Get(ADst);
 end;
 
@@ -316,7 +367,7 @@ class procedure TTextWords.Get(const AText: string; var ADst: TArray<TWordPosRec
 var
   w: TTextWords;
 begin
-  w.Prepare(AText, AIsAlphaPredicate);
+  w := TTextWords.Create(AText, AIsAlphaPredicate);
   w.Get(ADst);
 end;
 
