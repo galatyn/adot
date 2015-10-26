@@ -1780,7 +1780,6 @@ var
   RttiType: TRttiType;
   RttiInstanceType: TRttiInstanceType;
   DefaultCreate: TRttiMethod;
-  i: TRttiMethod;
 begin
   TypInf := TypeInfo(T);
   if TypInf.TypeData.ClassType.InheritsFrom(TComponent) then
