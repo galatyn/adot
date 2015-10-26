@@ -237,8 +237,8 @@ type
   end;
 
   // The only difference from TAutoFree is that TAuto creates instance at first request
-  // with default constructor ("Create" without parameters). It allows to use many classes
-  // without explicit creating/destroying:
+  // with default constructor ("Create(nil)" for components / "Create()" for others).
+  // It allows to use many classes without explicit creating/destroying:
   // var
   //   Lines: TAuto<TStringList>;
   // begin
@@ -1774,6 +1774,7 @@ end;
 
 function TAuto<T>.CreateInstance: T;
 var
+  TypInf: PTypeInfo;
   Value: TValue;
   RttiContext: TRttiContext;
   RttiType: TRttiType;
@@ -1781,21 +1782,27 @@ var
   DefaultCreate: TRttiMethod;
   i: TRttiMethod;
 begin
-  RttiContext := TRttiContext.Create;
-  RttiType := RttiContext.GetType(TypeInfo(T));
-
-  // First "Create" without parameters is the latest one, closest to type
-  // (there are can be inherited "create" methods without parameters).
-  DefaultCreate := RttiType.GetMethod('Create');
-
-  if Assigned(DefaultCreate) and RttiType.IsInstance then
-  begin
-    RttiInstanceType := RttiType.AsInstance;
-    Value := DefaultCreate.Invoke(RttiInstanceType.MetaclassType, []);
-    Result := Value.AsType<T>;
-  end
+  TypInf := TypeInfo(T);
+  if TypInf.TypeData.ClassType.InheritsFrom(TComponent) then
+    result := T(TComponentClass(TypInf.TypeData.ClassType).Create(nil))
   else
-    raise Exception.Create('"Create" constructor is not found');
+  begin
+    RttiContext := TRttiContext.Create;
+    RttiType := RttiContext.GetType(TypeInfo(T));
+
+    // First "Create" without parameters is the latest one, closest to type
+    // (there are can be inherited "create" methods without parameters).
+    DefaultCreate := RttiType.GetMethod('Create');
+
+    if Assigned(DefaultCreate) and RttiType.IsInstance then
+    begin
+      RttiInstanceType := RttiType.AsInstance;
+      Value := DefaultCreate.Invoke(RttiInstanceType.MetaclassType, []);
+      Result := Value.AsType<T>;
+    end
+    else
+      raise Exception.Create('"Create" constructor is not found');
+  end;
 end;
 
 function TAuto<T>.GetValue: T;
