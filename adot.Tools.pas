@@ -2,6 +2,17 @@ unit adot.Tools;
 {
   Compatible with all delphi platforms (Win x32/x64, Android, iOS).
 
+  Generics:
+
+  TAutoFree<T>           - class types wrapper for automatic destroying of objects
+  TAuto<T>               - TAutoFree<T> + automatic creating of instance at first request
+  TAutoFreeCollection    - simple container for automatic destroying of objects
+  TNullable<T>           - extend any type with "null" value (not assigned)
+  TThreadSafe<T>         - provides protected (critical section) access to variable
+  TCompound<A,B[,C]>     - simple combination of primitive types (record type with constructor)
+
+  Tools:
+
   TDelegatedMemoryStream
   THex
   TCryptoHash
@@ -9,11 +20,6 @@ unit adot.Tools;
   TVar
   TNumbers
   TColors
-  TAutoFree<T>
-  TAuto<T>
-  TAutoFreeCollection
-  TNullable<T>
-  TThreadSafe<T>
   TTiming
   TFileTools
   TRLE
@@ -220,6 +226,7 @@ type
       FGuard: IUnknown;
 
     procedure SetValue(const Value: T);
+    function GetIsLink: boolean;
   public
     class function Create: TAutoFree<T>; overload; static;
     class function Create(const AValue: T): TAutoFree<T>; overload; static;
@@ -232,8 +239,10 @@ type
 
     procedure Clear;
     procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
+    procedure SetAsLink(const Value: T); // keep only link (don't free object)
 
     property Value: T read FValue write SetValue;
+    property IsLink: boolean read GetIsLink;
   end;
 
   // The only difference from TAutoFree is that TAuto creates instance at first request
@@ -420,6 +429,24 @@ type
     class function MaxValue: Integer; inline; static;
     class function InRange(Value: Integer): Boolean; inline; static;
     class function EnsureRange(Value: Integer): Integer; inline; static;
+  end;
+
+  // Simple type to create combination of primitive types with constructor.
+  // Example:
+  // type
+  //   TId = TCompound(integer, integer);
+  // var
+  //   d: TMap<TId, double>;
+  // begin
+  //   d := TMap<TId, double>.Create;
+  //   d.Add( TId.Create(1, 1), 100);
+  //   d.Add( TId.Create(1, 2), 100);
+  //   d.Add( TId.Create(2, 1), 100);
+  TCompound<TypeA,TypeB: record> = record
+    A: TypeA;
+    B: TypeB;
+
+    constructor Create(const A: TypeA; const B: TypeB);
   end;
 
 implementation
@@ -881,6 +908,17 @@ end;
 class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
 begin
   result.Value := AValue;
+end;
+
+procedure TAutoFree<T>.SetAsLink(const Value: T);
+begin
+  FGuard := nil;
+  FValue := Value;
+end;
+
+function TAutoFree<T>.GetIsLink: boolean;
+begin
+  result := (FGuard=nil) and (FValue<>nil);
 end;
 
 procedure TAutofree<T>.SetValue(const Value: T);
@@ -1837,6 +1875,14 @@ begin
     Exit;
   FValue := Value;
   FGuard := TAutofree<T>.TAutoFreeImpl.Create(FValue);
+end;
+
+{ TCompound<TypeA, TypeB> }
+
+constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
+begin
+  Self.A := A;
+  Self.B := B;
 end;
 
 initialization

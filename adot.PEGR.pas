@@ -206,7 +206,7 @@ begin
       PEG.Value := TPEGByteSet.Create(ValueByteSet[0]);
     ecLink:
       begin
-        PEG.AsLink := ValueLink.BuildPEG(AParser);
+        PEG.SetAsLink( ValueLink.BuildPEG(AParser) );
 //        PEG.Value := TPEGLink.Create(nil);
 //        TPEGLink(PEG.Value).Value := ValueLink.BuildPEG(AParser);
       end;

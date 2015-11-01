@@ -2,8 +2,14 @@ unit adot.Generics.Collections;
 
 {
   - TSet<TValue>
+  - TMap<TKey,TValue> (TTextDictionary)
+  - TTextSet
+  - TTextDictionary<TValue>
+  - TTextMap<TValue> (TTextDictionary)
   - TMultimap<TKey,TValue>
   - THeap<T> (aka TPriorityQueue<T>)
+  - TCyclicBuffer<T>
+  - TCache<TKey,TValue>
 }
 interface
 
