@@ -347,6 +347,7 @@ type
     property Ptr: pointer read GetPointer;
   end;
 
+  // All operations are thread-safe and lock-free.
   TThreadSafe<T: record> = record
   public
     type
@@ -364,6 +365,8 @@ type
     procedure SetValue(const AValue: T);
     procedure SetComparer(const Value: IEqualityComparer<T>);
     procedure SetCopyProc(const Value: TCopyProc);
+    class procedure GetSafeOrder(const AItems: array of TThreadSafe<T>;
+      var AIndex: TArray<integer>); static;
   public
     class function Create: TThreadSafe<T>; overload; static;
     class function Create(const AValue: T): TThreadSafe<T>; overload; static;
@@ -374,6 +377,13 @@ type
     class operator Implicit(const AValue: TThreadSafe<T>): T;
     class operator Implicit(const AValue: T): TThreadSafe<T>;
     class operator Implicit(const AValue: Variant): TThreadSafe<T>;
+
+    // If access to several variables is required (copy, moving, ...), then
+    // it is not safe to lock records one by one, it may lead to deadlock
+    // (one thread has A and waiting for B, another has B and waiting for A).
+    // Lock/Unlock should be used in this case.
+    class procedure Lock(const A: array of TThreadSafe<T>); static;
+    class procedure Unlock(const A: array of TThreadSafe<T>); static;
 
     property Value: T read GetValue write SetValue;
     property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
@@ -1692,17 +1702,22 @@ end;
 class operator TThreadSafe<T>.Equal(const ALeft,
   ARight: TThreadSafe<T>): Boolean;
 begin
-  Result := ALeft=ARight.Value;
+  Lock([ALeft,ARight]);
+  try
+    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight.FValue);
+  finally
+    Unlock([ALeft,ARight]);
+  end;
 end;
 
 class operator TThreadSafe<T>.Equal(const ALeft: TThreadSafe<T>;
   const ARight: T): Boolean;
 begin
-  ALeft.CriticalSection.Acquire;
+  Lock([ALeft,ARight]);
   try
-    Result := ALeft.Comparer.Equals(ALeft.Value, ARight);
+    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight);
   finally
-    ALeft.CriticalSection.Leave;
+    Unlock([ALeft,ARight]);
   end;
 end;
 
@@ -1774,6 +1789,54 @@ class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
   const ARight: T): Boolean;
 begin
   result := not (ALeft=ARight);
+end;
+
+class procedure TThreadSafe<T>.GetSafeOrder(const AItems: array of TThreadSafe<T>;
+  var AIndex: TArray<integer>);
+var
+  Values: TArray<NativeUInt>;
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  SetLength(Values, Length(AItems));
+  SetLength(Index, Length(AItems));
+  for i := 0 to High(Index) do
+  begin
+    Index[i] := i;
+    Values[i] := NativeUInt(AItems[i].FCriticalSection.Value);
+  end;
+  TArray.Sort<integer>(Index, TDelegatedComparer<integer>.Create(
+    function(const L,R: integer): integer
+    begin
+      if Values[Index[L]]<Values[Index[R]] then
+        result := -1
+      else
+      if Values[Index[L]]>Values[Index[R]] then
+        result := 1
+      else
+        result := 0;
+    end));
+  AIndex := Index;
+end;
+
+class procedure TThreadSafe<T>.Lock(const A: array of TThreadSafe<T>);
+var
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  GetSafeOrder(A, Index);
+  for i := 0 to High(A) do
+    A[Index[i]].FCriticalSection.Value.Acquire;
+end;
+
+class procedure TThreadSafe<T>.Unlock(const A: array of TThreadSafe<T>);
+var
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  GetSafeOrder(A, Index);
+  for i := 0 to High(A) do
+    A[Index[i]].FCriticalSection.Value.Release;
 end;
 
 { TAuto<T> }
