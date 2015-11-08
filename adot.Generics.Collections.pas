@@ -2,7 +2,7 @@ unit adot.Generics.Collections;
 
 {
   - TSet<TValue>
-  - TMap<TKey,TValue> (TTextDictionary)
+  - TMap<TKey,TValue> (TDictionary)
   - TTextSet
   - TTextDictionary<TValue>
   - TTextMap<TValue> (TTextDictionary)
@@ -10,12 +10,13 @@ unit adot.Generics.Collections;
   - THeap<T> (aka TPriorityQueue<T>)
   - TCyclicBuffer<T>
   - TCache<TKey,TValue>
+  - TBinarySearchTree<TKey, TValue> (TAATree<TKey, TValue>)
 }
 interface
 
 uses
   System.Generics.Collections, System.Generics.Defaults, System.SysUtils,
-  System.Classes, System.Character;
+  System.Classes, System.Character, System.Math;
 
 type
   TEmptyRec = record end;
@@ -298,6 +299,83 @@ type
     procedure Add(K: TKey; V: TValue; ASize: longint);
     function TryGetValue(K: TKey; var V: TValue):boolean;
   end;
+
+  {
+    AA-tree is kind of balanced BST. It has good performance,
+    equal/comparable to Red-Black tree, but simplier implementation.
+    http://en.wikipedia.org/wiki/AA_tree
+  }
+  TItemHandle = NativeInt;
+  TAATree<TKey,TValue> = class
+  protected
+    type
+      P_AATreeItem = ^T_AATreeItem;
+      T_AATreeItem = record
+        Parent, Left, Right: P_AATreeItem;
+        Level: integer;
+        Data: TPair<TKey, TValue>;
+      end;
+
+    var
+      FCount: integer;
+      FRoot, FBottom, FDeleted, FLast: P_AATreeItem;
+      FComparer: IComparer<TKey>;
+
+    function AllocNewItem: P_AATreeItem; inline;
+    procedure ReleaseItem(p: P_AATreeItem); inline;
+    function PtrTohandle(p: P_AATreeItem): TItemHandle; inline;
+
+    procedure treeSkew(var p: P_AATreeItem); inline;
+    procedure treeSplit(var p: P_AATreeItem); inline;
+    function treeAdd(p,aparent: P_AATreeItem; var Dst: P_AATreeItem): Boolean;
+    function treeGetHeight(p: P_AATreeItem): integer;
+    function treeFullHeight: integer; inline;
+    function treeMin(p: P_AATreeItem): P_AATreeItem;
+    function treeMax(p: P_AATreeItem): P_AATreeItem;
+    function treeSuccessor(p: P_AATreeItem): P_AATreeItem;
+    function treePredecessor(p: P_AATreeItem): P_AATreeItem;
+    procedure treeClear(p: P_AATreeItem);
+    function treeDelete(x: P_AATreeItem; var t: P_AATreeItem): boolean;
+    function treeFind(const AKey: TKey): P_AATreeItem;
+    procedure treeMove(Src, Dst: P_AATreeItem); inline;
+    procedure treeReplace(Src, Dst: P_AATreeItem);
+
+    function GetKey(AHandle: TItemHandle): TKey;
+    function GetValue(AHandle: TItemHandle): TValue;
+    function GetValueByKey(const AKey: TKey): TValue;
+    procedure SetValueByKey(const AKey: TKey; const AValue: TValue);
+
+  public
+    constructor Create; overload;
+    constructor Create(AComparer: IComparer<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IComparer<TKey> = nil); overload;
+    destructor Destroy; override;
+
+    procedure Clear;
+    function Add(const AKey: TKey; const AValue: TValue): TItemHandle; overload;
+    procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
+    function AddOrSetValue(const AKey: TKey; const AValue: TValue): TItemHandle;
+    procedure Delete(AHandle: TItemHandle);
+    function ContainsKey(const Key: TKey): Boolean;
+    function ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
+    function MinValue: TValue;
+    function MaxValue: TValue;
+
+    // Enumeration of all items from min to max and in reverse order.
+    function FindMin: TItemHandle;
+    function FindMax: TItemHandle;
+    function Find(const AKey: TKey): TItemHandle;
+    function First(var AHandle: TItemHandle): Boolean;
+    function Prev(var AHandle: TItemHandle): Boolean;
+    function Next(var AHandle: TItemHandle): Boolean;
+
+    property TreeHeight: integer read treeFullHeight;
+    property Keys[AHandle: TItemHandle]: TKey read GetKey;
+    property Values[AHandle: TItemHandle]: TValue read GetValue;
+    property Items[const AKey: TKey]: TValue read GetValueByKey write SetValueByKey; default;
+  end;
+
+  TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
 implementation
 
@@ -1143,6 +1221,473 @@ end;
 function TCache<TKey, TValue>.TryGetValue(K: TKey; var V: TValue): boolean;
 begin
   result := Cache.TryGetValue(K,V);
+end;
+
+{ TAATree<TKey, TValue> }
+
+constructor TAATree<TKey, TValue>.Create;
+begin
+  Create(TComparer<TKey>.Default);
+end;
+
+constructor TAATree<TKey, TValue>.Create(AComparer: IComparer<TKey>);
+begin
+  inherited Create;
+  FComparer := AComparer;
+  FBottom := AllocNewItem;
+  FBottom.Level := 0;
+  FBottom.Left := FBottom;
+  FBottom.Right := FBottom;
+  FDeleted := FBottom;
+  FRoot := FBottom;
+  FLast := FBottom;
+end;
+
+constructor TAATree<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>;
+  const AComparer: IComparer<TKey> = nil);
+begin
+  Create(AComparer);
+  Add(ACollection);
+end;
+
+destructor TAATree<TKey, TValue>.Destroy;
+begin
+  Clear;
+  ReleaseItem(FBottom);
+  FBottom := nil;
+  FDeleted := nil;
+  FRoot := nil;
+  inherited;
+end;
+
+function TAATree<TKey, TValue>.AllocNewItem: P_AATreeItem;
+begin
+  result := AllocMem(SizeOf(T_AATreeItem));
+end;
+
+procedure TAATree<TKey, TValue>.ReleaseItem(p: P_AATreeItem);
+begin
+  if p=nil then
+    Exit;
+  p.Data.Key := Default(TKey);
+  p.Data.Value := Default(TValue);
+  FreeMem(p);
+end;
+
+function TAATree<TKey, TValue>.PtrTohandle(p: P_AATreeItem): TItemHandle;
+begin
+  if (p=nil) or (p=FBottom) then
+    Result := -1
+  else
+    Result := TItemHandle(p);
+end;
+
+procedure TAATree<TKey, TValue>.Clear;
+begin
+  if FCount=0 then
+    exit;
+  treeClear(FRoot);
+  FBottom.Level := 0;
+  FBottom.Left := FBottom;
+  FBottom.Right := FBottom;
+  FDeleted := FBottom;
+  FRoot := FBottom;
+end;
+
+function TAATree<TKey, TValue>.treeAdd(p, aparent: P_AATreeItem; var Dst: P_AATreeItem): Boolean;
+var
+  r: integer;
+begin
+  if Dst = FBottom then
+    with p^ do
+    begin
+      Parent := AParent;
+      Left := FBottom;
+      Right := FBottom;
+      Level := 1;
+      Dst := p;
+      result := true;
+      exit;
+    end;
+  r := FComparer.Compare(p.Data.Key, Dst.Data.Key);
+  if r>0 then
+    result := treeAdd(p, Dst, Dst.right)
+  else
+  if r<0 then
+    result := treeAdd(p, Dst, Dst.left)
+  else
+    result := false;
+  if not result then
+    exit;
+  treeSkew(Dst);
+  treeSplit(Dst);
+end;
+
+procedure TAATree<TKey, TValue>.treeClear(p: P_AATreeItem);
+begin
+  if (p=nil) or (p=FBottom) then
+    exit;
+  treeClear(p.Left);
+  treeClear(p.Right);
+  releaseItem(p);
+end;
+
+function TAATree<TKey, TValue>.treeDelete(x: P_AATreeItem; var t: P_AATreeItem): boolean;
+begin
+  result := false;
+  if (t=nil) or (t=FBottom) then
+    exit;
+
+  // search down the tree and set pointers last and deleted
+  Flast := t;
+  if FComparer.Compare(x.Data.Key, t.Data.Key) < 0 then
+    result := treeDelete(x, t.Left)
+  else
+  begin
+    FDeleted := t;
+    result := treeDelete(x, t.Right);
+  end;
+
+  // At the bottom of the tree we remove the element (if it exists)
+  if (t = FLast) and (FDeleted <> FBottom) and (FComparer.Compare(x.Data.Key, FDeleted.Data.Key)=0) then
+  begin
+    // We copy key, because it is necessary to rebalance the tree and move
+    // FDeleted into right position (position for FLast).
+    if FLast<>FDeleted then
+      FDeleted.Data.Key := FLast.Data.Key;
+    t.Right.Parent := t.Parent;
+    t := t.Right;
+    result := true;
+  end
+  else
+    // On the way back, we rebalance
+    if (t.Left.Level < t.Level-1) or (t.Right.Level < t.Level-1) then
+    begin
+      dec(t.Level);
+      if t.Right.Level > t.Level then
+        t.right.level := t.level;
+      treeSkew(t);
+      treeSkew(t.right);
+      treeSkew(t.right.right);
+      treeSplit(t);
+      treeSplit(t.right);
+    end;
+end;
+
+function TAATree<TKey, TValue>.treeFind(const AKey: TKey): P_AATreeItem;
+var n: integer;
+begin
+  result := FRoot;
+  while result<>FBottom do
+  begin
+    n := FComparer.Compare(AKey, result.Data.Key);
+    if n<0 then
+      result := result.Left
+    else
+      if n>0 then
+        result := result.Right
+      else
+        exit;
+  end;
+end;
+
+function TAATree<TKey, TValue>.treeFullHeight: integer;
+begin
+  result := treeGetHeight(FRoot);
+end;
+
+function TAATree<TKey, TValue>.treeGetHeight(p: P_AATreeItem): integer;
+begin
+  if p=FBottom then
+    result := 0
+  else
+    result := Max(treeGetHeight(p.Left), treeGetHeight(p.Right)) + 1;
+end;
+
+function TAATree<TKey, TValue>.treeMax(p: P_AATreeItem): P_AATreeItem;
+begin
+  if (p=nil) or (p=FBottom) then
+    result := nil
+  else
+  begin
+    result := p;
+    while result.Right <> FBottom do
+      result := result.Right;
+  end;
+end;
+
+function TAATree<TKey, TValue>.treeMin(p: P_AATreeItem): P_AATreeItem;
+begin
+  if (p=nil) or (p=FBottom) then
+    result := nil
+  else
+  begin
+    result := p;
+    while result.Left <> FBottom do
+      result := result.Left;
+  end;
+end;
+
+procedure TAATree<TKey, TValue>.treeMove(Src, Dst: P_AATreeItem);
+begin
+  Dst.Data := Src.Data;
+end;
+
+function TAATree<TKey, TValue>.treePredecessor(p: P_AATreeItem): P_AATreeItem;
+begin
+  if (p=nil) or (p=FBottom) then
+    result := nil
+  else
+    if p.Left <> FBottom then
+      result := treeMax(p.Left)
+    else
+    begin
+      result := p.Parent;
+      while (result<>FBottom) and (p=result.Left) do
+      begin
+        p := result;
+        result := result.Parent;
+      end;
+    end;
+end;
+
+function TAATree<TKey, TValue>.treeSuccessor(p: P_AATreeItem): P_AATreeItem;
+begin
+  if (p=nil) or (p=FBottom) then
+    result := nil
+  else
+    if p.Right <> FBottom then
+      result := treeMin(p.Right)
+    else
+    begin
+      result := p.Parent;
+      while (result<>FBottom) and (p=result.Right) do
+      begin
+        p := result;
+        result := result.Parent;
+      end;
+    end;
+end;
+
+// replace position of Dst item in the tree with Src item
+procedure TAATree<TKey, TValue>.treeReplace(Src, Dst: P_AATreeItem);
+begin
+  Src.Parent := Dst.Parent;
+  Src.Left := Dst.Left;
+  Src.Right := Dst.Right;
+  Src.Level := Dst.Level;
+
+  // root item has "parent=FBottom"
+  // but FBottom.left/right MUST refer to FBottom
+  if Src.Parent<>FBottom then
+    if Src.Parent.Left=Dst then
+      Src.Parent.Left := Src
+    else
+      Src.Parent.Right := Src;
+  Src.Left.Parent := Src;
+  Src.Right.Parent := Src;
+
+  if FRoot=Dst then
+    FRoot := Src;
+end;
+
+{
+  Src: 1(p)   Dst:  2(p)
+       / \          / \
+     2(t) X        Y  1(t)
+     / \              / \
+    Y   Z            Z   X
+}
+procedure TAATree<TKey, TValue>.treeSkew(var p: P_AATreeItem);
+var
+  t: P_AATreeItem;
+begin
+  if (p.Left.Level = p.Level) then
+  begin
+
+    // change Right&Left links
+    t := p;
+    p := p.left;
+    t.left := p.right;
+    p.right := t;
+
+    // change Parent links
+    p.Parent := t.Parent;
+    t.Parent := p;
+    t.Left.Parent := t;
+  end;
+end;
+
+{
+  Src: 1(p)     Dst:  2(p)
+       / \            /  \
+     X  2(t)        1(t)  Z
+        /  \        /  \
+       Y    Z      X    Y
+}
+procedure TAATree<TKey, TValue>.treeSplit(var p: P_AATreeItem);
+var
+  t: P_AATreeItem;
+begin
+  if (p.Right.Right.Level = p.Level) then
+  begin
+
+    // change Right&Left links
+    t := p;
+    p := p.Right;
+    t.Right := p.Left;
+    p.Left := t;
+    inc(p.Level);
+
+    // change Parent links
+    p.Parent := t.Parent;
+    t.Parent := p;
+    t.Right.Parent := t;
+  end;
+end;
+
+function TAATree<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue): TItemHandle;
+var
+  p: P_AATreeItem;
+begin
+  p := AllocNewItem;
+  p.Data.Key := AKey;
+  p.Data.Value := AValue;
+  if treeAdd(p, FBottom, FRoot) then
+    result := TItemHandle(p)
+  else
+  begin
+    ReleaseItem(p);
+    result := -1;
+  end;
+end;
+
+procedure TAATree<TKey, TValue>.Add(const ACollection: TEnumerable<TPair<TKey,TValue>>);
+var
+  Pair: TPair<TKey,TValue>;
+begin
+  for Pair in ACollection do
+    Add(Pair.Key, Pair.Value);
+end;
+
+function TAATree<TKey, TValue>.AddOrSetValue(const AKey: TKey; const AValue: TValue): TItemHandle;
+var
+  h: TItemHandle;
+begin
+  h := Find(AKey);
+  if h<>-1 then
+    Delete(h);
+  result := Add(AKey, AValue);
+end;
+
+procedure TAATree<TKey, TValue>.Delete(AHandle: TItemHandle);
+begin
+  if not treeDelete(P_AATreeItem(AHandle), FRoot) then
+    exit;
+
+  // content of FDeleted has cleaned & replaced with key from FLast
+  // now we move FLast into position of FDeleted
+  if FLast<>FDeleted then
+  begin
+    treeMove(FLast, FDeleted);
+    treeReplace(FLast, FDeleted);
+  end;
+
+  // ItemDeleted for deleted item has called from treeDelete
+  // so we must not call it again
+  ReleaseItem(FDeleted);
+  FDeleted := FBottom;
+  FLast := FBottom;
+end;
+
+function TAATree<TKey, TValue>.Find(const AKey: TKey): TItemHandle;
+begin
+  result := PtrToHandle( treeFind(AKey) );
+end;
+
+function TAATree<TKey, TValue>.FindMax: TItemHandle;
+begin
+  result := PtrTohandle( treeMax(FRoot) );
+end;
+
+function TAATree<TKey, TValue>.FindMin: TItemHandle;
+begin
+  result := PtrTohandle( treeMin(FRoot) );
+end;
+
+function TAATree<TKey, TValue>.First(var AHandle: TItemHandle): Boolean;
+begin
+  AHandle := PtrTohandle( treeMin(FRoot) );
+  result := AHandle<>-1;
+end;
+
+function TAATree<TKey, TValue>.Prev(var AHandle: TItemHandle): Boolean;
+begin
+  AHandle := PtrToHandle( treePredecessor(P_AATreeItem(AHandle)) );
+  result := AHandle<>-1;
+end;
+
+function TAATree<TKey, TValue>.Next(var AHandle: TItemHandle): Boolean;
+begin
+  AHandle := PtrToHandle( treeSuccessor(P_AATreeItem(AHandle)) );
+  result := AHandle<>-1;
+end;
+
+function TAATree<TKey, TValue>.GetKey(AHandle: TItemHandle): TKey;
+begin
+  result := P_AATreeItem(AHandle).Data.Key;
+end;
+
+function TAATree<TKey, TValue>.GetValue(AHandle: TItemHandle): TValue;
+begin
+  if AHandle<>-1 then
+    result := P_AATreeItem(AHandle).Data.Value
+  else
+    raise Exception.Create('Error');
+end;
+
+function TAATree<TKey, TValue>.GetValueByKey(const AKey: TKey): TValue;
+begin
+  result := Values[Find(AKey)];
+end;
+
+procedure TAATree<TKey, TValue>.SetValueByKey(const AKey: TKey; const AValue: TValue);
+var
+  h: TItemHandle;
+begin
+  h := Find(AKey);
+  if h<>-1 then
+    Delete(h);
+  Add(AKey, AValue);
+end;
+
+function TAATree<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
+begin
+  result := Find(Key)<>-1;
+end;
+
+function TAATree<TKey, TValue>.ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
+var
+  h: TItemHandle;
+begin
+  if AEqualityComparer=nil then
+    AEqualityComparer := TEqualityComparer<TValue>.Default;
+  if not First(h) then
+    result := False
+  else
+    repeat
+      result := AEqualityComparer.Equals(Value, Values[h]);
+    until result or not Next(h);
+end;
+
+function TAATree<TKey, TValue>.MaxValue: TValue;
+begin
+  result := Values[FindMin];
+end;
+
+function TAATree<TKey, TValue>.MinValue: TValue;
+begin
+  result := Values[FindMax];
 end;
 
 end.
