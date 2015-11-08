@@ -245,8 +245,12 @@ type
     property IsLink: boolean read GetIsLink;
   end;
 
-  // The only difference from TAutoFree is that TAuto creates instance at first request
-  // with default constructor ("Create(nil)" for components / "Create()" for others).
+  // Main difference from TAutoFree is that TAuto automatically creates instance
+  // at first request. Class should have at least one supported constructor:
+  //   Create();
+  //   Create(ACapacity: integer);
+  //   Create(AOwner: TComponent);
+  //
   // It allows to use many classes without explicit creating/destroying:
   // var
   //   Lines: TAuto<TStringList>;
@@ -273,7 +277,7 @@ type
     class operator Implicit(const AValue: T): TAuto<T>;
 
     procedure Clear;
-    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
+    procedure Free; inline; // Alias to "Clear", more compatible with regular syntax.
 
     property Value: T read GetValue write SetValue;
   end;
@@ -1880,29 +1884,68 @@ var
   RttiContext: TRttiContext;
   RttiType: TRttiType;
   RttiInstanceType: TRttiInstanceType;
-  DefaultCreate: TRttiMethod;
+  Method: TRttiMethod;
+  Params: TArray<TRttiParameter>;
 begin
   TypInf := TypeInfo(T);
+
+  // We use more general solution for "Create(AOwner: TComponent)", but
+  // for descendants of TComponent we can avoid extra checks.
   if TypInf.TypeData.ClassType.InheritsFrom(TComponent) then
-    result := T(TComponentClass(TypInf.TypeData.ClassType).Create(nil))
-  else
+    result := T(TComponentClass(TypInf.TypeData.ClassType).Create(nil));
   begin
     RttiContext := TRttiContext.Create;
     RttiType := RttiContext.GetType(TypeInfo(T));
+    if not RttiType.IsInstance then
+      Exit;
+    for Method in RttiType.GetMethods do
+      if Method.IsConstructor and SameText(Method.Name, 'Create') then
+      begin
+        Params := Method.GetParameters;
 
-    // First "Create" without parameters is the latest one, closest to type
-    // (there are can be inherited "create" methods without parameters).
-    DefaultCreate := RttiType.GetMethod('Create');
+        // "Create()".
+        if Length(Params)=0 then
+        begin
+          RttiInstanceType := RttiType.AsInstance;
+          Value := Method.Invoke(RttiInstanceType.MetaclassType, []);
+          Result := Value.AsType<T>;
+          Exit;
+        end;
 
-    if Assigned(DefaultCreate) and RttiType.IsInstance then
-    begin
-      RttiInstanceType := RttiType.AsInstance;
-      Value := DefaultCreate.Invoke(RttiInstanceType.MetaclassType, []);
-      Result := Value.AsType<T>;
-    end
-    else
-      raise Exception.Create('"Create" constructor is not found');
-  end;
+        // "Create(ACapacity: integer = 0)".
+        // There is no way to check default value, but usually such constructor
+        // hides "Create()", for example:
+        // "TDictionary<byte,byte>.Create" means "Create(ACapacity = 0)".
+        if (Length(Params)=1) and
+          ((Params[0].Flags=[]) or (Params[0].Flags=[TParamFlag.pfConst])) and
+          (Params[0].ParamType<>nil) and (Params[0].ParamType.TypeKind in [tkInteger, tkInt64]) and
+          (AnsiSameText(Params[0].Name, 'ACapacity') or AnsiSameText(Params[0].Name, 'Capacity'))
+        then
+        begin
+          RttiInstanceType := RttiType.AsInstance;
+          Value := Method.Invoke(RttiInstanceType.MetaclassType, [0]);
+          Result := Value.AsType<T>;
+          Exit;
+        end;
+
+        // "Create(AOwner: TComponent)".
+        if (Length(Params)=1) and
+          (Params[0].Flags=[TParamFlag.pfAddress]) and
+          (Params[0].ParamType<>nil) and (Params[0].ParamType.TypeKind in [tkClass]) and
+          (AnsiSameText(Params[0].Name, 'AOwner') or AnsiSameText(Params[0].Name, 'Owner'))
+        then
+        begin
+          RttiInstanceType := RttiType.AsInstance;
+          Value := Method.Invoke(RttiInstanceType.MetaclassType, [nil]);
+          Result := Value.AsType<T>;
+          Exit;
+        end;
+
+      end; // For Method in RttiType.GetMethods
+  end; // If
+
+  // Should never happend, because TObject has "Create()".
+  raise Exception.Create('Default constructor is not found');
 end;
 
 function TAuto<T>.GetValue: T;
