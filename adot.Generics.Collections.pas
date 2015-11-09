@@ -1,11 +1,13 @@
 unit adot.Generics.Collections;
 
 {
-  - TSet<TValue>
-  - TMap<TKey,TValue> (TDictionary)
+  - TUnsortedSet<TValue>
+  - TSet<TValue> (sorted set of values)
+  - TUnsortedMap<TKey,TValue>
+  - TMap<TKey,TValue> (sorted by key set of pairs key->value)
   - TTextSet
   - TTextDictionary<TValue>
-  - TTextMap<TValue> (TTextDictionary)
+?  - TTextMap<TValue> (TTextDictionary)
   - TMultimap<TKey,TValue>
   - THeap<T> (aka TPriorityQueue<T>)
   - TCyclicBuffer<T>
@@ -21,7 +23,7 @@ uses
 type
   TEmptyRec = record end;
 
-  TSet<TValue> = class(TEnumerable<TValue>)
+  TUnsortedSet<TValue> = class(TEnumerable<TValue>)
   private
   protected
     type
@@ -56,7 +58,7 @@ type
   end;
 
   // Set of case insensitive strings.
-  TTextSet = class(TSet<String>)
+  TTextSet = class(TUnsortedSet<String>)
   public
     constructor Create(ACapacity: integer = 0); overload;
     constructor Create(const Values: array of String); overload;
@@ -71,7 +73,7 @@ type
   TTextMap<ValueType> = class(TTextDictionary<ValueType>);
 
   // Alias to dictionary.
-  TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
+  TUnsortedMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
 
   // Unsorted multimap container (one key -> many values).
   TContainsCheckType = (cctAll, cctAnyOf);
@@ -179,7 +181,7 @@ type
     //      if m.Current=10 then m.RemoveValue(e);
     function Remove(const AKey: TKey):Boolean;
     procedure RemoveValue(const AEnum: TValueEnumerator);
-    procedure RemoveValues(const AKey: TKey; const AValues: TSet<TValue>); overload;
+    procedure RemoveValues(const AKey: TKey; const AValues: TUnsortedSet<TValue>); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: array of TValue); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
 
@@ -306,6 +308,7 @@ type
     http://en.wikipedia.org/wiki/AA_tree
   }
   TItemHandle = NativeInt;
+  TSearchType = (stAll, stAny);
   TAATree<TKey,TValue> = class
   protected
     type
@@ -322,11 +325,11 @@ type
       FComparer: IComparer<TKey>;
 
     function AllocNewItem: P_AATreeItem; inline;
-    procedure ReleaseItem(p: P_AATreeItem); inline;
-    function PtrTohandle(p: P_AATreeItem): TItemHandle; inline;
+    procedure ReleaseItem(p: P_AATreeItem);
+    function PtrTohandle(p: P_AATreeItem): TItemHandle;
 
-    procedure treeSkew(var p: P_AATreeItem); inline;
-    procedure treeSplit(var p: P_AATreeItem); inline;
+    procedure treeSkew(var p: P_AATreeItem);
+    procedure treeSplit(var p: P_AATreeItem);
     function treeAdd(p,aparent: P_AATreeItem; var Dst: P_AATreeItem): Boolean;
     function treeGetHeight(p: P_AATreeItem): integer;
     function treeFullHeight: integer; inline;
@@ -342,6 +345,7 @@ type
 
     function GetKey(AHandle: TItemHandle): TKey;
     function GetValue(AHandle: TItemHandle): TValue;
+    procedure SetValue(AHandle: TItemHandle; const AValue: TValue);
     function GetValueByKey(const AKey: TKey): TValue;
     procedure SetValueByKey(const AKey: TKey; const AValue: TValue);
 
@@ -355,11 +359,17 @@ type
     function Add(const AKey: TKey; const AValue: TValue): TItemHandle; overload;
     procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
     function AddOrSetValue(const AKey: TKey; const AValue: TValue): TItemHandle;
+    function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
     procedure Delete(AHandle: TItemHandle);
-    function ContainsKey(const Key: TKey): Boolean;
+    procedure Remove(const AKey: TKey); overload;
+    procedure Remove(const AKeys: array of TKey); overload;
+    procedure Remove(const AKeys: TEnumerable<TKey>); overload;
+    function ContainsKey(const Key: TKey): Boolean; overload;
+    function ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType = stAll): Boolean; overload;
+    function ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType = stAll): Boolean; overload;
     function ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
-    function MinValue: TValue;
-    function MaxValue: TValue;
+    function MinKey: TKey;
+    function MaxKey: TKey;
 
     // Enumeration of all items from min to max and in reverse order.
     function FindMin: TItemHandle;
@@ -371,9 +381,115 @@ type
 
     property TreeHeight: integer read treeFullHeight;
     property Keys[AHandle: TItemHandle]: TKey read GetKey;
-    property Values[AHandle: TItemHandle]: TValue read GetValue;
+    property Values[AHandle: TItemHandle]: TValue read GetValue write SetValue;
     property Items[const AKey: TKey]: TValue read GetValueByKey write SetValueByKey; default;
+    property Count: integer read FCount;
   end;
+
+  TMap<TKey,TValue> = Class(TEnumerable<TPair<TKey,TValue>>)
+  protected
+    FTree: TAATree<TKey,TValue>;
+
+    type
+      TPairEnumerator = class(TEnumerator<TPair<TKey, TValue>>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+        FCurrentItem: TItemHandle;
+        FInEnumKey: boolean;
+
+        function DoGetCurrent: TPair<TKey,TValue>; override;
+        function DoMoveNext: Boolean; override;
+      public
+        constructor Create(const AMultimap: TMultimap<TKey,TValue>);
+      end;
+
+      TKeyEnumerator = class(TEnumerator<TKey>)
+      private
+        FPairEnumerator: TPairEnumerator;
+
+        function GetCurrent: TKey;
+      protected
+        function DoGetCurrent: TKey; override;
+        function DoMoveNext: Boolean; override;
+      public
+        constructor Create(const AMap: TMap<TKey,TValue>);
+        property Current: TKey read GetCurrent;
+        function MoveNext: Boolean;
+      end;
+
+      TValueEnumerator = class(TEnumerator<TValue>)
+      private
+        FPairEnumerator: TPairEnumerator;
+
+        function GetCurrent: TValue;
+      protected
+        function DoGetCurrent: TValue; override;
+        function DoMoveNext: Boolean; override;
+      public
+        constructor Create(const AMap: TMap<TKey,TValue>);
+        property Current: TValue read GetCurrent;
+        function MoveNext: Boolean;
+      end;
+
+      TKeyCollection = class(TEnumerable<TKey>)
+      private
+        [Weak] FDictionary: TDictionary<TKey,TValue>;
+        function GetCount: Integer;
+      protected
+        function DoGetEnumerator: TEnumerator<TKey>; override;
+      public
+        constructor Create(const ADictionary: TDictionary<TKey,TValue>);
+        function GetEnumerator: TKeyEnumerator; reintroduce;
+        function ToArray: TArray<TKey>; override; final;
+        property Count: Integer read GetCount;
+      end;
+
+      TValueCollection = class(TEnumerable<TValue>)
+      private
+        [Weak] FDictionary: TDictionary<TKey,TValue>;
+        function GetCount: Integer;
+      protected
+        function DoGetEnumerator: TEnumerator<TValue>; override;
+      public
+        constructor Create(const ADictionary: TDictionary<TKey,TValue>);
+        function GetEnumerator: TValueEnumerator; reintroduce;
+        function ToArray: TArray<TValue>; override; final;
+        property Count: Integer read GetCount;
+      end;
+
+  public
+    constructor Create; overload;
+    constructor Create(AComparer: IComparer<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IComparer<TKey> = nil); overload;
+    destructor Destroy; override;
+
+    procedure Clear;
+    procedure Add(const AKey: TKey; const AValue: TValue); overload;
+    procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
+    procedure AddOrSetValue(const AKey: TKey; const AValue: TValue);
+    function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+    procedure Remove(const AKey: TKey); overload;
+    procedure Remove(const AKeys: array of TKey); overload;
+    procedure Remove(const AKeys: TEnumerable<TKey>); overload;
+    function ContainsKey(const Key: TKey): Boolean; overload;
+    function ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType = stAll): Boolean; overload;
+    function ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType = stAll): Boolean; overload;
+    function ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
+    function MinKey: TKey;
+    function MaxKey: TKey;
+
+    function Next(const AKey: TKey; var ANewKey: TKey): Boolean;
+    function Prev(const AKey: TKey; var ANewKey: TKey): Boolean;
+
+    property TreeHeight: integer read GetTreeHeight;
+    property Keys: TKeyCollection read GetKeys;
+    property Values: TValueCollection read GetValues;
+    property Items[const AKey: TKey]: TValue read GetItem write SetItem ; default;
+    property Count: integer read GetCount;
+  end;
+
+//  TSet<TKey> = Class(TAATree<TKey,TEmptyRec>)
+//  End;
 
   TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
@@ -381,45 +497,45 @@ implementation
 
 { TSet<TValue> }
 
-constructor TSet<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TUnsortedSet<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   FSet := TDictionary<TValue, TEmptyRec>.Create(ACapacity, AComparer);
 end;
 
-constructor TSet<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TUnsortedSet<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
-constructor TSet<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TUnsortedSet<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
-destructor TSet<TValue>.Destroy;
+destructor TUnsortedSet<TValue>.Destroy;
 begin
   FreeAndNil(FSet);
   inherited;
 end;
 
-function TSet<TValue>.DoGetEnumerator: TEnumerator<TValue>;
+function TUnsortedSet<TValue>.DoGetEnumerator: TEnumerator<TValue>;
 begin
   Result := GetEnumerator;
 end;
 
-function TSet<TValue>.GetCount: integer;
+function TUnsortedSet<TValue>.GetCount: integer;
 begin
   result := FSet.Count;
 end;
 
-function TSet<TValue>.GetEnumerator: TEnumerator;
+function TUnsortedSet<TValue>.GetEnumerator: TEnumerator;
 begin
   result := FSet.Keys.GetEnumerator;
 end;
 
-procedure TSet<TValue>.Remove(const ASet: array of TValue);
+procedure TUnsortedSet<TValue>.Remove(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -427,7 +543,7 @@ begin
     Remove(ASet[i]);
 end;
 
-procedure TSet<TValue>.Remove(const AValues: TEnumerable<TValue>);
+procedure TUnsortedSet<TValue>.Remove(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -435,13 +551,13 @@ begin
     Remove(Item);
 end;
 
-procedure TSet<TValue>.Add(const AValue: TValue);
+procedure TUnsortedSet<TValue>.Add(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.Add(AValue, R);
 end;
 
-procedure TSet<TValue>.Add(const ASet: array of TValue);
+procedure TUnsortedSet<TValue>.Add(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -449,7 +565,7 @@ begin
     Add(ASet[i]);
 end;
 
-procedure TSet<TValue>.Add(const AValues: TEnumerable<TValue>);
+procedure TUnsortedSet<TValue>.Add(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -457,13 +573,13 @@ begin
     Add(Item);
 end;
 
-procedure TSet<TValue>.Include(const AValue: TValue);
+procedure TUnsortedSet<TValue>.Include(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.AddOrSetValue(AValue, R);
 end;
 
-procedure TSet<TValue>.Include(const ASet: array of TValue);
+procedure TUnsortedSet<TValue>.Include(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -471,7 +587,7 @@ begin
     Include(ASet[i]);
 end;
 
-procedure TSet<TValue>.Include(const AValues: TEnumerable<TValue>);
+procedure TUnsortedSet<TValue>.Include(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -479,17 +595,17 @@ begin
     Include(Item);
 end;
 
-procedure TSet<TValue>.Clear;
+procedure TUnsortedSet<TValue>.Clear;
 begin
   FSet.Clear;
 end;
 
-function TSet<TValue>.Contains(const AValue: TValue): boolean;
+function TUnsortedSet<TValue>.Contains(const AValue: TValue): boolean;
 begin
   result := FSet.ContainsKey(AValue);
 end;
 
-function TSet<TValue>.Contains(const ASet: array of TValue): boolean;
+function TUnsortedSet<TValue>.Contains(const ASet: array of TValue): boolean;
 var
   i: Integer;
 begin
@@ -499,7 +615,7 @@ begin
   result := True;
 end;
 
-function TSet<TValue>.Contains(const AValues: TEnumerable<TValue>): boolean;
+function TUnsortedSet<TValue>.Contains(const AValues: TEnumerable<TValue>): boolean;
 var
   Item: TValue;
 begin
@@ -509,7 +625,7 @@ begin
   result := True;
 end;
 
-procedure TSet<TValue>.Remove(const AValue: TValue);
+procedure TUnsortedSet<TValue>.Remove(const AValue: TValue);
 begin
   FSet.Remove(AValue);
 end;
@@ -659,12 +775,12 @@ end;
 function TMultimap<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: array of TValue; AContainsCheckType: TContainsCheckType;
   AComparer: IEqualityComparer<TValue>): Boolean;
 var
-  ValueSet: TSet<TValue>;
+  ValueSet: TUnsortedSet<TValue>;
   i: Integer;
 begin
   if AComparer=nil then
     AComparer := TEqualityComparer<TValue>.Default;
-  ValueSet := TSet<TValue>.Create(0, AComparer);
+  ValueSet := TUnsortedSet<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
       cctAll:
@@ -692,12 +808,12 @@ end;
 function TMultimap<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: TEnumerable<TValue>; AContainsCheckType: TContainsCheckType;
   AComparer: IEqualityComparer<TValue>): Boolean;
 var
-  ValueSet: TSet<TValue>;
+  ValueSet: TUnsortedSet<TValue>;
   V: TValue;
 begin
   if AComparer=nil then
     AComparer := TEqualityComparer<TValue>.Default;
-  ValueSet := TSet<TValue>.Create(0, AComparer);
+  ValueSet := TUnsortedSet<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
       cctAll:
@@ -807,7 +923,7 @@ begin
     FCount.AddOrSetValue(AEnum.Key, LastKey.Number);
 end;
 
-procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TSet<TValue>);
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TUnsortedSet<TValue>);
 var
   Enum: TValueEnumerator;
 begin
@@ -819,9 +935,9 @@ end;
 
 procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: array of TValue);
 var
-  s: TSet<TValue>;
+  s: TUnsortedSet<TValue>;
 begin
-  s := TSet<TValue>.Create(AValues);
+  s := TUnsortedSet<TValue>.Create(AValues);
   try
     RemoveValues(AKey, s);
   finally
@@ -831,9 +947,9 @@ end;
 
 procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>);
 var
-  s: TSet<TValue>;
+  s: TUnsortedSet<TValue>;
 begin
-  s := TSet<TValue>.Create(AValues);
+  s := TUnsortedSet<TValue>.Create(AValues);
   try
     RemoveValues(AKey, s);
   finally
@@ -1292,6 +1408,7 @@ begin
   FBottom.Right := FBottom;
   FDeleted := FBottom;
   FRoot := FBottom;
+  FCount := 0;
 end;
 
 function TAATree<TKey, TValue>.treeAdd(p, aparent: P_AATreeItem; var Dst: P_AATreeItem): Boolean;
@@ -1469,6 +1586,16 @@ begin
     end;
 end;
 
+function TAATree<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+var
+  h: TItemHandle;
+begin
+  h := Find(Key);
+  result := h<>-1;
+  if result then
+    Value := Values[h];
+end;
+
 // replace position of Dst item in the tree with Src item
 procedure TAATree<TKey, TValue>.treeReplace(Src, Dst: P_AATreeItem);
 begin
@@ -1554,7 +1681,10 @@ begin
   p.Data.Key := AKey;
   p.Data.Value := AValue;
   if treeAdd(p, FBottom, FRoot) then
-    result := TItemHandle(p)
+  begin
+    result := TItemHandle(p);
+    inc(FCount);
+  end
   else
   begin
     ReleaseItem(p);
@@ -1571,17 +1701,19 @@ begin
 end;
 
 function TAATree<TKey, TValue>.AddOrSetValue(const AKey: TKey; const AValue: TValue): TItemHandle;
-var
-  h: TItemHandle;
 begin
-  h := Find(AKey);
-  if h<>-1 then
-    Delete(h);
-  result := Add(AKey, AValue);
+  result := Find(AKey);
+  if result=-1 then
+    result := Add(AKey, AValue)
+  else
+    Values[result] := AValue;
 end;
 
 procedure TAATree<TKey, TValue>.Delete(AHandle: TItemHandle);
 begin
+  if AHandle=-1 then
+    raise Exception.Create('Error');
+
   if not treeDelete(P_AATreeItem(AHandle), FRoot) then
     exit;
 
@@ -1598,6 +1730,8 @@ begin
   ReleaseItem(FDeleted);
   FDeleted := FBottom;
   FLast := FBottom;
+
+  dec(FCount);
 end;
 
 function TAATree<TKey, TValue>.Find(const AKey: TKey): TItemHandle;
@@ -1646,6 +1780,14 @@ begin
     raise Exception.Create('Error');
 end;
 
+procedure TAATree<TKey, TValue>.SetValue(AHandle: TItemHandle; const AValue: TValue);
+begin
+  if AHandle<>-1 then
+    P_AATreeItem(AHandle).Data.Value := AValue
+  else
+    raise Exception.Create('Error');
+end;
+
 function TAATree<TKey, TValue>.GetValueByKey(const AKey: TKey): TValue;
 begin
   result := Values[Find(AKey)];
@@ -1656,14 +1798,61 @@ var
   h: TItemHandle;
 begin
   h := Find(AKey);
-  if h<>-1 then
-    Delete(h);
-  Add(AKey, AValue);
+  if h=-1 then
+    Add(AKey, AValue)
+  else
+    Values[h] := AValue;
 end;
 
 function TAATree<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
 begin
   result := Find(Key)<>-1;
+end;
+
+function TAATree<TKey, TValue>.ContainsKeys(const AKeys: array of TKey;
+  ASearchType: TSearchType): Boolean;
+var
+  i: Integer;
+begin
+  case ASearchType of
+    stAll:
+      begin
+        for i := Low(AKeys) to High(AKeys) do
+          if not ContainsKey(AKeys[i]) then
+            Exit(False);
+        Exit(True);
+      end;
+    stAny:
+      begin
+        for i := Low(AKeys) to High(AKeys) do
+          if ContainsKey(AKeys[i]) then
+            Exit(True);
+        Exit(False);
+      end;
+  end;
+end;
+
+function TAATree<TKey, TValue>.ContainsKeys(const AKeys: TEnumerable<TKey>;
+  ASearchType: TSearchType): Boolean;
+var
+  Key: TKey;
+begin
+  case ASearchType of
+    stAll:
+      begin
+        for Key in AKeys do
+          if not ContainsKey(Key) then
+            Exit(False);
+        Exit(True);
+      end;
+    stAny:
+      begin
+        for Key in AKeys do
+          if ContainsKey(Key) then
+            Exit(True);
+        Exit(False);
+      end;
+  end;
 end;
 
 function TAATree<TKey, TValue>.ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
@@ -1680,14 +1869,35 @@ begin
     until result or not Next(h);
 end;
 
-function TAATree<TKey, TValue>.MaxValue: TValue;
+function TAATree<TKey, TValue>.MinKey: TKey;
 begin
-  result := Values[FindMin];
+  result := Keys[FindMin];
 end;
 
-function TAATree<TKey, TValue>.MinValue: TValue;
+function TAATree<TKey, TValue>.MaxKey: TKey;
 begin
-  result := Values[FindMax];
+  result := Keys[FindMax];
+end;
+
+procedure TAATree<TKey, TValue>.Remove(const AKey: TKey);
+begin
+  Delete(Find(AKey));
+end;
+
+procedure TAATree<TKey, TValue>.Remove(const AKeys: array of TKey);
+var
+  i: Integer;
+begin
+  for i := Low(AKeys) to High(AKeys) do
+    Remove(AKeys[i]);
+end;
+
+procedure TAATree<TKey, TValue>.Remove(const AKeys: TEnumerable<TKey>);
+var
+  Key: TKey;
+begin
+  for Key in AKeys do
+    Remove(Key);
 end;
 
 end.
