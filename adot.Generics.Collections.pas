@@ -307,9 +307,10 @@ type
     equal/comparable to Red-Black tree, but simplier implementation.
     http://en.wikipedia.org/wiki/AA_tree
   }
-  TItemHandle = NativeInt;
   TSearchType = (stAll, stAny);
-  TAATree<TKey,TValue> = class
+  TItemHandle = NativeInt;
+  TAATree<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
+  private
   protected
     type
       P_AATreeItem = ^T_AATreeItem;
@@ -319,14 +320,71 @@ type
         Data: TPair<TKey, TValue>;
       end;
 
+      TPairEnumerator = class(TEnumerator<TPair<TKey,TValue>>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+        FCurrentItem: TItemHandle;
+
+        function DoMoveNext: Boolean; override;
+        function DoGetCurrent: TPair<TKey,TValue>; override;
+      public
+        constructor Create(const ATree: TAATree<TKey,TValue>);
+      end;
+
+      TKeyEnumerator = class(TEnumerator<TKey>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+        FCurrentItem: TItemHandle;
+
+        function DoMoveNext: Boolean; override;
+        function DoGetCurrent: TKey; override;
+      public
+        constructor Create(const ATree: TAATree<TKey,TValue>);
+      end;
+
+      TValueEnumerator = class(TEnumerator<TValue>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+        FCurrentItem: TItemHandle;
+
+        function DoMoveNext: Boolean; override;
+        function DoGetCurrent: TValue; override;
+      public
+        constructor Create(const ATree: TAATree<TKey,TValue>);
+      end;
+
+      TKeyCollection = class(TEnumerable<TKey>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+
+        function DoGetEnumerator: TEnumerator<TKey>; override;
+      public
+        constructor Create(const ATree: TAATree<TKey,TValue>);
+      end;
+
+      TValueCollection = class(TEnumerable<TValue>)
+      protected
+        [Weak] FTree: TAATree<TKey,TValue>;
+
+        function DoGetEnumerator: TEnumerator<TValue>; override;
+      public
+        constructor Create(const ATree: TAATree<TKey,TValue>);
+      end;
+
     var
       FCount: integer;
       FRoot, FBottom, FDeleted, FLast: P_AATreeItem;
       FComparer: IComparer<TKey>;
+      FKeyCollection: TKeyCollection;
+      FValueCollection: TValueCollection;
 
     function AllocNewItem: P_AATreeItem; inline;
     procedure ReleaseItem(p: P_AATreeItem);
-    function PtrTohandle(p: P_AATreeItem): TItemHandle;
+    function PtrToHandle(p: P_AATreeItem): TItemHandle;
+    function HandleToPtr(p: TItemHandle): P_AATreeItem;
+    function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
+    function GetKeyCollection: TKeyCollection;
+    function GetValueCollection: TValueCollection;
 
     procedure treeSkew(var p: P_AATreeItem);
     procedure treeSplit(var p: P_AATreeItem);
@@ -348,12 +406,14 @@ type
     procedure SetValue(AHandle: TItemHandle; const AValue: TValue);
     function GetValueByKey(const AKey: TKey): TValue;
     procedure SetValueByKey(const AKey: TKey; const AValue: TValue);
+    function GetPair(AHandle: TItemHandle): TPair<TKEy,TValue>;
 
   public
     constructor Create; overload;
     constructor Create(AComparer: IComparer<TKey>); overload;
     constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IComparer<TKey> = nil); overload;
     destructor Destroy; override;
+    function GetEnumerator: TPairEnumerator;
 
     procedure Clear;
     function Add(const AKey: TKey; const AValue: TValue): TItemHandle; overload;
@@ -371,91 +431,55 @@ type
     function MinKey: TKey;
     function MaxKey: TKey;
 
+    // navigate over the tree
+    function GetRoot(var ARoot: TItemHandle): Boolean;
+    function GetLeftChild(AItem: TItemHandle; var AChild: TItemHandle): Boolean;
+    function GetRightChild(AItem: TItemHandle; var AChild: TItemHandle): Boolean;
+    function GetParent(AItem: TItemHandle; var AParent: TItemHandle): Boolean;
+
     // Enumeration of all items from min to max and in reverse order.
     function FindMin: TItemHandle;
     function FindMax: TItemHandle;
     function Find(const AKey: TKey): TItemHandle;
     function First(var AHandle: TItemHandle): Boolean;
+    function Last(var AHandle: TItemHandle): Boolean;
     function Prev(var AHandle: TItemHandle): Boolean;
     function Next(var AHandle: TItemHandle): Boolean;
 
     property TreeHeight: integer read treeFullHeight;
     property Keys[AHandle: TItemHandle]: TKey read GetKey;
     property Values[AHandle: TItemHandle]: TValue read GetValue write SetValue;
+    property Pairs[AHandle: TItemHandle]: TPair<TKey,TValue> read GetPair;
     property Items[const AKey: TKey]: TValue read GetValueByKey write SetValueByKey; default;
     property Count: integer read FCount;
+    property KeyCollection: TKeyCollection read GetKeyCollection;
+    property ValueCollection: TValueCollection read GetValueCollection;
   end;
 
+  // We do not expose handle-related function here. That is why TAATree is slightly
+  // faster, but TMap has interface very similar to standard TDictionary.
+  // Usually TMap is preferred over direct access to TAATree.
   TMap<TKey,TValue> = Class(TEnumerable<TPair<TKey,TValue>>)
+  private
   protected
-    FTree: TAATree<TKey,TValue>;
-
     type
-      TPairEnumerator = class(TEnumerator<TPair<TKey, TValue>>)
-      protected
-        [Weak] FTree: TAATree<TKey,TValue>;
-        FCurrentItem: TItemHandle;
-        FInEnumKey: boolean;
+      TPairEnumerator = TAATree<TKey,TValue>.TPairEnumerator;
+      TKeyEnumerator = TAATree<TKey,TValue>.TKeyEnumerator;
+      TValueEnumerator = TAATree<TKey,TValue>.TValueEnumerator;
+      TKeyCollection = TAATree<TKey,TValue>.TKeyCollection;
+      TValueCollection = TAATree<TKey,TValue>.TValueCollection;
 
-        function DoGetCurrent: TPair<TKey,TValue>; override;
-        function DoMoveNext: Boolean; override;
-      public
-        constructor Create(const AMultimap: TMultimap<TKey,TValue>);
-      end;
+    var
+      FTree: TAATree<TKey,TValue>;
 
-      TKeyEnumerator = class(TEnumerator<TKey>)
-      private
-        FPairEnumerator: TPairEnumerator;
+    function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
+    function GetKeyCollection: TKeyCollection;
+    function GetValueCollection: TValueCollection;
 
-        function GetCurrent: TKey;
-      protected
-        function DoGetCurrent: TKey; override;
-        function DoMoveNext: Boolean; override;
-      public
-        constructor Create(const AMap: TMap<TKey,TValue>);
-        property Current: TKey read GetCurrent;
-        function MoveNext: Boolean;
-      end;
-
-      TValueEnumerator = class(TEnumerator<TValue>)
-      private
-        FPairEnumerator: TPairEnumerator;
-
-        function GetCurrent: TValue;
-      protected
-        function DoGetCurrent: TValue; override;
-        function DoMoveNext: Boolean; override;
-      public
-        constructor Create(const AMap: TMap<TKey,TValue>);
-        property Current: TValue read GetCurrent;
-        function MoveNext: Boolean;
-      end;
-
-      TKeyCollection = class(TEnumerable<TKey>)
-      private
-        [Weak] FDictionary: TDictionary<TKey,TValue>;
-        function GetCount: Integer;
-      protected
-        function DoGetEnumerator: TEnumerator<TKey>; override;
-      public
-        constructor Create(const ADictionary: TDictionary<TKey,TValue>);
-        function GetEnumerator: TKeyEnumerator; reintroduce;
-        function ToArray: TArray<TKey>; override; final;
-        property Count: Integer read GetCount;
-      end;
-
-      TValueCollection = class(TEnumerable<TValue>)
-      private
-        [Weak] FDictionary: TDictionary<TKey,TValue>;
-        function GetCount: Integer;
-      protected
-        function DoGetEnumerator: TEnumerator<TValue>; override;
-      public
-        constructor Create(const ADictionary: TDictionary<TKey,TValue>);
-        function GetEnumerator: TValueEnumerator; reintroduce;
-        function ToArray: TArray<TValue>; override; final;
-        property Count: Integer read GetCount;
-      end;
+    function GetCount: integer;
+    function GetItem(const AKey: TKey): TValue;
+    function GetTreeHeight: integer;
+    procedure SetItem(const AKey: TKey; const Value: TValue);
 
   public
     constructor Create; overload;
@@ -475,21 +499,29 @@ type
     function ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType = stAll): Boolean; overload;
     function ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType = stAll): Boolean; overload;
     function ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
-    function MinKey: TKey;
-    function MaxKey: TKey;
+    function Min: TPair<TKey, TValue>;
+    function Max: TPair<TKey, TValue>;
 
+    // navigate over the tree
+    function GetRoot(var Key: TKey): Boolean;
+    function GetLeftChild(const AKey: TKey; var AChild: TKey): Boolean;
+    function GetRightChild(const AKey: TKey; var AChild: TKey): Boolean;
+    function GetParent(const AKey: TKey; var AParent: TKey): Boolean;
+
+    // navigate all items from min to max (in both directions)
+    function First(var AKey: TKey): Boolean;
+    function Last(var AKey: TKey): Boolean;
     function Next(const AKey: TKey; var ANewKey: TKey): Boolean;
     function Prev(const AKey: TKey; var ANewKey: TKey): Boolean;
 
-    property TreeHeight: integer read GetTreeHeight;
-    property Keys: TKeyCollection read GetKeys;
-    property Values: TValueCollection read GetValues;
-    property Items[const AKey: TKey]: TValue read GetItem write SetItem ; default;
     property Count: integer read GetCount;
+    property Items[const AKey: TKey]: TValue read GetItem write SetItem ; default;
+    property KeyCollection: TKeyCollection read GetKeyCollection;
+    property ValueCollection: TValueCollection read GetValueCollection;
+    property TreeHeight: integer read GetTreeHeight;
   end;
 
-//  TSet<TKey> = Class(TAATree<TKey,TEmptyRec>)
-//  End;
+  //TSet<TKey> = class(TMap<TKey,TEmptyRec>);
 
   TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
@@ -1373,7 +1405,14 @@ begin
   FBottom := nil;
   FDeleted := nil;
   FRoot := nil;
+  FreeAndNil(FKeyCollection);
+  FreeAndNil(FValueCollection);
   inherited;
+end;
+
+function TAATree<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
+begin
+  result := TPairEnumerator.Create(Self);
 end;
 
 function TAATree<TKey, TValue>.AllocNewItem: P_AATreeItem;
@@ -1390,12 +1429,20 @@ begin
   FreeMem(p);
 end;
 
-function TAATree<TKey, TValue>.PtrTohandle(p: P_AATreeItem): TItemHandle;
+function TAATree<TKey, TValue>.PtrToHandle(p: P_AATreeItem): TItemHandle;
 begin
-  if (p=nil) or (p=FBottom) then
+  if (p=FBottom) or (p=nil) then
     Result := -1
   else
     Result := TItemHandle(p);
+end;
+
+function TAATree<TKey, TValue>.HandleToPtr(p: TItemHandle): P_AATreeItem;
+begin
+  if p=-1 then
+    result := nil
+  else
+    result := P_AATreeItem(p);
 end;
 
 procedure TAATree<TKey, TValue>.Clear;
@@ -1741,17 +1788,59 @@ end;
 
 function TAATree<TKey, TValue>.FindMax: TItemHandle;
 begin
-  result := PtrTohandle( treeMax(FRoot) );
+  result := PtrToHandle( treeMax(FRoot) );
+end;
+
+function TAATree<TKey, TValue>.GetRoot(var ARoot: TItemHandle): Boolean;
+begin
+  ARoot := PtrToHandle(FRoot);
+  result := ARoot<>-1
+end;
+
+function TAATree<TKey, TValue>.GetLeftChild(AItem: TItemHandle; var AChild: TItemHandle): Boolean;
+begin
+  result := AItem<>-1;
+  if result then
+  begin
+    AChild := PtrToHandle(HandleToPtr(AItem).Left);
+    result := AChild<>-1;
+  end;
+end;
+
+function TAATree<TKey, TValue>.GetRightChild(AItem: TItemHandle; var AChild: TItemHandle): Boolean;
+begin
+  result := AItem<>-1;
+  if result then
+  begin
+    AChild := PtrToHandle(HandleToPtr(AItem).Right);
+    result := AChild<>-1;
+  end;
+end;
+
+function TAATree<TKey, TValue>.GetParent(AItem: TItemHandle; var AParent: TItemHandle): Boolean;
+begin
+  result := AItem<>-1;
+  if result then
+  begin
+    AParent := PtrToHandle(HandleToPtr(AItem).Parent);
+    result := AParent<>-1;
+  end;
 end;
 
 function TAATree<TKey, TValue>.FindMin: TItemHandle;
 begin
-  result := PtrTohandle( treeMin(FRoot) );
+  result := PtrToHandle( treeMin(FRoot) );
 end;
 
 function TAATree<TKey, TValue>.First(var AHandle: TItemHandle): Boolean;
 begin
-  AHandle := PtrTohandle( treeMin(FRoot) );
+  AHandle := PtrToHandle( treeMin(FRoot) );
+  result := AHandle<>-1;
+end;
+
+function TAATree<TKey, TValue>.Last(var AHandle: TItemHandle): Boolean;
+begin
+  AHandle := PtrToHandle( treeMax(FRoot) );
   result := AHandle<>-1;
 end;
 
@@ -1767,9 +1856,21 @@ begin
   result := AHandle<>-1;
 end;
 
+function TAATree<TKey, TValue>.GetEnumerator: TPairEnumerator;
+begin
+  result := TPairEnumerator.Create(Self);
+end;
+
 function TAATree<TKey, TValue>.GetKey(AHandle: TItemHandle): TKey;
 begin
   result := P_AATreeItem(AHandle).Data.Key;
+end;
+
+function TAATree<TKey, TValue>.GetKeyCollection: TKeyCollection;
+begin
+  if FKeyCollection = nil then
+    FKeyCollection := TKeyCollection.Create(Self);
+  result := FKeyCollection;
 end;
 
 function TAATree<TKey, TValue>.GetValue(AHandle: TItemHandle): TValue;
@@ -1788,9 +1889,24 @@ begin
     raise Exception.Create('Error');
 end;
 
+function TAATree<TKey, TValue>.GetPair(AHandle: TItemHandle): TPair<TKEy,TValue>;
+begin
+  if AHandle<>-1 then
+    result := P_AATreeItem(AHandle).Data
+  else
+    raise Exception.Create('Error');
+end;
+
 function TAATree<TKey, TValue>.GetValueByKey(const AKey: TKey): TValue;
 begin
   result := Values[Find(AKey)];
+end;
+
+function TAATree<TKey, TValue>.GetValueCollection: TValueCollection;
+begin
+  if FValueCollection = nil then
+    FValueCollection := TValueCollection.Create(Self);
+  result := FValueCollection;
 end;
 
 procedure TAATree<TKey, TValue>.SetValueByKey(const AKey: TKey; const AValue: TValue);
@@ -1898,6 +2014,302 @@ var
 begin
   for Key in AKeys do
     Remove(Key);
+end;
+
+{ TAATree<TKey, TValue>.TPairEnumerator }
+
+constructor TAATree<TKey, TValue>.TPairEnumerator.Create(const ATree: TAATree<TKey, TValue>);
+begin
+  FTree := ATree;
+  FCurrentItem := 0;
+end;
+
+function TAATree<TKey, TValue>.TPairEnumerator.DoMoveNext: Boolean;
+begin
+  if FCurrentItem=0 then
+    result := FTree.First(FCurrentItem)
+  else
+    result := (FCurrentItem<>-1) and FTree.Next(FCurrentItem);
+end;
+
+function TAATree<TKey, TValue>.TPairEnumerator.DoGetCurrent: TPair<TKey, TValue>;
+begin
+  result := FTree.Pairs[FCurrentItem];
+end;
+
+{ TAATree<TKey, TValue>.TKeyEnumerator }
+
+constructor TAATree<TKey, TValue>.TKeyEnumerator.Create(const ATree: TAATree<TKey, TValue>);
+begin
+  FTree := ATree;
+  FCurrentItem := 0;
+end;
+
+function TAATree<TKey, TValue>.TKeyEnumerator.DoGetCurrent: TKey;
+begin
+  result := FTree.Keys[FCurrentItem];
+end;
+
+function TAATree<TKey, TValue>.TKeyEnumerator.DoMoveNext: Boolean;
+begin
+  if FCurrentItem=0 then
+    result := FTree.First(FCurrentItem)
+  else
+    result := (FCurrentItem<>-1) and FTree.Next(FCurrentItem);
+end;
+
+{ TAATree<TKey, TValue>.TValueEnumerator }
+
+constructor TAATree<TKey, TValue>.TValueEnumerator.Create(const ATree: TAATree<TKey, TValue>);
+begin
+  FTree := ATree;
+  FCurrentItem := 0;
+end;
+
+function TAATree<TKey, TValue>.TValueEnumerator.DoGetCurrent: TValue;
+begin
+  result := FTree.Values[FCurrentItem];
+end;
+
+function TAATree<TKey, TValue>.TValueEnumerator.DoMoveNext: Boolean;
+begin
+  if FCurrentItem=0 then
+    result := FTree.First(FCurrentItem)
+  else
+    result := (FCurrentItem<>-1) and FTree.Next(FCurrentItem);
+end;
+
+{ TAATree<TKey, TValue>.TKeyCollection }
+
+constructor TAATree<TKey, TValue>.TKeyCollection.Create(const ATree: TAATree<TKey, TValue>);
+begin
+  inherited Create;
+  FTree := ATree;
+end;
+
+function TAATree<TKey, TValue>.TKeyCollection.DoGetEnumerator: TEnumerator<TKey>;
+begin
+  result := TKeyEnumerator.Create(FTree);
+end;
+
+{ TAATree<TKey, TValue>.TValueCollection }
+
+constructor TAATree<TKey, TValue>.TValueCollection.Create(const ATree: TAATree<TKey, TValue>);
+begin
+  inherited Create;
+  FTree := ATree;
+end;
+
+function TAATree<TKey, TValue>.TValueCollection.DoGetEnumerator: TEnumerator<TValue>;
+begin
+  result := TValueEnumerator.Create(FTree);
+end;
+
+{ TMap<TKey, TValue> }
+
+procedure TMap<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue);
+begin
+  FTree.Add(AKey, AValue);
+end;
+
+procedure TMap<TKey, TValue>.Add(const ACollection: TEnumerable<TPair<TKey, TValue>>);
+begin
+  FTree.Add(ACollection);
+end;
+
+procedure TMap<TKey, TValue>.AddOrSetValue(const AKey: TKey; const AValue: TValue);
+begin
+  FTree.AddOrSetValue(AKey, AValue);
+end;
+
+procedure TMap<TKey, TValue>.Clear;
+begin
+  FTree.Clear;
+end;
+
+function TMap<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
+begin
+  result := FTree.ContainsKey(Key);
+end;
+
+function TMap<TKey, TValue>.ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType): Boolean;
+begin
+  result := FTree.ContainsKeys(AKeys, ASearchType);
+end;
+
+function TMap<TKey, TValue>.ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType): Boolean;
+begin
+  result := FTree.ContainsKeys(AKeys, ASearchType);
+end;
+
+function TMap<TKey, TValue>.ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue>): Boolean;
+begin
+  result := FTree.ContainsValue(Value, AEqualityComparer);
+end;
+
+constructor TMap<TKey, TValue>.Create;
+begin
+  inherited Create;
+  FTree := TAATree<TKey,TValue>.Create;
+end;
+
+constructor TMap<TKey, TValue>.Create(AComparer: IComparer<TKey>);
+begin
+  inherited Create;
+  FTree := TAATree<TKey,TValue>.Create(AComparer);
+end;
+
+constructor TMap<TKey, TValue>.Create(
+  const ACollection: TEnumerable<TPair<TKey, TValue>>;
+  const AComparer: IComparer<TKey>);
+begin
+  inherited Create;
+  FTree := TAATree<TKey,TValue>.Create(ACollection, AComparer);
+end;
+
+destructor TMap<TKey, TValue>.Destroy;
+begin
+  FreeAndNil(FTree);
+  inherited;
+end;
+
+function TMap<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
+begin
+  result := FTree.DoGetEnumerator;
+end;
+
+function TMap<TKey, TValue>.First(var AKey: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.First(h);
+  if result then
+    AKey := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.GetCount: integer;
+begin
+  result := FTree.Count;
+end;
+
+function TMap<TKey, TValue>.GetItem(const AKey: TKey): TValue;
+begin
+  result := FTree.Items[AKey];
+end;
+
+function TMap<TKey, TValue>.GetKeyCollection: TKeyCollection;
+begin
+  result := FTree.GetKeyCollection;
+end;
+
+function TMap<TKey, TValue>.GetRoot(var Key: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.GetRoot(h);
+  if result then
+    Key := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.GetTreeHeight: integer;
+begin
+  result := FTree.TreeHeight;
+end;
+
+function TMap<TKey, TValue>.GetValueCollection: TValueCollection;
+begin
+  result := FTree.GetValueCollection;
+end;
+
+function TMap<TKey, TValue>.Last(var AKey: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.Last(h);
+  if result then
+    AKey := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.GetLeftChild(const AKey: TKey; var AChild: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.GetLeftChild(FTree.Find(AKey), h);
+  if result then
+    AChild := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.Max: TPair<TKey, TValue>;
+begin
+  result := FTree.Pairs[FTree.FindMax];
+end;
+
+function TMap<TKey, TValue>.Min: TPair<TKey, TValue>;
+begin
+  result := FTree.Pairs[FTree.FindMin];
+end;
+
+function TMap<TKey, TValue>.Next(const AKey: TKey; var ANewKey: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  h := FTree.Find(AKey);
+  result := FTree.Next(h);
+  if result then
+    ANewKey := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.GetParent(const AKey: TKey; var AParent: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.GetParent(FTree.Find(AKey), h);
+  if result then
+    AParent := FTree.Keys[h];
+end;
+
+function TMap<TKey, TValue>.Prev(const AKey: TKey; var ANewKey: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  h := FTree.Find(AKey);
+  result := FTree.Prev(h);
+  if result then
+    ANewKey := FTree.Keys[h];
+end;
+
+procedure TMap<TKey, TValue>.Remove(const AKeys: array of TKey);
+begin
+  FTree.Remove(AKeys);
+end;
+
+procedure TMap<TKey, TValue>.Remove(const AKeys: TEnumerable<TKey>);
+begin
+  FTree.Remove(AKeys);
+end;
+
+procedure TMap<TKey, TValue>.Remove(const AKey: TKey);
+begin
+  FTree.Remove(AKey);
+end;
+
+function TMap<TKey, TValue>.GetRightChild(const AKey: TKey; var AChild: TKey): Boolean;
+var
+  h: TItemHandle;
+begin
+  result := FTree.GetRightChild(FTree.Find(AKey), h);
+  if result then
+    AChild := FTree.Keys[h];
+end;
+
+procedure TMap<TKey, TValue>.SetItem(const AKey: TKey; const Value: TValue);
+begin
+  FTree.Values[FTree.Find(AKey)] := Value;
+end;
+
+function TMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+begin
+  result := FTree.TryGetValue(Key, Value);
 end;
 
 end.
