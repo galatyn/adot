@@ -1,18 +1,20 @@
 unit adot.Generics.Collections;
 
 {
-  - TUnsortedSet<TValue>
-  - TSet<TValue> (sorted set of values)
-  - TUnsortedMap<TKey,TValue>
-  - TMap<TKey,TValue> (sorted by key set of pairs key->value)
-  - TTextSet
-  - TTextDictionary<TValue>
-?  - TTextMap<TValue> (TTextDictionary)
-  - TMultimap<TKey,TValue>
-  - THeap<T> (aka TPriorityQueue<T>)
-  - TCyclicBuffer<T>
-  - TCache<TKey,TValue>
-  - TBinarySearchTree<TKey, TValue> (TAATree<TKey, TValue>)
+  - TSet<TValue>                       (set)
+  - TOrderedSet<TValue>                (ordered set of values)
+  - TMap<TKey,TValue>                  (alias to TDictionary)
+  - TOrderedMap<TKey,TValue>           (ordered by key set of pairs key->value)
+  - TMultimap<TKey,TValue>             (TMap with key duplication)
+  - TOrderedMultimap<TKey,TValue>      (TOrderedMap with key duplication)
+  - THeap<T>                           (array-based implementation of the heap)
+  - TPriorityQueue<T>                  (alias to THeap)
+  - TCyclicBuffer<T>                   (ring)
+  - TBinarySearchTree<TKey, TValue>    (alias to TAATree)
+  - TTextSet                           (case insensitive set of strings)
+  - TTextMap<TValue>                   (map with case insensitive string keys)
+  - TTextDictionary<TValue>            (alias to TTextMap)
+  - TCache<TKey,TValue>                (memory-limited map)
 }
 interface
 
@@ -23,7 +25,7 @@ uses
 type
   TEmptyRec = record end;
 
-  TUnsortedSet<TValue> = class(TEnumerable<TValue>)
+  TSet<TValue> = class(TEnumerable<TValue>)
   private
   protected
     type
@@ -58,7 +60,7 @@ type
   end;
 
   // Set of case insensitive strings.
-  TTextSet = class(TUnsortedSet<String>)
+  TTextSet = class(TSet<String>)
   public
     constructor Create(ACapacity: integer = 0); overload;
     constructor Create(const Values: array of String); overload;
@@ -73,7 +75,7 @@ type
   TTextMap<ValueType> = class(TTextDictionary<ValueType>);
 
   // Alias to dictionary.
-  TUnsortedMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
+  TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
 
   // Unsorted multimap container (one key -> many values).
   TContainsCheckType = (cctAll, cctAnyOf);
@@ -181,7 +183,7 @@ type
     //      if m.Current=10 then m.RemoveValue(e);
     function Remove(const AKey: TKey):Boolean;
     procedure RemoveValue(const AEnum: TValueEnumerator);
-    procedure RemoveValues(const AKey: TKey; const AValues: TUnsortedSet<TValue>); overload;
+    procedure RemoveValues(const AKey: TKey; const AValues: TSet<TValue>); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: array of TValue); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
 
@@ -455,11 +457,12 @@ type
     property KeyCollection: TKeyCollection read GetKeyCollection;
     property ValueCollection: TValueCollection read GetValueCollection;
   end;
+  TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
   // We do not expose handle-related function here. That is why TAATree is slightly
   // faster, but TMap has interface very similar to standard TDictionary.
   // Usually TMap is preferred over direct access to TAATree.
-  TMap<TKey,TValue> = Class(TEnumerable<TPair<TKey,TValue>>)
+  TOrderedMap<TKey,TValue> = Class(TEnumerable<TPair<TKey,TValue>>)
   private
   protected
     type
@@ -521,53 +524,52 @@ type
     property TreeHeight: integer read GetTreeHeight;
   end;
 
-  //TSet<TKey> = class(TMap<TKey,TEmptyRec>);
+  //TOrderedSet<TKey> = class(TOrderedMap<TKey,TEmptyRec>);
 
-  TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
 implementation
 
 { TSet<TValue> }
 
-constructor TUnsortedSet<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSet<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   FSet := TDictionary<TValue, TEmptyRec>.Create(ACapacity, AComparer);
 end;
 
-constructor TUnsortedSet<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSet<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
-constructor TUnsortedSet<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSet<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
-destructor TUnsortedSet<TValue>.Destroy;
+destructor TSet<TValue>.Destroy;
 begin
   FreeAndNil(FSet);
   inherited;
 end;
 
-function TUnsortedSet<TValue>.DoGetEnumerator: TEnumerator<TValue>;
+function TSet<TValue>.DoGetEnumerator: TEnumerator<TValue>;
 begin
   Result := GetEnumerator;
 end;
 
-function TUnsortedSet<TValue>.GetCount: integer;
+function TSet<TValue>.GetCount: integer;
 begin
   result := FSet.Count;
 end;
 
-function TUnsortedSet<TValue>.GetEnumerator: TEnumerator;
+function TSet<TValue>.GetEnumerator: TEnumerator;
 begin
   result := FSet.Keys.GetEnumerator;
 end;
 
-procedure TUnsortedSet<TValue>.Remove(const ASet: array of TValue);
+procedure TSet<TValue>.Remove(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -575,7 +577,7 @@ begin
     Remove(ASet[i]);
 end;
 
-procedure TUnsortedSet<TValue>.Remove(const AValues: TEnumerable<TValue>);
+procedure TSet<TValue>.Remove(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -583,13 +585,13 @@ begin
     Remove(Item);
 end;
 
-procedure TUnsortedSet<TValue>.Add(const AValue: TValue);
+procedure TSet<TValue>.Add(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.Add(AValue, R);
 end;
 
-procedure TUnsortedSet<TValue>.Add(const ASet: array of TValue);
+procedure TSet<TValue>.Add(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -597,7 +599,7 @@ begin
     Add(ASet[i]);
 end;
 
-procedure TUnsortedSet<TValue>.Add(const AValues: TEnumerable<TValue>);
+procedure TSet<TValue>.Add(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -605,13 +607,13 @@ begin
     Add(Item);
 end;
 
-procedure TUnsortedSet<TValue>.Include(const AValue: TValue);
+procedure TSet<TValue>.Include(const AValue: TValue);
 var R: TEmptyRec;
 begin
   FSet.AddOrSetValue(AValue, R);
 end;
 
-procedure TUnsortedSet<TValue>.Include(const ASet: array of TValue);
+procedure TSet<TValue>.Include(const ASet: array of TValue);
 var
   i: Integer;
 begin
@@ -619,7 +621,7 @@ begin
     Include(ASet[i]);
 end;
 
-procedure TUnsortedSet<TValue>.Include(const AValues: TEnumerable<TValue>);
+procedure TSet<TValue>.Include(const AValues: TEnumerable<TValue>);
 var
   Item: TValue;
 begin
@@ -627,17 +629,17 @@ begin
     Include(Item);
 end;
 
-procedure TUnsortedSet<TValue>.Clear;
+procedure TSet<TValue>.Clear;
 begin
   FSet.Clear;
 end;
 
-function TUnsortedSet<TValue>.Contains(const AValue: TValue): boolean;
+function TSet<TValue>.Contains(const AValue: TValue): boolean;
 begin
   result := FSet.ContainsKey(AValue);
 end;
 
-function TUnsortedSet<TValue>.Contains(const ASet: array of TValue): boolean;
+function TSet<TValue>.Contains(const ASet: array of TValue): boolean;
 var
   i: Integer;
 begin
@@ -647,7 +649,7 @@ begin
   result := True;
 end;
 
-function TUnsortedSet<TValue>.Contains(const AValues: TEnumerable<TValue>): boolean;
+function TSet<TValue>.Contains(const AValues: TEnumerable<TValue>): boolean;
 var
   Item: TValue;
 begin
@@ -657,7 +659,7 @@ begin
   result := True;
 end;
 
-procedure TUnsortedSet<TValue>.Remove(const AValue: TValue);
+procedure TSet<TValue>.Remove(const AValue: TValue);
 begin
   FSet.Remove(AValue);
 end;
@@ -807,12 +809,12 @@ end;
 function TMultimap<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: array of TValue; AContainsCheckType: TContainsCheckType;
   AComparer: IEqualityComparer<TValue>): Boolean;
 var
-  ValueSet: TUnsortedSet<TValue>;
+  ValueSet: TSet<TValue>;
   i: Integer;
 begin
   if AComparer=nil then
     AComparer := TEqualityComparer<TValue>.Default;
-  ValueSet := TUnsortedSet<TValue>.Create(0, AComparer);
+  ValueSet := TSet<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
       cctAll:
@@ -840,12 +842,12 @@ end;
 function TMultimap<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: TEnumerable<TValue>; AContainsCheckType: TContainsCheckType;
   AComparer: IEqualityComparer<TValue>): Boolean;
 var
-  ValueSet: TUnsortedSet<TValue>;
+  ValueSet: TSet<TValue>;
   V: TValue;
 begin
   if AComparer=nil then
     AComparer := TEqualityComparer<TValue>.Default;
-  ValueSet := TUnsortedSet<TValue>.Create(0, AComparer);
+  ValueSet := TSet<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
       cctAll:
@@ -955,7 +957,7 @@ begin
     FCount.AddOrSetValue(AEnum.Key, LastKey.Number);
 end;
 
-procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TUnsortedSet<TValue>);
+procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TSet<TValue>);
 var
   Enum: TValueEnumerator;
 begin
@@ -967,9 +969,9 @@ end;
 
 procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: array of TValue);
 var
-  s: TUnsortedSet<TValue>;
+  s: TSet<TValue>;
 begin
-  s := TUnsortedSet<TValue>.Create(AValues);
+  s := TSet<TValue>.Create(AValues);
   try
     RemoveValues(AKey, s);
   finally
@@ -979,9 +981,9 @@ end;
 
 procedure TMultimap<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>);
 var
-  s: TUnsortedSet<TValue>;
+  s: TSet<TValue>;
 begin
-  s := TUnsortedSet<TValue>.Create(AValues);
+  s := TSet<TValue>.Create(AValues);
   try
     RemoveValues(AKey, s);
   finally
@@ -2105,61 +2107,61 @@ begin
   result := TValueEnumerator.Create(FTree);
 end;
 
-{ TMap<TKey, TValue> }
+{ TOrderedMap<TKey, TValue> }
 
-procedure TMap<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue);
+procedure TOrderedMap<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue);
 begin
   FTree.Add(AKey, AValue);
 end;
 
-procedure TMap<TKey, TValue>.Add(const ACollection: TEnumerable<TPair<TKey, TValue>>);
+procedure TOrderedMap<TKey, TValue>.Add(const ACollection: TEnumerable<TPair<TKey, TValue>>);
 begin
   FTree.Add(ACollection);
 end;
 
-procedure TMap<TKey, TValue>.AddOrSetValue(const AKey: TKey; const AValue: TValue);
+procedure TOrderedMap<TKey, TValue>.AddOrSetValue(const AKey: TKey; const AValue: TValue);
 begin
   FTree.AddOrSetValue(AKey, AValue);
 end;
 
-procedure TMap<TKey, TValue>.Clear;
+procedure TOrderedMap<TKey, TValue>.Clear;
 begin
   FTree.Clear;
 end;
 
-function TMap<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
 begin
   result := FTree.ContainsKey(Key);
 end;
 
-function TMap<TKey, TValue>.ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType): Boolean;
+function TOrderedMap<TKey, TValue>.ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType): Boolean;
 begin
   result := FTree.ContainsKeys(AKeys, ASearchType);
 end;
 
-function TMap<TKey, TValue>.ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType): Boolean;
+function TOrderedMap<TKey, TValue>.ContainsKeys(const AKeys: TEnumerable<TKey>; ASearchType: TSearchType): Boolean;
 begin
   result := FTree.ContainsKeys(AKeys, ASearchType);
 end;
 
-function TMap<TKey, TValue>.ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue>): Boolean;
+function TOrderedMap<TKey, TValue>.ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue>): Boolean;
 begin
   result := FTree.ContainsValue(Value, AEqualityComparer);
 end;
 
-constructor TMap<TKey, TValue>.Create;
+constructor TOrderedMap<TKey, TValue>.Create;
 begin
   inherited Create;
   FTree := TAATree<TKey,TValue>.Create;
 end;
 
-constructor TMap<TKey, TValue>.Create(AComparer: IComparer<TKey>);
+constructor TOrderedMap<TKey, TValue>.Create(AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FTree := TAATree<TKey,TValue>.Create(AComparer);
 end;
 
-constructor TMap<TKey, TValue>.Create(
+constructor TOrderedMap<TKey, TValue>.Create(
   const ACollection: TEnumerable<TPair<TKey, TValue>>;
   const AComparer: IComparer<TKey>);
 begin
@@ -2167,18 +2169,18 @@ begin
   FTree := TAATree<TKey,TValue>.Create(ACollection, AComparer);
 end;
 
-destructor TMap<TKey, TValue>.Destroy;
+destructor TOrderedMap<TKey, TValue>.Destroy;
 begin
   FreeAndNil(FTree);
   inherited;
 end;
 
-function TMap<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
+function TOrderedMap<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
 begin
   result := FTree.DoGetEnumerator;
 end;
 
-function TMap<TKey, TValue>.First(var AKey: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.First(var AKey: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2187,22 +2189,22 @@ begin
     AKey := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.GetCount: integer;
+function TOrderedMap<TKey, TValue>.GetCount: integer;
 begin
   result := FTree.Count;
 end;
 
-function TMap<TKey, TValue>.GetItem(const AKey: TKey): TValue;
+function TOrderedMap<TKey, TValue>.GetItem(const AKey: TKey): TValue;
 begin
   result := FTree.Items[AKey];
 end;
 
-function TMap<TKey, TValue>.GetKeyCollection: TKeyCollection;
+function TOrderedMap<TKey, TValue>.GetKeyCollection: TKeyCollection;
 begin
   result := FTree.GetKeyCollection;
 end;
 
-function TMap<TKey, TValue>.GetRoot(var Key: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.GetRoot(var Key: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2211,17 +2213,17 @@ begin
     Key := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.GetTreeHeight: integer;
+function TOrderedMap<TKey, TValue>.GetTreeHeight: integer;
 begin
   result := FTree.TreeHeight;
 end;
 
-function TMap<TKey, TValue>.GetValueCollection: TValueCollection;
+function TOrderedMap<TKey, TValue>.GetValueCollection: TValueCollection;
 begin
   result := FTree.GetValueCollection;
 end;
 
-function TMap<TKey, TValue>.Last(var AKey: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.Last(var AKey: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2230,7 +2232,7 @@ begin
     AKey := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.GetLeftChild(const AKey: TKey; var AChild: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.GetLeftChild(const AKey: TKey; var AChild: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2239,17 +2241,17 @@ begin
     AChild := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.Max: TPair<TKey, TValue>;
+function TOrderedMap<TKey, TValue>.Max: TPair<TKey, TValue>;
 begin
   result := FTree.Pairs[FTree.FindMax];
 end;
 
-function TMap<TKey, TValue>.Min: TPair<TKey, TValue>;
+function TOrderedMap<TKey, TValue>.Min: TPair<TKey, TValue>;
 begin
   result := FTree.Pairs[FTree.FindMin];
 end;
 
-function TMap<TKey, TValue>.Next(const AKey: TKey; var ANewKey: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.Next(const AKey: TKey; var ANewKey: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2259,7 +2261,7 @@ begin
     ANewKey := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.GetParent(const AKey: TKey; var AParent: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.GetParent(const AKey: TKey; var AParent: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2268,7 +2270,7 @@ begin
     AParent := FTree.Keys[h];
 end;
 
-function TMap<TKey, TValue>.Prev(const AKey: TKey; var ANewKey: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.Prev(const AKey: TKey; var ANewKey: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2278,22 +2280,22 @@ begin
     ANewKey := FTree.Keys[h];
 end;
 
-procedure TMap<TKey, TValue>.Remove(const AKeys: array of TKey);
+procedure TOrderedMap<TKey, TValue>.Remove(const AKeys: array of TKey);
 begin
   FTree.Remove(AKeys);
 end;
 
-procedure TMap<TKey, TValue>.Remove(const AKeys: TEnumerable<TKey>);
+procedure TOrderedMap<TKey, TValue>.Remove(const AKeys: TEnumerable<TKey>);
 begin
   FTree.Remove(AKeys);
 end;
 
-procedure TMap<TKey, TValue>.Remove(const AKey: TKey);
+procedure TOrderedMap<TKey, TValue>.Remove(const AKey: TKey);
 begin
   FTree.Remove(AKey);
 end;
 
-function TMap<TKey, TValue>.GetRightChild(const AKey: TKey; var AChild: TKey): Boolean;
+function TOrderedMap<TKey, TValue>.GetRightChild(const AKey: TKey; var AChild: TKey): Boolean;
 var
   h: TItemHandle;
 begin
@@ -2302,12 +2304,12 @@ begin
     AChild := FTree.Keys[h];
 end;
 
-procedure TMap<TKey, TValue>.SetItem(const AKey: TKey; const Value: TValue);
+procedure TOrderedMap<TKey, TValue>.SetItem(const AKey: TKey; const Value: TValue);
 begin
   FTree.Values[FTree.Find(AKey)] := Value;
 end;
 
-function TMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+function TOrderedMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
 begin
   result := FTree.TryGetValue(Key, Value);
 end;

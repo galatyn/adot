@@ -106,7 +106,7 @@ type
     FStack: TObjectStack<TPEGInstance>;
     FDataSourceFormat: TSourceFormat;
     FCaseInsensitive: Boolean;
-    FRecursionSet: TUnsortedSet<TInstanceId>;
+    FRecursionSet: TSet<TInstanceId>;
     FRecursionAction: TRecursionAction;
     FIteration: integer;
     FChildInstance: TPEGInstance;
@@ -353,7 +353,7 @@ begin
   FStack := TObjectStack<TPEGInstance>.Create(False);
   FDataSourceFormat := ADataSourceFormat;
   FCaseInsensitive := ACaseInsensitive;
-  FRecursionSet := TUnsortedSet<TInstanceId>.Create;
+  FRecursionSet := TSet<TInstanceId>.Create;
 end;
 
 destructor TPEGParser.Destroy;

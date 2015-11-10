@@ -36,7 +36,7 @@ type
       Text: String;
       Position: integer;
       IsAlphaChar: TIsAlphaPredicate;
-      AlphaChars: TAutoFree<TUnsortedSet<Char>>;
+      AlphaChars: TAutoFree<TSet<Char>>;
       AlphaCharsIsWhitespaces: Boolean;
 
     // Set Text and IsAlpha predicate (default is IsLetterOrDigit).
@@ -242,7 +242,7 @@ var
   C: AnsiChar;
 begin
   Text := AText;
-  AlphaChars := TUnsortedSet<Char>.Create;
+  AlphaChars := TSet<Char>.Create;
   for C := Low(AnsiChar) to High(AnsiChar) do
     if C in ACharSet then
       AlphaChars.Value.Include(Char(C));
@@ -256,7 +256,7 @@ var
   i: Integer;
 begin
   Text := AText;
-  AlphaChars := TUnsortedSet<Char>.Create;
+  AlphaChars := TSet<Char>.Create;
   for i := Low(ACharSet) to High(ACharSet) do
     AlphaChars.Value.Include(ACharSet[i]);
   AlphaCharsIsWhitespaces := AIsWhitespaces;
