@@ -2,11 +2,11 @@ unit adot.Generics.Collections;
 
 {
   - TSet<TValue>                       (set)
-  - TOrderedSet<TValue>                (ordered set of values)
+  ?- TOrderedSet<TValue>                (ordered set of values)
   - TMap<TKey,TValue>                  (alias to TDictionary)
   - TOrderedMap<TKey,TValue>           (ordered by key set of pairs key->value)
   - TMultimap<TKey,TValue>             (TMap with key duplication)
-  - TOrderedMultimap<TKey,TValue>      (TOrderedMap with key duplication)
+  ?- TOrderedMultimap<TKey,TValue>      (TOrderedMap with key duplication)
   - THeap<T>                           (array-based implementation of the heap)
   - TPriorityQueue<T>                  (alias to THeap)
   - TCyclicBuffer<T>                   (ring)
@@ -15,6 +15,7 @@ unit adot.Generics.Collections;
   - TTextMap<TValue>                   (map with case insensitive string keys)
   - TTextDictionary<TValue>            (alias to TTextMap)
   - TCache<TKey,TValue>                (memory-limited map)
+  - THelper                            (helpers for generics)
 }
 interface
 
@@ -38,6 +39,7 @@ type
     function DoGetEnumerator: TEnumerator<TValue>; override;
 
   public
+    constructor Create; overload;
     constructor Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil); overload;
     constructor Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil); overload;
     constructor Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil); overload;
@@ -62,7 +64,8 @@ type
   // Set of case insensitive strings.
   TTextSet = class(TSet<String>)
   public
-    constructor Create(ACapacity: integer = 0); overload;
+    constructor Create; overload;
+    constructor Create(ACapacity: integer); overload;
     constructor Create(const Values: array of String); overload;
     constructor Create(Values: TEnumerable<String>); overload;
   end;
@@ -70,7 +73,9 @@ type
   // Dictionary with case insensitive keys.
   TTextDictionary<ValueType> = class(TDictionary<String, ValueType>)
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(ACapacity: Integer); overload;
+    constructor Create(const Collection: TEnumerable<TPair<String, ValueType>>); overload;
   end;
   TTextMap<ValueType> = class(TTextDictionary<ValueType>);
 
@@ -167,7 +172,7 @@ type
     function GetKeys: TKeyCollection;
 
   public
-
+    constructor Create; overload;
     constructor Create(const AComparer: IEqualityComparer<TKey> = nil); overload;
     constructor Create(const ACollection: TEnumerable<TPair>; const AComparer: IEqualityComparer<TKey> = nil); overload;
     destructor Destroy; override;
@@ -236,9 +241,10 @@ type
     procedure Swap(n1, n2: integer); inline;
     function DoGetEnumerator: TEnumerator<T>; override;
   public
-    constructor Create(const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
-    constructor Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
-    constructor Create(const AValues: array of T; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
+    constructor Create; overload;
+    constructor Create(ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<T>; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const AValues: array of T; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
     destructor Destroy; override;
     function GetEnumerator: TList<T>.TEnumerator;
 
@@ -273,7 +279,7 @@ type
     function GetCapacity: integer;
     procedure SetCapacity(ANewCapacity: integer);
   public
-    constructor Create(ANewCapacity: integer);
+    constructor Create(ACapacity: integer);
     destructor Destroy; override;
     procedure Push(v: T); overload; // add to head
     procedure Push(const a: array of T); overload;
@@ -298,7 +304,8 @@ type
     Cache: TDictionary<TKey,TValue>;
     Size, MaxSize: longint;
   public
-    constructor Create(AMaxSize: longint = 1024*1024);
+    constructor Create; overload;
+    constructor Create(AMaxSize: longint = 1024*1024); overload;
     destructor Destroy; override;
     procedure Add(K: TKey; V: TValue; ASize: longint);
     function TryGetValue(K: TKey; var V: TValue):boolean;
@@ -526,10 +533,34 @@ type
 
   //TOrderedSet<TKey> = class(TOrderedMap<TKey,TEmptyRec>);
 
+  THelper = record
+    class function Count<T>(const Enumerable: TEnumerable<T>): integer; static;
+  end;
 
 implementation
 
+{ THelper }
+
+class function THelper.Count<T>(const Enumerable: TEnumerable<T>): integer;
+var
+  Enum: TEnumerator<T>;
+begin
+  try
+    Enum := Enumerable.GetEnumerator;
+    Result := 0;
+    while Enum.MoveNext do
+      inc(Result);
+  finally
+    Enum.Free;
+  end;
+end;
+
 { TSet<TValue> }
+
+constructor TSet<TValue>.Create;
+begin
+  Create(0, IEqualityComparer<TValue>(nil));
+end;
 
 constructor TSet<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
 begin
@@ -666,20 +697,25 @@ end;
 
 { TTextSet }
 
-constructor TTextSet.Create(ACapacity: integer = 0);
+constructor TTextSet.Create;
 begin
-  inherited Create(ACapacity, TOrdinalIStringComparer.Create);
+  Create(0);
+end;
+
+constructor TTextSet.Create(ACapacity: integer);
+begin
+  inherited Create(ACapacity, TOrdinalIStringComparer.Ordinal);
 end;
 
 constructor TTextSet.Create(const Values: array of String);
 begin
-  Create;
+  Create(Length(Values)*2);
   Add(Values);
 end;
 
 constructor TTextSet.Create(Values: TEnumerable<String>);
 begin
-  Create;
+  Create(THelper.Count<String>(Values)*2);
   Add(Values);
 end;
 
@@ -687,10 +723,25 @@ end;
 
 constructor TTextDictionary<ValueType>.Create;
 begin
-  inherited Create(TOrdinalIStringComparer.Create);
+  inherited Create(TOrdinalIStringComparer.Ordinal);
+end;
+
+constructor TTextDictionary<ValueType>.Create(ACapacity: Integer);
+begin
+  inherited Create(0, TOrdinalIStringComparer.Ordinal);
+end;
+
+constructor TTextDictionary<ValueType>.Create(const Collection: TEnumerable<TPair<String, ValueType>>);
+begin
+  inherited Create(Collection, TOrdinalIStringComparer.Ordinal);
 end;
 
 { TMultimap<TKey, TValue> }
+
+constructor TMultimap<TKey, TValue>.Create;
+begin
+  Create(IEqualityComparer<TKey>(nil));
+end;
 
 constructor TMultimap<TKey, TValue>.Create(const AComparer: IEqualityComparer<TKey> = nil);
 begin
@@ -1094,7 +1145,12 @@ end;
 
 { THeap<T> }
 
-constructor THeap<T>.Create(const AComparer: IComparer<T>; ACapacity: integer);
+constructor THeap<T>.Create;
+begin
+  Create(0, IComparer<T>(nil));
+end;
+
+constructor THeap<T>.Create(ACapacity: integer = 0; const AComparer: IComparer<T> = nil);
 begin
   FValues := TList<T>.Create(AComparer);
   if ACapacity>0 then
@@ -1104,17 +1160,17 @@ begin
     FComparer := TComparer<T>.Default;
 end;
 
-constructor THeap<T>.Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T>;
-  ACapacity: integer);
+constructor THeap<T>.Create(const ACollection: TEnumerable<T>; ACapacity: integer;
+  const AComparer: IComparer<T>);
 begin
-  Create(AComparer, ACapacity);
+  Create(ACapacity, AComparer);
   Add(ACollection);
 end;
 
-constructor THeap<T>.Create(const AValues: array of T; const AComparer: IComparer<T>;
-  ACapacity: integer);
+constructor THeap<T>.Create(const AValues: array of T; ACapacity: integer;
+  const AComparer: IComparer<T>);
 begin
-  Create(AComparer, ACapacity);
+  Create(ACapacity, AComparer);
   Add(AValues);
 end;
 
@@ -1267,10 +1323,10 @@ end;
 
 { TCyclicBuffer<T> }
 
-constructor TCyclicBuffer<T>.Create(ANewCapacity: integer);
+constructor TCyclicBuffer<T>.Create(ACapacity: integer);
 begin
   FValues := TList<T>.Create;
-  Capacity := ANewCapacity;
+  Capacity := ACapacity;
 end;
 
 destructor TCyclicBuffer<T>.Destroy;
@@ -1346,6 +1402,11 @@ end;
 
 { TCache<TKey, TValue> }
 
+constructor TCache<TKey, TValue>.Create;
+begin
+  Create(0);
+end;
+
 constructor TCache<TKey, TValue>.Create(AMaxSize: Integer);
 begin
   MaxSize := AMaxSize;
@@ -1377,13 +1438,15 @@ end;
 
 constructor TAATree<TKey, TValue>.Create;
 begin
-  Create(TComparer<TKey>.Default);
+  Create(IComparer<TKey>(nil));
 end;
 
 constructor TAATree<TKey, TValue>.Create(AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FComparer := AComparer;
+  if FComparer=nil then
+    FComparer := TComparer<TKey>.Default;
   FBottom := AllocNewItem;
   FBottom.Level := 0;
   FBottom.Left := FBottom;
@@ -2151,8 +2214,7 @@ end;
 
 constructor TOrderedMap<TKey, TValue>.Create;
 begin
-  inherited Create;
-  FTree := TAATree<TKey,TValue>.Create;
+  Create(IComparer<TKey>(nil));
 end;
 
 constructor TOrderedMap<TKey, TValue>.Create(AComparer: IComparer<TKey>);
