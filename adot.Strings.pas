@@ -39,15 +39,31 @@ type
       AlphaChars: TAutoFree<TSet<Char>>;
       AlphaCharsIsWhitespaces: Boolean;
 
+  private
+    class function IsSamePredicate(const A,B: TIsAlphaPredicate): Boolean; static;
+
+    // optimized version of FindNext for predicate IsAlphaChar=IsNonSpace.
+    function FindNextStd(var AStart, ALen: integer): Boolean;
+
+  public
+
     // Set Text and IsAlpha predicate (default is IsLetterOrDigit).
     constructor Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload;
     constructor Create(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean); overload;
     constructor Create(const AText: string; const ACharSet: string; AIsWhitespaces: Boolean); overload;
 
+    procedure Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload;
+    procedure Prepare(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean); overload;
+    procedure Prepare(const AText: string; const ACharSet: string; AIsWhitespaces: Boolean); overload;
+
     // Find next word in the text.
     function FindNext(var AStart,ALen: integer):Boolean; overload;
     function FindNext(var AWord: String):Boolean; overload;
     function FindNext: String; overload; inline;
+    function SkipNext(n: integer = 1): Boolean;
+
+    function IsNext(const S: string; CI: boolean = True; MoveNext: boolean = True): Boolean; overload;
+    function IsNext(const S: array of string; CI: boolean = True; MoveNext: boolean = True): Boolean; overload;
 
     // Find all words in the text (from begin to end).
     procedure Get(ADst: TStrings); overload;
@@ -157,11 +173,57 @@ begin
   Position := OldPosition;
 end;
 
+class function TTextWords.IsSamePredicate(const A,B: TIsAlphaPredicate): Boolean;
+begin
+  result := CompareMem(@A, @B, SizeOf(TIsAlphaPredicate));
+end;
+
+function TTextWords.FindNextStd(var AStart, ALen: integer): Boolean;
+var
+  i,Finish: Integer;
+begin
+  AStart := -1;
+
+  for i := Position to High(Text) do
+    if Text[i]>' ' then
+    begin
+      AStart := i;
+      Break;
+    end;
+
+  Result := AStart>=Low(Text);
+  if not Result then
+  begin
+    ALen := 0;
+    Position := High(Text)+1;
+    Exit;
+  end;
+  Finish := High(Text);
+
+  for i := AStart+1 to High(Text) do
+    if Text[i]<=' ' then
+    begin
+      Finish := i-1;
+      Break;
+    end;
+
+  Position := Finish+1;
+  ALen := Finish-AStart+1;
+end;
+
 function TTextWords.FindNext(var AStart, ALen: integer): Boolean;
 var
   i, Finish: integer;
 begin
   Assert(Assigned(IsAlphaChar) or Assigned(AlphaChars.Value));
+
+  // optimized version for most common scenario
+  if IsSamePredicate(IsAlphaChar, IsNonSpace) then
+  begin
+    result := FindNextStd(AStart, ALen);
+    Exit;
+  end;
+
   AStart := -1;
 
   if Assigned(IsAlphaChar) then
@@ -227,17 +289,79 @@ begin
   FindNext(Result);
 end;
 
+function TTextWords.SkipNext(n: integer = 1): Boolean;
+var
+  Start, Len: integer;
+begin
+  if n<=0 then
+    result := False
+  else
+    repeat
+      Result := FindNext(Start, Len);
+      Dec(n);
+    until (n=0) or not result;
+end;
+
+function TTextWords.IsNext(const S: string; CI: boolean = True; MoveNext: boolean = True): Boolean;
+var
+  v: string;
+  p: integer;
+begin
+  p := Position;
+  result := FindNext(v);
+  if result then
+    if CI then
+      result := AnsiSameText(s, v)
+    else
+      result := s=v;
+  if not MoveNext or not Result then
+    Position := p;
+end;
+
+function TTextWords.IsNext(const S: array of string; CI, MoveNext: boolean): Boolean;
+var
+  i,p: Integer;
+begin
+  result := True;
+  p := Position;
+  for i := Low(s) to High(s) do
+    if not IsNext(s[i], CI, True) then
+    begin
+      result := False;
+      Break;
+    end;
+  if not MoveNext or not Result then
+    Position := p;
+end;
+
 constructor TTextWords.Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate);
+begin
+  Prepare(AText, AIsAlphaPredicate);
+end;
+
+constructor TTextWords.Create(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean);
+begin
+  Prepare(AText, ACharSet, AIsWhitespaces);
+end;
+
+constructor TTextWords.Create(const AText, ACharSet: string; AIsWhitespaces: Boolean);
+begin
+  Prepare(AText, ACharSet, AIsWhitespaces);
+end;
+
+procedure TTextWords.Prepare(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil);
 begin
   Text := AText;
   if Assigned(AIsAlphaPredicate) then
     IsAlphaChar := AIsAlphaPredicate
   else
-    IsAlphaChar := IsLetterOrDigit;
+    // In older version we used IsLetterOrDigit by default, but now we switched
+    // to IsNonSpace, because it has optimized version and much faster.
+    IsAlphaChar := IsNonSpace;
   Reset;
 end;
 
-constructor TTextWords.Create(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean);
+procedure TTextWords.Prepare(const AText: string; const ACharSet: TAnsiChars; AIsWhitespaces: Boolean);
 var
   C: AnsiChar;
 begin
@@ -251,7 +375,7 @@ begin
   Reset;
 end;
 
-constructor TTextWords.Create(const AText, ACharSet: string; AIsWhitespaces: Boolean);
+procedure TTextWords.Prepare(const AText: string; const ACharSet: string; AIsWhitespaces: Boolean);
 var
   i: Integer;
 begin

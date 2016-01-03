@@ -34,7 +34,7 @@ uses
   System.Variants, System.Generics.Collections, System.Generics.Defaults,
   System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
   System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo, System.Rtti, System.Contnrs;
+  System.TypInfo, System.Rtti, System.Contnrs, adot.Generics.Collections;
 
 type
   TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
@@ -101,6 +101,8 @@ type
     class function UInt64ToHex(s: UInt64): string; static; inline;
     class function NativeIntToHex(s: NativeInt): string; static;
     class function NativeUIntToHex(s: NativeUInt): string; static; inline;
+    class function ByteToHex(s: byte): string; static;
+    class function WordToHex(s: word): string; static;
     class function PointerToHex(s: Pointer): string; static;
 
     class function HexToInt64(const HexEncodedInt: String):Int64; static;
@@ -395,18 +397,41 @@ type
     property CriticalSection: TCriticalSection read GetCriticalSection;
   end;
 
+  // Simple API for time measuring (supports recursion and calculates sum time). Example:
+  // TTiming.Start;
+  //   <do something>
+  // OpTime := TTiming.Stop;
+  // Caption := Format('Execution time: %.2f seconds, [OpTime.TotalSeconds]);
+  //   or
+  // OpTime := TTiming.Stop('TMyForm.LoadData', TotalTime);
+  // Caption := Format('Execution time: %.2f seconds (total: %.2f), [OpTime.TotalSeconds, TotalTime.TotalSeconds]);
   TTiming = class
   protected
+    type
+      TTotalStat = record
+      private
+        Span: TTimeSpan;
+        Calls: int64;
+      public
+        constructor Create(const ASpan: TTimeSpan; const ACalls: int64);
+      end;
+
     class var
       FTimeStack: TStack<TStopwatch>;
+      FTotalTimes: TTextDictionary<TTotalStat>;
 
     class function GetTimeStack: TStack<TStopwatch>; static;
+    class function GetTotalTimes: TTextDictionary<TTotalStat>; static;
     class procedure Finilaze; static;
 
     class property TimeStack: TStack<TStopwatch> read GetTimeStack;
+    class property TotalTimes: TTextDictionary<TTotalStat> read GetTotalTimes;
   public
     class procedure Start; static;
-    class function Stop: TTimeSpan; static;
+    class function Stop: TTimeSpan; overload; static;
+    class function Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan; overload; static;
+    class function StopAndGetCaption(const OpId: string): string; overload; static;
+    class function StopAndGetCaption(const OpId,Msg: string): string; overload; static;
   end;
 
   TDelegatedOnFile = reference to procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean);
@@ -552,7 +577,7 @@ class function THex.HexToNativeInt(const HexEncodedInt: String):NativeInt;
 var
   i: Integer;
 begin
-  assert(Valid(HexEncodedInt));
+  Assert(Valid(HexEncodedInt));
   result := 0;
   for i := Low(HexEncodedInt) to High(HexEncodedInt) do
     result := (result shl 4) or H2B[HexEncodedInt[i]];
@@ -604,6 +629,27 @@ end;
 class function THex.NativeUIntToHex(s: NativeUInt): string;
 begin
   result := NativeIntToHex(NativeInt(s));
+end;
+
+class function THex.WordToHex(s: word): string;
+var
+  i,j: Integer;
+begin
+  setlength(result, SizeOf(s)*2);
+  for i := SizeOf(s)-1 downto 0 do
+  begin
+    J := S and $FF;
+    S := S shr 8;
+    Result[Low(Result) + i*2    ] := TwoHexLookup[J][0];
+    Result[Low(Result) + i*2 + 1] := TwoHexLookup[J][1];
+  end;
+end;
+
+class function THex.ByteToHex(s: byte): string;
+begin
+  setlength(result, 2);
+  Result[Low(Result)    ] := TwoHexLookup[S][0];
+  Result[Low(Result) + 1] := TwoHexLookup[S][1];
 end;
 
 class function THex.PointerToHex(s: Pointer): string;
@@ -1017,11 +1063,20 @@ begin
   FList.Add(AObject);
 end;
 
+{ TTiming.TTotalStat }
+
+constructor TTiming.TTotalStat.Create(const ASpan: TTimeSpan; const ACalls: int64);
+begin
+  Span := ASpan;
+  Calls := ACalls;
+end;
+
 { TTiming }
 
 class procedure TTiming.Finilaze;
 begin
   FreeAndNil(FTimeStack);
+  FreeAndNil(FTotalTimes);
 end;
 
 class function TTiming.GetTimeStack: TStack<TStopwatch>;
@@ -1029,6 +1084,13 @@ begin
   if FTimeStack=nil then
     FTimeStack := TStack<TStopwatch>.Create;
   result := FTimeStack;
+end;
+
+class function TTiming.GetTotalTimes: TTextDictionary<TTotalStat>;
+begin
+  if FTotalTimes=nil then
+    FTotalTimes := TTextDictionary<TTotalStat>.Create;
+  result := FTotalTimes;
 end;
 
 class procedure TTiming.Start;
@@ -1039,6 +1101,36 @@ end;
 class function TTiming.Stop: TTimeSpan;
 begin
   Result := TimeStack.Pop.Elapsed;
+end;
+
+class function TTiming.Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan;
+begin
+  result := Stop;
+  if not TotalTimes.TryGetValue(OpId, ATotalStat) then
+    ATotalStat := TTotalStat.Create(TTimeSpan.Create(0), 0);
+  ATotalStat.Span := ATotalStat.Span + result;
+  inc(ATotalStat.Calls);
+  TotalTimes.AddOrSetValue(OpId, ATotalStat);
+end;
+
+class function TTiming.StopAndGetCaption(const OpId, Msg: string): string;
+var
+  OpTime: TTimeSpan;
+  TotalStat: TTotalStat;
+begin
+  OpTime := Stop(OpId, TotalStat);
+  result := Format('%s (%s): %.2f sec (total: %.2f sec; calls: %d)', [
+    OpId, Msg, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
+end;
+
+class function TTiming.StopAndGetCaption(const OpId: string): string;
+var
+  OpTime: TTimeSpan;
+  TotalStat: TTotalStat;
+begin
+  OpTime := Stop(OpId, TotalStat);
+  result := Format('%s: %.2f sec (total: %.2f sec; calls: %d)', [
+    OpId, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
 end;
 
 { TFileTools }

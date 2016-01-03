@@ -2,11 +2,12 @@ unit adot.Generics.Collections;
 
 {
   - TSet<TValue>                       (set)
-  ?- TOrderedSet<TValue>                (ordered set of values)
+  ?- TOrderedSet<TValue>               (ordered set of values)
   - TMap<TKey,TValue>                  (alias to TDictionary)
+  - TObjectMap                         (alias to TObjectDictionary)
   - TOrderedMap<TKey,TValue>           (ordered by key set of pairs key->value)
   - TMultimap<TKey,TValue>             (TMap with key duplication)
-  ?- TOrderedMultimap<TKey,TValue>      (TOrderedMap with key duplication)
+  ?- TOrderedMultimap<TKey,TValue>     (TOrderedMap with key duplication)
   - THeap<T>                           (array-based implementation of the heap)
   - TPriorityQueue<T>                  (alias to THeap)
   - TCyclicBuffer<T>                   (ring)
@@ -16,12 +17,19 @@ unit adot.Generics.Collections;
   - TTextDictionary<TValue>            (alias to TTextMap)
   - TCache<TKey,TValue>                (memory-limited map)
   - THelper                            (helpers for generics)
+  - TCompound<A,B[,C]>                 (record with constructor, can be used as key for TMap/TDictionary etc)
+  - TCompoundEqualityComparer<A,B[,C]> (implementation of IEqualityComparer for TCompound)
+  - TCompoundComparer<A,B[,C]>         (implementation of IComparer for TCompound)
 }
 interface
 
 uses
   System.Generics.Collections, System.Generics.Defaults, System.SysUtils,
-  System.Classes, System.Character, System.Math;
+  System.Classes, System.Character, System.Math, System.TypInfo;
+
+const
+  RecordTypes = [tkInteger, tkChar, tkEnumeration, tkFloat, tkSet,
+    tkMethod, tkWChar, tkRecord, tkInt64, tkPointer, tkProcedure];
 
 type
   TEmptyRec = record end;
@@ -81,6 +89,7 @@ type
 
   // Alias to dictionary.
   TMap<TKey,TValue> = class(TDictionary<TKey,TValue>);
+  TObjectMap<TKey,TValue> = class(TObjectDictionary<TKey,TValue>);
 
   // Unsorted multimap container (one key -> many values).
   TContainsCheckType = (cctAll, cctAnyOf);
@@ -535,6 +544,109 @@ type
 
   THelper = record
     class function Count<T>(const Enumerable: TEnumerable<T>): integer; static;
+  end;
+
+  // Always use TCompoundEqualityComparer.Default for creating of compatible comparer
+  // It supports efficiently both - record types and managed types.
+  // There is also TCompoundComparer class.
+  // Example:
+  // type
+  //   TKey = TCompound<String, TArray<Integer>>;
+  // var
+  //   m: TMap<TKey, Double>;
+  // begin
+  //   m := TMap<TKey, Double>.Create(TCompoundEqualityComparer<String, TArray<Integer>>.Default);
+  //   m.Add(TKey.Create('test', TArrayHelper.Get<integer>([1,2,3])), 3.1415926);
+  // end;
+  TCompound<TypeA,TypeB> = record
+    A: TypeA;
+    B: TypeB;
+    constructor Create(const A: TypeA; const B: TypeB);
+  end;
+
+  TCompound<TypeA,TypeB,TypeC> = record
+    A: TypeA;
+    B: TypeB;
+    C: TypeC;
+    constructor Create(const A: TypeA; const B: TypeB; const C: TypeC);
+  end;
+
+  TCompoundEqualityComparer<TypeA,TypeB> = class(TEqualityComparer<TCompound<TypeA,TypeB>>)
+  protected
+    FComparerA: IEqualityComparer<TypeA>;
+    FComparerB: IEqualityComparer<TypeB>;
+  public
+    class function Default: IEqualityComparer<TCompound<TypeA,TypeB>>; reintroduce; static;
+    constructor Create(
+      const ComparerA: IEqualityComparer<TypeA>;
+      const ComparerB: IEqualityComparer<TypeB>
+    );
+    function Equals(const Left, Right: TCompound<TypeA,TypeB>): Boolean; overload; override;
+    function GetHashCode(const Value: TCompound<TypeA,TypeB>): Integer; overload; override;
+  end;
+
+  TCompoundEqualityComparer<TypeA,TypeB,TypeC> = class(TEqualityComparer<TCompound<TypeA,TypeB,TypeC>>)
+  protected
+    FComparerA: IEqualityComparer<TypeA>;
+    FComparerB: IEqualityComparer<TypeB>;
+    FComparerC: IEqualityComparer<TypeC>;
+  public
+    class function Default: IEqualityComparer<TCompound<TypeA,TypeB,TypeC>>; reintroduce; static;
+    constructor Create(
+      const ComparerA: IEqualityComparer<TypeA>;
+      const ComparerB: IEqualityComparer<TypeB>;
+      const ComparerC: IEqualityComparer<TypeC>
+    );
+    function Equals(const Left, Right: TCompound<TypeA,TypeB,TypeC>): Boolean; overload; override;
+    function GetHashCode(const Value: TCompound<TypeA,TypeB,TYpeC>): Integer; overload; override;
+  end;
+
+  TCompoundComparer<TypeA,TypeB> = class(TComparer<TCompound<TypeA,TypeB>>)
+  protected
+    FComparerA: IComparer<TypeA>;
+    FComparerB: IComparer<TypeB>;
+  public
+    class function Default: IComparer<TCompound<TypeA,TypeB>>; reintroduce; static;
+    constructor Create(
+      const ComparerA: IComparer<TypeA>;
+      const ComparerB: IComparer<TypeB>
+    );
+    function Compare(const Left, Right: TCompound<TypeA,TypeB>): Integer; override;
+  end;
+
+  TCompoundComparer<TypeA,TypeB,TypeC> = class(TComparer<TCompound<TypeA,TypeB,TypeC>>)
+  protected
+    FComparerA: IComparer<TypeA>;
+    FComparerB: IComparer<TypeB>;
+    FComparerC: IComparer<TypeC>;
+  public
+    class function Default: IComparer<TCompound<TypeA,TypeB,TypeC>>; reintroduce; static;
+    constructor Create(
+      const ComparerA: IComparer<TypeA>;
+      const ComparerB: IComparer<TypeB>;
+      const ComparerC: IComparer<TypeC>
+    );
+    function Compare(const Left, Right: TCompound<TypeA,TypeB,TypeC>): Integer; override;
+  end;
+
+  { No events/enumerators and other features, implementation is minimalistic and very efficient }
+  TFastStackRec<T> = record
+  private
+    FItems: TArray<T>;
+    FCount: integer;
+    FCapacity: integer;
+
+    procedure SetCapacity(ACapacity: integer);
+    procedure Grow;
+  public
+    constructor Create(ACapacity: integer);
+    procedure Push(const Value: T); inline;
+    function Pop: T; inline;
+    procedure Clear; inline;
+
+    property Count: integer read FCount;
+    property Capacity: integer read FCapacity write SetCapacity;
+    property Items: TArray<T> read FItems;
   end;
 
 implementation
@@ -2374,6 +2486,247 @@ end;
 function TOrderedMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
 begin
   result := FTree.TryGetValue(Key, Value);
+end;
+
+{ TCompound<TypeA, TypeB> }
+
+constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
+begin
+  Self.A := A;
+  Self.B := B;
+end;
+
+{ TCompound<TypeA, TypeB, TypeC> }
+
+constructor TCompound<TypeA, TypeB, TypeC>.Create(const A: TypeA; const B: TypeB; const C: TypeC);
+begin
+  Self.A := A;
+  Self.B := B;
+  Self.C := C;
+end;
+
+{ TCompoundEqualityComparer<TypeA, TypeB> }
+
+constructor TCompoundEqualityComparer<TypeA, TypeB>.Create(
+  const ComparerA: IEqualityComparer<TypeA>;
+  const ComparerB: IEqualityComparer<TypeB>);
+begin
+  FComparerA := ComparerA;
+  FComparerB := ComparerB;
+  if FComparerA=nil then
+    FComparerA := TEqualityComparer<TypeA>.Default;
+  if FComparerB=nil then
+    FComparerB := TEqualityComparer<TypeB>.Default;
+end;
+
+class function TCompoundEqualityComparer<TypeA, TypeB>.Default: IEqualityComparer<TCompound<TypeA, TypeB>>;
+var
+  A,B: PTypeInfo;
+begin
+  A := TypeInfo(TypeA);
+  if (A<>nil) and (A.Kind in RecordTypes) then
+  begin
+    B := TypeInfo(TypeB);
+    if (B<>nil) and (B.Kind in RecordTypes) then
+      Exit(inherited);
+  end;
+  result := TCompoundEqualityComparer<TypeA, TypeB>.Create(nil, nil);
+end;
+
+function TCompoundEqualityComparer<TypeA, TypeB>.Equals(const Left,Right: TCompound<TypeA, TypeB>): Boolean;
+begin
+  result :=
+    FComparerA.Equals(Left.A, Right.A) and
+    FComparerB.Equals(Left.B, Right.B);
+end;
+
+function TCompoundEqualityComparer<TypeA, TypeB>.GetHashCode(const Value: TCompound<TypeA, TypeB>): Integer;
+begin
+  result :=
+    FComparerA.GetHashCode(Value.A) xor
+    FComparerB.GetHashCode(Value.B);
+end;
+
+{ TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
+
+constructor TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Create(
+  const ComparerA: IEqualityComparer<TypeA>;
+  const ComparerB: IEqualityComparer<TypeB>;
+  const ComparerC: IEqualityComparer<TypeC>);
+begin
+  FComparerA := ComparerA;
+  FComparerB := ComparerB;
+  FComparerC := ComparerC;
+  if FComparerA=nil then
+    FComparerA := TEqualityComparer<TypeA>.Default;
+  if FComparerB=nil then
+    FComparerB := TEqualityComparer<TypeB>.Default;
+  if FComparerC=nil then
+    FComparerC := TEqualityComparer<TypeC>.Default;
+end;
+
+class function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Default: IEqualityComparer<TCompound<TypeA, TypeB, TypeC>>;
+var
+  A,B,C: PTypeInfo;
+begin
+  A := TypeInfo(TypeA);
+  if (A<>nil) and (A.Kind in RecordTypes) then
+  begin
+    B := TypeInfo(TypeB);
+    if (B<>nil) and (B.Kind in RecordTypes) then
+    begin
+      C := TypeInfo(TypeC);
+      if (C<>nil) and (C.Kind in RecordTypes) then
+        Exit(inherited);
+    end;
+  end;
+  result := TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Create(nil, nil, nil);
+end;
+
+function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Equals(
+  const Left,Right: TCompound<TypeA, TypeB, TypeC>): Boolean;
+begin
+  result :=
+    FComparerA.Equals(Left.A, Right.A) and
+    FComparerB.Equals(Left.B, Right.B) and
+    FComparerC.Equals(Left.C, Right.C);
+end;
+
+function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.GetHashCode(
+  const Value: TCompound<TypeA, TypeB, TYpeC>): Integer;
+begin
+  result :=
+    FComparerA.GetHashCode(Value.A) xor
+    FComparerB.GetHashCode(Value.B) xor
+    FComparerC.GetHashCode(Value.C);
+end;
+
+{ TCompoundComparer<TypeA, TypeB> }
+
+constructor TCompoundComparer<TypeA, TypeB>.Create(
+  const ComparerA: IComparer<TypeA>; const ComparerB: IComparer<TypeB>);
+begin
+  FComparerA := ComparerA;
+  FComparerB := ComparerB;
+  if FComparerA=nil then
+    FComparerA := TComparer<TypeA>.Default;
+  if FComparerB=nil then
+    FComparerB := TComparer<TypeB>.Default;
+end;
+
+class function TCompoundComparer<TypeA, TypeB>.Default: IComparer<TCompound<TypeA, TypeB>>;
+var
+  A,B: PTypeInfo;
+begin
+  A := TypeInfo(TypeA);
+  if (A<>nil) and (A.Kind in RecordTypes) then
+  begin
+    B := TypeInfo(TypeB);
+    if (B<>nil) and (B.Kind in RecordTypes) then
+      Exit(inherited);
+  end;
+  result := TCompoundComparer<TypeA, TypeB>.Create(nil, nil);
+end;
+
+function TCompoundComparer<TypeA, TypeB>.Compare(const Left,Right: TCompound<TypeA, TypeB>): Integer;
+begin
+  Result := FComparerA.Compare(Left.A, Right.A);
+  if Result=0 then
+    Result := FComparerB.Compare(Left.B, Right.B);
+end;
+
+{ TCompoundComparer<TypeA, TypeB, TypeC> }
+
+constructor TCompoundComparer<TypeA, TypeB, TypeC>.Create(
+  const ComparerA: IComparer<TypeA>;
+  const ComparerB: IComparer<TypeB>;
+  const ComparerC: IComparer<TypeC>);
+begin
+  FComparerA := ComparerA;
+  FComparerB := ComparerB;
+  FComparerC := ComparerC;
+  if FComparerA=nil then
+    FComparerA := TComparer<TypeA>.Default;
+  if FComparerB=nil then
+    FComparerB := TComparer<TypeB>.Default;
+  if FComparerC=nil then
+    FComparerC := TComparer<TypeC>.Default;
+end;
+
+class function TCompoundComparer<TypeA, TypeB, TypeC>.Default: IComparer<TCompound<TypeA, TypeB, TypeC>>;
+var
+  A,B,C: PTypeInfo;
+begin
+  A := TypeInfo(TypeA);
+  if (A<>nil) and (A.Kind in RecordTypes) then
+  begin
+    B := TypeInfo(TypeB);
+    if (B<>nil) and (B.Kind in RecordTypes) then
+    begin
+      C := TypeInfo(TypeC);
+      if (C<>nil) and (C.Kind in RecordTypes) then
+        Exit(inherited);
+    end;
+  end;
+  result := TCompoundComparer<TypeA, TypeB, TypeC>.Create(nil, nil, nil);
+end;
+
+function TCompoundComparer<TypeA, TypeB, TypeC>.Compare(
+  const Left,Right: TCompound<TypeA, TypeB, TypeC>): Integer;
+begin
+  result := FComparerA.Compare(Left.A, Right.A);
+  if result=0 then
+  begin
+    result := FComparerB.Compare(Left.B, Right.B);
+    if result=0 then
+      result := FComparerC.Compare(Left.C, Right.C);
+  end;
+end;
+
+{ TStackRec<T> }
+
+constructor TFastStackRec<T>.Create(ACapacity: integer);
+begin
+  FCapacity := 0;
+  FCount := 0;
+  if ACapacity>0 then
+    SetCapacity(ACapacity);
+end;
+
+procedure TFastStackRec<T>.SetCapacity(ACapacity: integer);
+begin
+  FCapacity := ACapacity;
+  if FCapacity<FCount then
+    FCount := FCapacity;
+  SetLength(FItems, FCapacity);
+end;
+
+procedure TFastStackRec<T>.Grow;
+begin
+  if FCapacity<=0 then
+    FCapacity := 64
+  else
+    FCapacity := FCapacity*2;
+  SetLength(FItems, FCapacity);
+end;
+
+procedure TFastStackRec<T>.Push(const Value: T);
+begin
+  if FCount>=FCapacity then
+    Grow;
+  FItems[FCount] := Value;
+  inc(FCount);
+end;
+
+function TFastStackRec<T>.Pop: T;
+begin
+  Dec(FCount);
+  result := FItems[FCount];
+end;
+
+procedure TFastStackRec<T>.Clear;
+begin
+  FCount := 0;
 end;
 
 end.
