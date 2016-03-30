@@ -1,60 +1,63 @@
 unit adot.Tools;
-{
-  Compatible with all delphi platforms (Win x32/x64, Android, iOS).
-
-  Generics:
-
-  TAutoFree<T>           - class types wrapper for automatic destroying of objects
-  TAuto<T>               - TAutoFree<T> + automatic creating of instance at first request
-  TAutoFreeCollection    - simple container for automatic destroying of objects
-  TNullable<T>           - extend any type with "null" value (not assigned)
-  TThreadSafe<T>         - provides protected (critical section) access to variable
-  TCompound<A,B[,C]>     - simple combination of primitive types (record type with constructor)
-
-  Tools:
-
-  TDelegatedMemoryStream
-  THex
-  TCryptoHash
-  TFastHash
-  TVar
-  TNumbers
-  TColors
-  TTiming
-  TFileTools
-  TRLE
-  TEnumeration<T>
-}
 
 interface
+{
+  THex                              HEX convertion routines.
+  THash                             Non-crypto hashing (THash.MD5/THash.SHA1 for crypto hashing).
+  TSummDouble<TKey>                 Dictionary to accumulate summ of values for every Key.
+  TMin<TKeyType,TValueType>         Dictionary to keep/maintain pairs Key->MinValue.
+  TMax<TKeyType,TValueType>         Dictionary to keep/maintain pairs Key->MaxValue.
+  TInvertedComparer<TValueType>     Inversion of items order in comparer.
+  TDateTimeRec                      Type to define dates as constants: "const D: TDateTimeRec = (Year:2009; Month:05; Day:11);".
+  TDelegatedMemoryStream            Readonly stream on block of memory.
+  TArrayStream<T: record>           Stream with underlying array as storage.
+  TArrayUtils                       Tools for arrays (Copy/Equal/Delete/Append etc).
+  TListIndexed                      Analog of TList but with unique values and fast IndexOf.
+  TCache                            Dictionary of fixed size (deletes "old" recrods automatically).
+  TDateTimeUtils                    IsCorrectDate/ToStr etc.
+  TInterfacedObject<T: class>       Implements IInterfacedObject (class as interface) for any class.
+  TIndex                            Random/RandomSelection/According to comparer etc.
+  TGUIDUtils                        IsValid/TryStringToGUID etc.
+  TStreamUtils                      StringToStream etc.
+  TKeyUtils                         StringToKey etc.
+  TFileUtils                        IsLocked/GetLockedFiles
+  TIfThen                           Generic implementation of IfThen.
+  TIndexBackEnumerator              Enumerator for collections.
+  TTiming                           Time measuring routines (Start/Stop/StopAndGetCaption etc).
+  TTimeOut                          Timeout control routines (Start/TimedOut etc).
+  TCachable                         Basic class with implementation of ICachable.
+  TCurrencyUtils                    ToString etc.
+  Min3/Max3                         Analogs of Min/Max.
+  TPIWriter/TPIReader               100% platform independent stream reader/writer.
+}
 
 uses
-  {$IF CompilerVersion>=30} System.Hash, {$ENDIF}
-  IdGlobal, System.Classes, IdHashMessageDigest, System.SysUtils,
-  System.Variants, System.Generics.Collections, System.Generics.Defaults,
-  System.StrUtils, System.Math, System.UITypes, System.Diagnostics,
-  System.TimeSpan, System.Character, System.Types, System.SyncObjs,
-  System.TypInfo, System.Rtti, System.Contnrs, adot.Generics.Collections;
+  adot.Types,
+  adot.Collections,
+  System.DateUtils,
+  System.Types,
+  System.Rtti,
+  System.Math,
+  System.IOUtils,
+  System.Generics.Collections,
+  System.Generics.Defaults,
+  System.Hash,
+  System.Classes,
+  System.SysUtils,
+  System.StrUtils,
+  System.TimeSpan,
+  System.Diagnostics,  { TStopwatch }
+  System.SyncObjs,     { TInterlocked.* }
+  System.Variants;
 
 type
-  TDelegatedOnComponentWithBreak = reference to procedure(AComponent: TComponent; var ABreak: boolean);
-  TDelegatedOnComponent = reference to procedure(AComponent: TComponent);
 
-procedure ForEachComponent(AStart: TComponent; ACallback: TDelegatedOnComponentWithBreak); overload;
-procedure ForEachComponent(AStart: TComponent; ACallback: TDelegatedOnComponent); overload;
-
-type
-  TDelegatedMemoryStream = class(TCustomMemoryStream)
-  public
-    constructor Create(var Buf; Size: NativeInt);
-  end;
-
+  { Set of functions for HEX conversion }
   THex = class
-  public
+  protected
     const
-      B2HConvert = '0123456789ABCDEF';
-      // System.SysUtils.TwoHexLookup is hidden behind implementation section,
-      // so we have to reintroduce it.
+      { System.SysUtils.TwoHexLookup is hidden behind implementation section,
+        so we have to reintroduce it. }
       TwoHexLookup : packed array[0..255] of array[0..1] of Char =
       ('00','01','02','03','04','05','06','07','08','09','0A','0B','0C','0D','0E','0F',
        '10','11','12','13','14','15','16','17','18','19','1A','1B','1C','1D','1E','1F',
@@ -73,251 +76,582 @@ type
        'E0','E1','E2','E3','E4','E5','E6','E7','E8','E9','EA','EB','EC','ED','EE','EF',
        'F0','F1','F2','F3','F4','F5','F6','F7','F8','F9','FA','FB','FC','FD','FE','FF');
       H2B: packed array['0'..'f'] of SmallInt =
-        ( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,-1,-1,-1,-1,-1,-1,
-         -1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        ( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,-1,-1,-1,-1,-1,-1, { 0..9 }
+         -1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1, { a..f }
          -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-         -1,10,11,12,13,14,15);
+         -1,10,11,12,13,14,15);                           { A..F }
+  public
 
-    class procedure Encode(const Buf; ByteBufSize: integer; Dst: PChar); overload; static;
+    class function EncodedSizeChars(SourceSizeBytes: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function DecodedSizeBytes(EncodedSizeChars: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+
     class function Encode(const Buf; ByteBufSize: integer): String; overload; static;
     class function Encode<T: Record>(const Value: T): String; overload; static;
-    class function Encode(const s: TIdBytes):String; overload; static;
     class function Encode(const s: TBytes):String; overload; static;
-    class function Encode(const s: string):String; overload; static;
+    class function Encode(const s: string): string; overload; static;
+    class function Encode(const s: string; utf8: boolean): string; overload; static;
+    class function EncodeAnsiString(const s: AnsiString):String; static;
+    class function EncodeByteH(Src: byte): char; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function EncodeByteL(Src: byte): char; static; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     class procedure Decode(const HexEncodedStr: String; var Buf); overload; static;
     class function Decode<T: Record>(const HexEncodedStr: String): T; overload; static;
-    class function DecodeIdBytes(const HexEncodedStr: String):TIdBytes; static;
     class function DecodeBytes(const HexEncodedStr: String):TBytes; static;
-    class function DecodeString(const HexEncodedStr: String):String; static;
+    class function DecodeString(const HexEncodedStr: string): string; overload; static;
+    class function DecodeString(const HexEncodedStr: string; utf8: boolean): string; overload; static;
+    class function DecodeAnsiString(const HexEncodedStr: String):AnsiString; static;
+    class function DecodeByte(H,L: Char): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function DecodeHexChar(HexChar: Char): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
 
-    class function Valid(const HexEncodedStr: String):Boolean; static;
+    class function IsValid(const HexEncodedStr: String):Boolean; overload; static;
+    class function IsValid(const HexEncodedStr: String; ZeroBasedStartIdx,Len: integer):Boolean; overload; static;
+    class function IsValid(const C: Char):Boolean; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
 
-    // Int64ToHex(Value) <> Encode(Value, SizeOf(Value)) for x86-compatible CPU family,
-    // because lower bytes of integers are stored by lower addresses. When we translate
-    // integer/pointer to hex we would like to use regular notation, when higher digits
-    // are shown first.
+    { Int64ToHex(Value) <> Encode(Value, SizeOf(Value)) for x86-compatible CPU family,
+      because lower bytes of integers are stored by lower addresses. When we translate
+      integer/pointer to hex we would like to use regular notation, when higher digits
+      are shown first. }
     class function Int64ToHex(s: Int64): string; static;
-    class function UInt64ToHex(s: UInt64): string; static; inline;
+    class function UInt64ToHex(s: UInt64): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function NativeIntToHex(s: NativeInt): string; static;
-    class function NativeUIntToHex(s: NativeUInt): string; static; inline;
-    class function ByteToHex(s: byte): string; static;
-    class function WordToHex(s: word): string; static;
+    class function NativeUIntToHex(s: NativeUInt): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function PointerToHex(s: Pointer): string; static;
 
     class function HexToInt64(const HexEncodedInt: String):Int64; static;
-    class function HexToUInt64(const HexEncodedInt: String):UInt64; static; inline;
+    class function HexToUInt64(const HexEncodedInt: String):UInt64; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function HexToNativeInt(const HexEncodedInt: String):NativeInt; static;
-    class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static; inline;
-    class function HexToPointer(const HexEncodedPointer: String):Pointer; static; inline;
+    class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function HexToPointer(const HexEncodedPointer: String):Pointer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
-  TCryptoHash = class
+  { Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
+    http://qc.embarcadero.com/wc/qcmain.aspx?d=132100
+    If you need reset/update functionality, use THash.MD5/THash.SHA1/THash.BobJenkins
+    (they implemented to workaround bugs in Delphi implementations). }
+  THash = class
+  private
   public
     type
-      TValue = TIdBytes;
+      MD5 = record
+      private
+        Hash: THashMD5;
+        Digest: TBytes;
+      public
 
-    class function Encode(const Buf; ByteBufSize: integer): TValue; overload; static;
-    class function Encode<T: Record>(const Value: T): TValue; overload; static; inline;
-    class function Encode(const s: TIdBytes): TValue; overload; static;
-    class function Encode(const s: TBytes): TValue; overload; static; inline;
-    class function Encode(const s: string): TValue; overload; static;
-    class function Encode(s: TStream; AOwnsStream: boolean = False): TValue; overload; static;
+        class function Create: THash.MD5; static;
+
+        procedure Reset;
+        procedure Update(const AData; ALength: Cardinal); overload;
+        procedure Update(const AData: TBytes; ALength: Cardinal = 0); overload;
+        procedure Update(const AData: string); overload;
+        function HashAsBytes: TBytes;
+        function HashAsString: string;
+
+        class function GetHashBytes(const AData: string): TBytes; static;
+        class function GetHashString(const AData: string): string; static;
+      end;
+
+      SHA1 = record
+      private
+        Hash: THashSHA1;
+      public
+
+        class function Create: THash.SHA1; static;
+
+        procedure Reset;
+        procedure Update(const AData; ALength: Cardinal); overload;
+        procedure Update(const AData: TBytes; ALength: Cardinal = 0); overload;
+        procedure Update(const AData: string); overload;
+        function HashAsBytes: TBytes;
+        function HashAsString: string;
+
+        class function GetHashBytes(const AData: string): TBytes; static;
+        class function GetHashString(const AData: string): string; static;
+      end;
+
+      { THashBobJenkins seems to be ok in XE8. }
+      BobJenkins = THashBobJenkins;
+
+    { MD5 }
+    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload; static;
+    class function Encode<T: Record>(const Value: T): TBytes; overload; static;
+    class function Encode(s: TBytes): TBytes; overload; static;
+    class function Encode(const s: string): TBytes; overload; static;
+    class function EncodeAnsiString(const s: AnsiString): TBytes; static;
+    class function Encode(s: TStream): TBytes; overload; static;
+    class function EncodeFile(const AFileName: string): string; overload; static;
   end;
 
-  TFastHash = class
+  { In many classes we need to get sum of elements according to some condition.
+    The class supposed to simplify and make such operations simple and very efficient. }
+  TSummDouble<TKey> = class
+  protected
+    FItems: TDictionary<TKey, double>;
   public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Add(const AKey: TKey; const AValue: double);
+    function Get(const AKey: TKey; out AValue: double): Boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Get(const AKey: TKey): Double; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
+  { Sometimes we need to search min element among object.
+    All conditions (year, period etc) can be present as key. }
+  TMin<TKeyType,TValueType> = class
+  protected
     type
-      TValue = Integer;
+      TKeyCollection = TDictionary<TKeyType, TValueType>.TKeyCollection;
+    var
+      FItems: TDictionary<TKeyType, TValueType>;
+      FComparer: IComparer<TValueType>;
 
-    class function Encode(const Buf; ByteBufSize: integer): TValue; overload; static; inline;
-    class function Encode<T: Record>(const Value: T): TValue; overload; static; inline;
-    class function Encode(const s: TIdBytes): TValue; overload; static; inline;
-    class function Encode(const s: TBytes): TValue; overload; static; inline;
-    class function Encode(const s: string): TValue; overload; static; inline;
-    class function Encode(s: TStream; AOwnsStream: boolean = False): TValue; overload; static;
+    function GetKeyCollection: TKeyCollection;
+  public
+    constructor Create(const AComparer: IComparer<TValueType> = nil);
+    destructor Destroy; override;
+    procedure Add(const AKey: TKeyType; const AValue: TValueType);
+    function Get(const AKey: TKeyType; out AValue: TValueType): Boolean; overload;
+    function Get(const AKey: TKeyType): TValueType; overload;
+    function Empty: boolean;
+    property Keys: TKeyCollection read GetKeyCollection;
   end;
 
-  TVar = class
+  TMax<TKeyType,TValueType> = class(TMin<TKeyType,TValueType>)
   public
-    class function AsString(const v: Variant): String; static;
+    constructor Create(const AComparer: IComparer<TValueType> = nil);
   end;
 
-  TNumbers = class
+  TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
+  protected
+    FExtComparer: IComparer<TValueType>;
   public
-    class function IntToStr(const Value: int64; const Digits: integer): String; static;
+    constructor Create(const AExtComparer: IComparer<TValueType>);
+    function Compare(const Left, Right: TValueType): Integer;
   end;
 
-  TColors = class
+  { Examples:
+      const
+        Date1 : TDateTimeRec = (Year:2009; Month:05; Day:11);
+        Date2 : TDateTimeRec = (Year:2009; Month:05; Day:11; Hour:05); }
+  TDateTimeRec = record
+    Year, Month, Day, Hour, Minute, Second, Millisecond : Word;
+
+    class operator implicit(const ADateTime : TDateTimeRec): TDateTime;
+    class operator implicit(const ADateTime : TDateTime): TDateTimeRec;
+    class operator implicit(const ADateTime : TDateTimeRec): String;
+    class operator implicit(const ADateTime : String): TDateTimeRec;
+  end;
+
+  { Extensions of TStream }
+  TCustomStreamExt = class(TStream)
   public
-    type
-      TDistanceType = (dtMaxComponentDeviation, dtStandardDeviation);
-      TColorClass = (
-        ccBlack, ccGray,      ccSilver,  ccWhite,
-        ccRed,   ccOrange,    ccYellow,  ccSpringGreen,
-        ccGreen, ccTurquoise, ccCyan,    ccOcean,
-        ccBlue,  ccViolet,    ccMagenta, ccRaspberry);
+    procedure Clear;
+    procedure SaveToStream(Stream: TStream);
+    procedure SaveToFile(const FileName: string);
+    procedure LoadFromStream(Stream: TStream);
+    procedure LoadFromFile(const FileName: string);
+  end;
+
+  { Readonly stream for specified memory block }
+  TDelegatedMemoryStream = class(TCustomMemoryStream)
+  public
+    constructor Create(Buf: pointer; Size: integer); overload;
+    procedure SetSize(const NewSize: Int64); override;
+    procedure SetSize(NewSize: Longint); override;
+    function Write(const Buffer; Count: Longint): Longint; override;
+    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
+  end;
+
+  { Makes any array of ordinal type to be accessable as stream of bytes }
+  TArrayStream<T: record> = class(TCustomStreamExt)
+  protected
+    FItems: TArray<T>;
+    FPos: integer;
+    FSize: integer;
+    FCapacity: integer;
+
+    procedure SetItems(const Value: TArray<T>);
+    procedure SetCapacity(NewByteCapacity: integer);
+  public
+    constructor Create(const AItems: TArray<T>); overload;
+    function Read(var Buffer; Count: Longint): Longint; override;
+    function Read(Buffer: TBytes; Offset, Count: Longint): Longint; override;
+    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
+    procedure SetSize(const NewSize: Int64); override;
+    procedure SetSize(NewSize: Longint); override;
+    function Write(const Buffer; Count: Longint): Longint; override;
+    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
+
+    property Items: TArray<T> read FItems write SetItems;
+  end;
+
+  TIntSequenceParams = record
+  private
+    FStartValue   : integer;
+    FStepInc      : integer;
+    FRndDeviation : integer;
+    FCurrentBase  : integer; { current value }
+    FCurrent      : integer; { current value +/- random_deviation }
+
+  public
+    constructor Create(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
+    procedure Init(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
+
+    procedure Reset;
+
+    { return Current, generates next }
+    function Next: integer;
+
+    property StartValue   : integer read FStartValue    write FStartValue;
+    property StepInc      : integer read FStepInc       write FStepInc;
+    property RndDeviation : integer read FRndDeviation  write FRndDeviation;
+    property Current      : integer read FCurrent       write FCurrent;
+  end;
+
+  TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
+  TFuncConst<T1,T2,TResult> = reference to function (const Arg1: T1; const Arg2: T2): TResult;
+  TFuncConst<T1,T2,T3,TResult> = reference to function (const Arg1: T1; const Arg2: T2; const Arg3: T3): TResult;
+  TArrayUtils = record
+  private
+    class procedure Random_Integer(Dst: PInteger; Count,ValueLen: integer); static;
+    class procedure Random_String(var Dst: TArray<String>; Count, ValueLen: integer); static;
+    class procedure Random_Double(var Dst: TArray<Double>; Count, ValueLen: integer); static;
+    class procedure Random_Byte(Dst: PByte; Count, ValueLen: integer); static;
+  public
+    class function Get<T>(const Arr: array of T):TArray<T>; static;
+    class procedure SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string); static;
+    class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
+    class procedure Rnd<T: record>(var Arr: TArray<T>; ItemCount: integer = -1; ValueLen: integer = -1); static;
+    class procedure Fill(var Arr: TArray<integer>; const ASequence: TIntSequenceParams); overload; static;
+    class procedure Fill(var Arr: TArray<byte>; const ASequence: TIntSequenceParams); overload; static;
+    class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
+    class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); static;
+    class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
+    class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
+    class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; static;
+    class procedure Append<T>(var Dst: TArray<T>; const Src: T); static;
+  end;
+
+  { All values must be unique (except NIL). Main purpose: very fast IndexOf
+   (but other operations slightly slower than in TList, because of index maintanance). }
+  TListIndexed = class
+  private
+    FList: TList;
+    FValueToIndex: TDictionary<pointer, integer>;
+
+    function GetItem(idx: integer): pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetItem(idx: integer; const Value: pointer);
+    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetCount(const Value: integer);
+    procedure UpdateIndex(StartIdx: integer);
+    function GetFirst: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetLast: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function Add(Value: pointer): integer;
+    procedure Insert(Idx: integer; Value: pointer);
+    procedure Delete(Idx: integer);
+    procedure Remove(Value: pointer);
+    procedure Move(Src,Dst: integer);
+    procedure Exchange(Src,Dst: integer);
+    procedure Pack;
+    procedure Sort(Comparer: TListSortCompare);
+    procedure SortList(Comparer: TListSortCompareFunc);
+    function IndexOf(Value: pointer): integer;
+
+    property Items[idx: integer]: pointer read GetItem write SetItem; default;
+    property Count: integer read GetCount write SetCount;
+    property First: pointer read GetFirst;
+    property Last: pointer read GetLast;
+  end;
+
+  TDateTimeUtils = class
+  public
     const
-      TDefDist = dtMaxComponentDeviation;
-      ColorValues: array[TColorClass] of TColor = (
-        TColorRec.Black, TColorRec.Gray,   TColorRec.Silver,  TColorRec.White,
-        TColorRec.Red,   TColor($007DFF),  TColorRec.Yellow,  TColor($00FF7D),
-        TColorRec.Green, TColor($7DFF00),  TColorRec.Cyan,    TColor($FF7D00),
-        TColorRec.Blue,  TColorRec.Violet, TColorRec.Magenta, TColor($7D00FF)
-      );
-      ColorNames: array[TColorClass] of String = (
-        'Black', 'Gray',      'Silver',  'White',
-        'Red',   'Orange',    'Yellow',  'SpringGreen',
-        'Green', 'Turquoise', 'Cyan',    'Ocean',
-        'Blue',  'Violet',    'Magenta', 'Raspberry'
-      );
-  public
-    class function Distance(A,B: TColor; ADistType: TDistanceType = TDefDist):Integer; static;
-    class function Spot(ASample: TColor; const AColors: array of TColor;
-      ADistType: TDistanceType = TDefDist): Integer; overload; static;
-    class function Spot(ASample: TColor; ADistType: TDistanceType = TDefDist): TColorClass; overload; static;
-    class function GetName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
-    class function GetBaseColorName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
+      NoDateStr = '';
+
+    class function IsCorrectDate(const t: TDateTime): boolean; static;
+    class function ToStr(const t: TDateTime; ANoDateStr: string = NoDateStr): string; static;
   end;
 
-  // This generic type implements automatic destroying of inner object.
-  // It helps to avoid of try-finally sections in the code. Also can be used to destroy
-  // inner objects of some class (instead of explicit destroying in destructor).
-  // Example:
-  //
-  // var
-  //   A: T1;
-  //   B: T2;
-  // begin
-  //   A := T1.Create;
-  //   try
-  //     B := T2.Create;
-  //     try
-  //       [ do something with A and B]
-  //     finally
-  //       B.Free;
-  //     end;
-  //   finally
-  //     A.Free;
-  //   end;
-  // End;
-  //
-  // can be rewritten as follow:
-  //
-  // var
-  //   A: TAutoFree<T1>;
-  //   B: TAutoFree<T2>;
-  // begin
-  //   A := T1.Create;
-  //   B := T2.Create;
-  //   [ do something with A.Value and B.Value]
-  // End;
-  TAutoFree<T: class> = record
+  { Wrapper class to make any class available through interface (that means that
+    lifetime of the class will be controlled automaticaly over reference counter) }
+  TInterfacedObject<T: class> = class(TInterfacedObject, IInterfacedObject<T>)
+  protected
+    FData: T;
+
+    function GetData: T;
+    procedure SetData(AData: T);
+    function GetRefCount: integer;
+  public
+    constructor Create(AData: T);
+    destructor Destroy; override;
+
+    property Data: T read GetData write SetData;
+  end;
+
+
+  { Sometimes we need to access array/TList/TEnhet etc according to specific order.
+    This record type helps to create index providing comparator and basic properties:
+      AOrdningerIdx := TIndex.Get(AOrdninger.Antall, AOrdninger.StartIndex,
+        function(const Left,Right: integer): integer
+        begin
+          result := integer(AOrdninger[Left].Period) - integer(AOrdninger[Right].Period);
+        end);  }
+  TIndex = class
+  public
+    class function Get(Count,StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>; static;
+    class function Random(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
+    class function RandomSelection(Count, StartIndex, SelectionCount: integer): TArray<integer>; static;
+    class function Direct(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
+    class function Inverse(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
+  end;
+
+  TGUIDUtils = class
+  public
+    class function IsValid(const S: string): Boolean; static;
+    class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
+  end;
+
+  TStreamUtils = class
+  public
+    class procedure StringToStream(const S: string; Dst: TStream; Encoding: TEncoding = nil); static;
+  end;
+
+  TKeyUtils = class
+  public
+    const
+      KeyChars = ['a'..'z','A'..'Z','0'..'9','_', '.','!','?','+','-','(',')'];
+
+    { If string is long or contains any char except of KeyChars, then hash is generated as key }
+    class function StringToKey(const AId: string; AFixedKeySize: Boolean = False):String; static;
+  end;
+
+  TDelegatedOnFile = reference to procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean);
+  TFileUtils = class
+  public
+
+    { remove incorrect chars }
+    class function RemoveInvalidChars(const AFileName: string): string; static;
+
+    class function FileModeToString(AMode: Integer): string; static;
+    class function IsLocked(const AFileName: string; AMode: word = fmOpenReadWrite or fmShareExclusive): boolean; static;
+    class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean): TArray<string>; overload; static;
+    class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean; Delim: string): string; overload; static;
+    class function GetSize(const AFileName: string): int64; static;
+
+    { enumerate files with callback function and posibility to break/stop }
+    class procedure EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile); static;
+
+    { simple API to clean up old files and keep used space in some ranges (log files, temp files etc) }
+    class procedure CleanUpOldFiles(
+      const AFileNamePattern                       : string;
+      const AMaxAllowedTotalSize, AMaxAllowedCount : int64;
+            AChanceToRun                           : Double = 1 { 1 = 100%, 0.3=30% etc }); static;
+  end;
+
+  { Generic implementation of IfThen (to accept virtually any type). Example:
+     A := TIfThen.Get(Visible, fsMDIChild, fsNormal); }
+  TIfThen = class
+  public
+    class function Get<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
+  {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
+
+     function TEnheter.GetEnumerator: TIndexBackEnumerator;
+     begin
+       result := TIndexBackEnumerator.Create(SisteIndex, StartIndex);
+     end; }
+  TIndexBackEnumerator = record
   private
+    FCurrentIndex, FToIndex: integer;
+  public
+    constructor Create(AIndexFrom, AIndexTo: integer);
+    function GetCurrent: Integer;
+    function MoveNext:   Boolean;
+
+    property Current:    Integer read GetCurrent;
+  end;
+
+  {  Simple API for time measuring (supports recursion and calculates sum time). Example:
+     TTiming.Start;
+       <do something>
+     OpTime := TTiming.Stop;
+     Caption := Format('Execution time: %.2f seconds, [OpTime.TotalSeconds]);
+       or
+     OpTime := TTiming.Stop('TMyForm.LoadData', TotalTime);
+     Caption := Format('Execution time: %.2f seconds (total: %.2f), [OpTime.TotalSeconds, TotalTime.TotalSeconds]); }
+  TTiming = class
+  protected
     type
-      TAutoFreeImpl = class(TInterfacedObject, IUnknown)
-      protected
-        FObject: TObject;
+      TTotalStat = record
+      private
+        Span: TTimeSpan;
+        Calls: int64;
       public
-        constructor Create(AObject: TObject);
-        destructor Destroy; override;
+        constructor Create(const ASpan: TTimeSpan; const ACalls: int64);
       end;
 
-    var
-      FValue: T;
-      FGuard: IUnknown;
+    class var
+      FTimeStack: TStack<TStopwatch>;
+      FTotalTimes: TDictionary<string, TTotalStat>;
 
-    procedure SetValue(const Value: T);
-    function GetIsLink: boolean;
+    class function GetTimeStack: TStack<TStopwatch>; static;
+    class function GetTotalTimes: TDictionary<string, TTotalStat>; static;
+    class procedure Finilaze; static;
+
+    class property TimeStack: TStack<TStopwatch> read GetTimeStack;
+    class property TotalTimes: TDictionary<string, TTotalStat> read GetTotalTimes;
   public
-    class function Create: TAutoFree<T>; overload; static;
-    class function Create(const AValue: T): TAutoFree<T>; overload; static;
-    class operator Equal(const ALeft, ARight: TAutoFree<T>): Boolean;
-    class operator Equal(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
-    class operator NotEqual(const ALeft, ARight: TAutoFree<T>): Boolean;
-    class operator NotEqual(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
-    class operator Implicit(const AValue: TAutoFree<T>): T;
-    class operator Implicit(const AValue: T): TAutoFree<T>;
-
-    procedure Clear;
-    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
-    procedure SetAsLink(const Value: T); // keep only link (don't free object)
-
-    property Value: T read FValue write SetValue;
-    property IsLink: boolean read GetIsLink;
+    class procedure Start; static;
+    class function Stop: TTimeSpan; overload; static;
+    class function Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan; overload; static;
+    class function StopAndGetCaption(const OpId: string): string; overload; static;
+    class function StopAndGetCaption(const OpId,Msg: string): string; overload; static;
   end;
 
-  // Main difference from TAutoFree is that TAuto automatically creates instance
-  // at first request. Class should have at least one supported constructor:
-  //   Create();
-  //   Create(ACapacity: integer);
-  //   Create(AOwner: TComponent);
-  //
-  // It allows to use many classes without explicit creating/destroying:
-  // var
-  //   Lines: TAuto<TStringList>;
-  // begin
-  //   Lines.Value.Text := 'Test';
-  //   Lines.Value.SaveToFile('test.txt');
-  // end;
-  TAuto<T: class> = record
+  {  Simple API to perform periodical actions. Example:
+     var
+       T: TTimeOut;
+       i: integer;
+     begin
+       T.StartSec(1, 10);    Timeout is 1 sec, check for timeout every 10th iteration.
+       for i := 0 to Count-1 do
+       begin
+         [do something with I]
+         if T.TimedOut then
+           Application.ProcessMessages;
+       end;
+     end; }
+  TTimeOut = record
   private
-    FValue: T;
-    FGuard: IUnknown;
+    FOpTimedOut: Boolean;
+    FCounter: integer;
+    FCheckPeriod: integer;
+    FStartTime: TDateTime;
+    FMaxTimeForOp: TDateTime;
 
-    procedure SetValue(const Value: T);
-    function CreateInstance: T;
-    function GetValue: T;
   public
-    class function Create: TAutoFree<T>; overload; static;
-    class function Create(const AValue: T): TAutoFree<T>; overload; static;
-    class operator Equal(const ALeft, ARight: TAuto<T>): Boolean;
-    class operator Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
-    class operator NotEqual(const ALeft, ARight: TAuto<T>): Boolean;
-    class operator NotEqual(const ALeft: TAuto<T>; const ARight: T): Boolean;
-    class operator Implicit(const AValue: TAuto<T>): T;
-    class operator Implicit(const AValue: T): TAuto<T>;
+    { If we check for timeout every iteration, usually (when iterations are short)
+      it is too often and our checks may consume more time then usefull work itself.
+      To check only 1 time for N iterations set ACheckPeriod=N. }
+    procedure Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
+    procedure StartSec(AMaxTimeForOpSec: double; ACheckPeriod: integer = 0);
+    procedure Restart;
 
-    procedure Clear;
-    procedure Free; inline; // Alias to "Clear", more compatible with regular syntax.
-
-    property Value: T read GetValue write SetValue;
+    { If TimedOut is set to True manually, then if will be constantly True until next
+      call Start/StartSec/Restart }
+    procedure SetTimedOut(ATimedOut: boolean);
+    function TimedOut: Boolean;
   end;
 
-  // All objects placed in TAutoFreeCollection will be destroyed automatically
-  // when collection goes out of the scope. Example (based on example from TAutoFree):
-  // var
-  //   C: TAutoFreeCollection;
-  //   A: T1;
-  //   B: T2;
-  // begin
-  //   A := C.Add( T1.Create );
-  //   B := C.Add( T2.Create );
-  //   [do something with A and B]
-  // End;
-  TAutoFreeCollection = record
-  private
-    type
-      IAutoFreeCollection = interface(IUnknown)
-        procedure Add(AObject: TObject);
-      end;
+  TCachable = class(TCustomCachable, ICachable)
+  protected
+    FKalkulasjonBalanse: integer;
 
-      TAutoFreeCollectionImpl = class(TInterfacedObject, IAutoFreeCollection)
-      protected
-        FList: TObjectList;
-      public
-        constructor Create;
-        destructor Destroy; override;
-        procedure Add(AObject: TObject);
-      end;
+    function GetKalkulasjonErAktiv: Boolean; override;
+    function GetKalkulasjonBalanse: Integer; override;
 
-    var
-      FGuard: IAutoFreeCollection;
+    { There we can create/destroy (or activate/deactivate) all caching. }
+    procedure DoBegynnKalkulasjon; virtual;
+    procedure DoAvsluttKalkulasjon; virtual;
 
+    { UNCOMMENT/USE IT ONLY IF IT IS ABSOLUTELY NECESSARY. }
+    { procedure EndreKalkulasjonBalanse(AInc: integer); }
   public
-    function Add<T: class>(AObject: T):T;
-    procedure Clear;
-    procedure Free; // same as clear, but more "compatible" with regular syntax in Delphi
+
+    { These functions keep internal balance of calls and call
+      DoBegynnKalkulasjon/DoAvsluttKalkulasjon only when necessary. }
+    procedure BegynnKalkulasjon; override;
+    procedure AvsluttKalkulasjon; override;
+
+    (*  If we need to change data when caching (potentially) is on, then
+       we can use OmstartKalkulasjon to reset cache after changes. Example:
+
+         { we called FDatasett.BegynnKalkulasjon earlier, so caching is on}
+         local_varXX := [some calculations, maybe based on cached values];
+
+         { in section where we write, we should not read any cachable data}
+         FDatasett.SomeObject.SomeValue1 := local_var1;
+         FDatasett.SomeObject.SomeValue2 := local_var2;
+         ...
+
+         { clear all caches to reload after our changes }
+         FDatasett.OmstartKalkulasjon;
+
+       USE IT ONLY IF IT IS ABSOLUTELY NECESSARY. *)
+    procedure OmstartKalkulasjon; override;
+
+    { inherited from TCustomCachable:
+      property KalkulasjonErAktiv: Boolean read GetKalkulasjonErAktiv;
+      property KalkulasjonBalanse: Integer read GetKalkulasjonBalanse; }
+  end;
+
+  TCurrencyUtils = class
+  public
+    class function ToString(const Value: currency; Ore: boolean = False): string; reintroduce; static;
+  end;
+
+  { Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
+    But TWriter class has set of platform independent functions WriteVar. We write wrapper around TWriter
+    in order to expose only platform independent functionality (and extend it for other basic types). }
+  TPIWriter = class
+  protected
+    Writer: TWriter;
+  public
+    constructor Create(ADst: TStream);
+    destructor Destroy; override;
+
+    { mapped to TWriter }
+    procedure Write(const Value: Char); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Int8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: UInt8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Int16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: UInt16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Int32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: UInt32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Int64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: UInt64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Single); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Double); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Extended); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { extentions }
+    procedure Write(const Buf; Count: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: TBytes); overload;
+    procedure Write(const Value: string); overload;
+  end;
+
+  TPIReader = class
+  protected
+    Reader: TReader;
+  public
+    constructor Create(ASrc: TStream);
+    destructor Destroy; override;
+
+    { mapped to TReader }
+    procedure Read(out Value: Char); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Int8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: UInt8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Int16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: UInt16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Int32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: UInt32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Int64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: UInt64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Single); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Double); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Extended); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { extentions }
+    procedure Read(var Buf; Count: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: TBytes); overload;
+    procedure Read(out Value: string); overload;
   end;
 
   TNullable<T> = record
@@ -349,11 +683,11 @@ type
 
     property Value: T read GetValue write SetValue;
     property IsNull: boolean read GetIsNull write SetIsNull;
-    property HasValue: boolean read GetHasValue write SetHasValue; // not IsNull
+    property HasValue: boolean read GetHasValue write SetHasValue; { not IsNull }
     property Ptr: pointer read GetPointer;
   end;
 
-  // All operations are thread-safe and lock-free.
+  { All operations are thread-safe and deadlock-free. }
   TThreadSafe<T: record> = record
   public
     type
@@ -361,11 +695,11 @@ type
   private
     var
       FValue: T;
-      FCriticalSection: TAutoFree<TCriticalSection>;
+      FAutoFreeCollection: TAutoFreeCollection;
+      FCriticalSection: TCriticalSection;
       FComparer: IEqualityComparer<T>;
       FCopyProc: TCopyProc;
 
-    function GetCriticalSection: TCriticalSection;
     function GetComparer: IEqualityComparer<T>;
     function GetValue: T;
     procedure SetValue(const AValue: T);
@@ -384,65 +718,20 @@ type
     class operator Implicit(const AValue: T): TThreadSafe<T>;
     class operator Implicit(const AValue: Variant): TThreadSafe<T>;
 
-    // If access to several variables is required (copy, moving, ...), then
-    // it is not safe to lock records one by one, it may lead to deadlock
-    // (one thread has A and waiting for B, another has B and waiting for A).
-    // Lock/Unlock should be used in this case.
+    { If access to several variables is required (copy, moving, ...), then
+      it is not safe to lock records one by one, it may lead to deadlock
+      (one thread has A and waiting for B, another has B and waiting for A).
+      Lock/Unlock should be used in this case. }
     class procedure Lock(const A: array of TThreadSafe<T>); static;
     class procedure Unlock(const A: array of TThreadSafe<T>); static;
 
     property Value: T read GetValue write SetValue;
     property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
     property CopyProc: TCopyProc read FCopyProc write SetCopyProc;
-    property CriticalSection: TCriticalSection read GetCriticalSection;
+    property CriticalSection: TCriticalSection read FCriticalSection;
   end;
 
-  // Simple API for time measuring (supports recursion and calculates sum time). Example:
-  // TTiming.Start;
-  //   <do something>
-  // OpTime := TTiming.Stop;
-  // Caption := Format('Execution time: %.2f seconds, [OpTime.TotalSeconds]);
-  //   or
-  // OpTime := TTiming.Stop('TMyForm.LoadData', TotalTime);
-  // Caption := Format('Execution time: %.2f seconds (total: %.2f), [OpTime.TotalSeconds, TotalTime.TotalSeconds]);
-  TTiming = class
-  protected
-    type
-      TTotalStat = record
-      private
-        Span: TTimeSpan;
-        Calls: int64;
-      public
-        constructor Create(const ASpan: TTimeSpan; const ACalls: int64);
-      end;
-
-    class var
-      FTimeStack: TStack<TStopwatch>;
-      FTotalTimes: TTextDictionary<TTotalStat>;
-
-    class function GetTimeStack: TStack<TStopwatch>; static;
-    class function GetTotalTimes: TTextDictionary<TTotalStat>; static;
-    class procedure Finilaze; static;
-
-    class property TimeStack: TStack<TStopwatch> read GetTimeStack;
-    class property TotalTimes: TTextDictionary<TTotalStat> read GetTotalTimes;
-  public
-    class procedure Start; static;
-    class function Stop: TTimeSpan; overload; static;
-    class function Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan; overload; static;
-    class function StopAndGetCaption(const OpId: string): string; overload; static;
-    class function StopAndGetCaption(const OpId,Msg: string): string; overload; static;
-  end;
-
-  TDelegatedOnFile = reference to procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean);
-  TFileTools = class
-  public
-    class procedure EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile); static;
-    class procedure CleanUpOldFiles(const AFileNamePattern: string; const AMaxAllowedTotalSize, AMaxAllowedCount: int64;
-      AChanceToRun: Double = 1); static;
-  end;
-
-  // PDF-compatible RLE codec
+  { PDF-compatible RLE codec }
   TRLE = class
   public
     class function MaxEncodedSize(ASrcSize: cardinal): cardinal;
@@ -452,105 +741,70 @@ type
     class procedure Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
   end;
 
-  // Simple convertion EnumType->string->EnumType etc.
-  // http://stackoverflow.com/questions/31601707/generic-functions-for-converting-an-enumeration-to-string-and-back#31604647
-  TEnumeration<T: record> = record
-  strict private
-    class function TypeInfo: PTypeInfo; inline; static;
-    class function TypeData: PTypeData; inline; static;
+  TForEachComponentBreakProc = reference to procedure(AComponent: TComponent; var ABreak: boolean);
+  TComponentUtils = class
+  private
+    class function ForEachComponentBrk(AStart: TComponent; ACallback: TForEachComponentBreakProc): Boolean; static;
   public
-    class function IsEnumeration: Boolean; static;
-    class function ToOrdinal(Enum: T): Integer; inline; static;
-    class function FromOrdinal(Value: Integer): T; inline; static;
-    class function ToString(Enum: T): string; inline; static;
-    class function FromString(const S: string): T; inline; static;
-    class function MinValue: Integer; inline; static;
-    class function MaxValue: Integer; inline; static;
-    class function InRange(Value: Integer): Boolean; inline; static;
-    class function EnsureRange(Value: Integer): Integer; inline; static;
+    class procedure ForEachComponent(AStart: TComponent; ACallback: TForEachComponentBreakProc); overload; static;
+    class procedure ForEachComponent(AStart: TComponent; ACallback: TProc<TComponent>); overload; static;
   end;
 
-  // Simple type to create combination of primitive types with constructor.
-  // Example:
-  // type
-  //   TId = TCompound(integer, integer);
-  // var
-  //   d: TMap<TId, double>;
-  // begin
-  //   d := TMap<TId, double>.Create;
-  //   d.Add( TId.Create(1, 1), 100);
-  //   d.Add( TId.Create(1, 2), 100);
-  //   d.Add( TId.Create(2, 1), 100);
-  TCompound<TypeA,TypeB: record> = record
-    A: TypeA;
-    B: TypeB;
-
-    constructor Create(const A: TypeA; const B: TypeB);
-  end;
+function Min3(const A,B,C: integer): integer; overload;
+function Min3(const A,B,C: double): double; overload;
+function Max3(const A,B,C: integer): integer; overload;
+function Max3(const A,B,C: double): double; overload;
 
 implementation
 
-function ForEachComponentBrk(AStart: TComponent; ACallback: TDelegatedOnComponentWithBreak):Boolean;
-var
-  i: Integer;
-begin
-  result := False; // break
-  ACallback(AStart, result);
-  if not result then
-    for i := AStart.ComponentCount-1 downto 0 do
-      if ForEachComponentBrk(AStart.Components[i], ACallback) then
-      begin
-        result := True;
-        break;
-      end;
-end;
-
-procedure ForEachComponent(AStart: TComponent; ACallback: TDelegatedOnComponentWithBreak);
-begin
-  ForEachComponentBrk(AStart, ACallback);
-end;
-
-procedure ForEachComponent(AStart: TComponent; ACallback: TDelegatedOnComponent);
-var
-  i: Integer;
-begin
-  if AStart=nil then
-    exit;
-  ACallback(AStart);
-  for i := AStart.ComponentCount-1 downto 0 do
-    ForEachComponent(AStart.Components[i], ACallback);
-end;
-
-{ TDelegatedMemoryStream }
-
-constructor TDelegatedMemoryStream.Create(var Buf; Size: NativeInt);
-begin
-  SetPointer(@Buf, Size);
-end;
+Uses
+  adot.Strings
+{$IFDEF LogExceptions}
+  ,msLog,
+{$ENDIF}
+  ;
 
 { THex }
 
-class function THex.Encode(const Buf; ByteBufSize: integer): String;
-var
-  I: Integer;
+class function THex.EncodedSizeChars(SourceSizeBytes: integer): integer;
 begin
-  setlength(result, ByteBufSize*2);
-  for I := 0  to ByteBufSize - 1 do
-  begin
-    Result[Low(Result) + I * 2]     := B2HConvert[Low(B2HConvert) + PByteArray(@Buf)[I] shr 4];
-    Result[Low(Result) + I * 2 + 1] := B2HConvert[Low(B2HConvert) + PByteArray(@Buf)[I] and $0F];
-  end;
+  Assert(SourceSizeBytes>=0);
+  result := SourceSizeBytes shl 1;
 end;
 
-class procedure THex.Encode(const Buf; ByteBufSize: integer; Dst: PChar);
-var
-  I: Integer;
+class function THex.EncodeByteH(Src: byte): char;
 begin
-  for I := 0  to ByteBufSize - 1 do
-  begin
-    Dst[I * 2]     := B2HConvert[Low(B2HConvert) + PByteArray(@Buf)[I] shr 4];
-    Dst[I * 2 + 1] := B2HConvert[Low(B2HConvert) + PByteArray(@Buf)[I] and $0F];
-  end;
+  result := TwoHexLookup[Src][0];
+end;
+
+class function THex.EncodeByteL(Src: byte): char;
+begin
+  result := TwoHexLookup[Src][1];
+end;
+
+class function THex.DecodedSizeBytes(EncodedSizeChars: integer): integer;
+begin
+  Assert(EncodedSizeChars and 1=0);
+  result := EncodedSizeChars shr 1;
+end;
+
+class function THex.DecodeHexChar(HexChar: Char): byte;
+begin
+  Assert(IsValid(HexChar));
+  result := H2B[HexChar];
+end;
+
+class function THex.Encode(const Buf; ByteBufSize: integer): String;
+begin
+  SetLength(result, EncodedSizeChars(ByteBufSize));
+  BinToHex(@Buf, PChar(result), ByteBufSize);
+end;
+
+class function THex.EncodeAnsiString(const s: AnsiString): String;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if s='' then result := '' else
+    result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
 end;
 
 class function THex.Encode<T>(const Value: T): String;
@@ -558,11 +812,123 @@ begin
   Result := Encode(Value, SizeOf(Value));
 end;
 
+class function THex.Encode(const s: TBytes): String;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if Length(s)=0 then result := '' else
+    result := Encode(s[0], length(s));
+end;
+
+class function THex.Encode(const s: string): string;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if s='' then result := '' else
+    result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+end;
+
+class function THex.Encode(const s: string; utf8: boolean): string;
+begin
+  if utf8 then
+    result := Encode(TEncoding.UTF8.GetBytes(s))
+  else
+    result := Encode(s);
+end;
+
+class procedure THex.Decode(const HexEncodedStr: String; var Buf);
+begin
+  HexToBin(PChar(HexEncodedStr), Buf, DecodedSizeBytes(length(HexEncodedStr)));
+end;
+
+class function THex.Decode<T>(const HexEncodedStr: String): T;
+begin
+  Decode(HexEncodedStr, Result);
+end;
+
+class function THex.DecodeAnsiString(const HexEncodedStr: String): AnsiString;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if HexEncodedStr='' then Result := '' else
+  begin
+    SetLength(Result, DecodedSizeBytes(length(HexEncodedStr))); { AnsiString is always 1 byte per char }
+    Decode(HexEncodedStr, result[Low(result)]);
+  end;
+end;
+
+class function THex.DecodeByte(H, L: Char): byte;
+begin
+  result := (DecodeHexChar(H) shl 4) or DecodeHexChar(L);
+end;
+
+class function THex.DecodeBytes(const HexEncodedStr: String): TBytes;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if HexEncodedStr='' then SetLength(result, 0) else
+  begin
+    SetLength(Result, DecodedSizeBytes(length(HexEncodedStr)));
+    Decode(HexEncodedStr, Result[Low(Result)]);
+  end;
+end;
+
+{$IF SizeOf(Char)=2}
+class function THex.DecodeString(const HexEncodedStr: string): string;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if HexEncodedStr='' then result := '' else
+  begin
+    Assert(length(HexEncodedStr) and 3=0);
+    SetLength(Result, length(HexEncodedStr) shr 2);
+    Decode(HexEncodedStr, Result[Low(Result)]);
+  end;
+end;
+{$ELSE}
+class function THex.DecodeString(const HexEncodedStr: string): string;
+var
+  SizeInBytes: Integer;
+begin
+  { need this check only to range check error (when "check range check" is on) }
+  if HexEncodedStr='' then result := '' else
+  begin
+    SizeInBytes := DecodedSizeBytes(length(HexEncodedStr));
+    Assert(SizeInBytes mod SizeOf(Result[Low(Result)]) = 0);
+    SetLength(Result, SizeInBytes div SizeOf(Result[Low(Result)]));
+    Decode(HexEncodedStr, Result[Low(Result)]);
+  end;
+end;
+{$IFEND}
+
+class function THex.DecodeString(const HexEncodedStr: string; utf8: boolean): string;
+begin
+  if utf8 then
+    result := TEncoding.UTF8.GetString( DecodeBytes(HexEncodedStr) )
+  else
+    result := DecodeString(HexEncodedStr);
+end;
+
+class function THex.IsValid(const C: Char): Boolean;
+begin
+  result := (c>=Low(H2B)) and (c<=High(H2B)) and (H2B[c]>=0);
+end;
+
+class function THex.IsValid(const HexEncodedStr: String; ZeroBasedStartIdx, Len: integer): Boolean;
+var
+  i: Integer;
+begin
+  for i := ZeroBasedStartIdx to ZeroBasedStartIdx+Len-1 do
+    if not IsValid(HexEncodedStr.Chars[i]) then
+      Exit(False);
+  Result := True;
+end;
+
+class function THex.IsValid(const HexEncodedStr: String): Boolean;
+begin
+  Result := IsValid(HexEncodedStr, 0,Length(HexEncodedStr));
+end;
+
 class function THex.HexToInt64(const HexEncodedInt: String):Int64;
 var
   i: Integer;
 begin
-  assert(Valid(HexEncodedInt));
+  assert(IsValid(HexEncodedInt));
   result := 0;
   for i := Low(HexEncodedInt) to High(HexEncodedInt) do
     result := (result shl 4) or H2B[HexEncodedInt[i]];
@@ -577,7 +943,7 @@ class function THex.HexToNativeInt(const HexEncodedInt: String):NativeInt;
 var
   i: Integer;
 begin
-  Assert(Valid(HexEncodedInt));
+  assert(IsValid(HexEncodedInt));
   result := 0;
   for i := Low(HexEncodedInt) to High(HexEncodedInt) do
     result := (result shl 4) or H2B[HexEncodedInt[i]];
@@ -597,13 +963,13 @@ class function THex.Int64ToHex(s: Int64): string;
 var
   i,j: Integer;
 begin
-  setlength(result, SizeOf(s)*2);
-  for i := SizeOf(s)-1 downto 0 do
+  SetLength(result, SizeOf(s)*2);
+  for i := High(result) shr 1 downto 0 do
   begin
     J := S and $FF;
     S := S shr 8;
-    Result[Low(Result) + i*2    ] := TwoHexLookup[J][0];
-    Result[Low(Result) + i*2 + 1] := TwoHexLookup[J][1];
+    Result[i*2 + Low(result)    ] := TwoHexLookup[J][0];
+    Result[i*2 + Low(result) + 1] := TwoHexLookup[J][1];
   end;
 end;
 
@@ -616,13 +982,13 @@ class function THex.NativeIntToHex(s: NativeInt): string;
 var
   i,j: Integer;
 begin
-  setlength(result, SizeOf(s)*2);
+  SetLength(result, SizeOf(s)*2);
   for i := SizeOf(s)-1 downto 0 do
   begin
     J := S and $FF;
     S := S shr 8;
-    Result[Low(Result) + i*2    ] := TwoHexLookup[J][0];
-    Result[Low(Result) + i*2 + 1] := TwoHexLookup[J][1];
+    Result[i*2 + Low(result)    ] := TwoHexLookup[J][0];
+    Result[i*2 + Low(result) + 1] := TwoHexLookup[J][1];
   end;
 end;
 
@@ -631,512 +997,1127 @@ begin
   result := NativeIntToHex(NativeInt(s));
 end;
 
-class function THex.WordToHex(s: word): string;
-var
-  i,j: Integer;
-begin
-  setlength(result, SizeOf(s)*2);
-  for i := SizeOf(s)-1 downto 0 do
-  begin
-    J := S and $FF;
-    S := S shr 8;
-    Result[Low(Result) + i*2    ] := TwoHexLookup[J][0];
-    Result[Low(Result) + i*2 + 1] := TwoHexLookup[J][1];
-  end;
-end;
-
-class function THex.ByteToHex(s: byte): string;
-begin
-  setlength(result, 2);
-  Result[Low(Result)    ] := TwoHexLookup[S][0];
-  Result[Low(Result) + 1] := TwoHexLookup[S][1];
-end;
-
 class function THex.PointerToHex(s: Pointer): string;
 begin
   result := NativeIntToHex(NativeInt(s));
 end;
 
-class function THex.Encode(const s: TIdBytes): String;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
+{ THash }
 
-class function THex.Encode(const s: TBytes): String;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function THex.Encode(const s: string): String;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function THex.Valid(const HexEncodedStr: String): Boolean;
+class function THash.Encode(const Buf; ByteBufSize: integer): TBytes;
 var
-  i: Integer;
-  c: Char;
+  h: THashMD5;
 begin
-  for i := Low(HexEncodedStr) to High(HexEncodedStr) do
+  try
+    h := THashMD5.Create;
+    h.Update(@Buf, ByteBufSize);
+    Result := h.HashAsBytes;
+  finally
+    h.Reset;
+  end;
+end;
+
+class function THash.Encode(s: TBytes): TBytes;
+begin
+  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+end;
+
+class function THash.Encode(s: TStream): TBytes;
+var
+  h: THashMD5;
+  Buffer: array[0..4095] of Byte;
+  SSize : Integer;
+  ReadBytes : Integer;
+  TotalBytes : Integer;
+  BufSize: Integer;
+begin
+
+  SSize := s.Size;
+  BufSize := SizeOf(Buffer);
+  TotalBytes := 0;
+
+  s.Position := 0;
+
+  h := THashMD5.Create;
+  try
+    repeat
+      ReadBytes := s.Read(Buffer, BufSize);
+      Inc(TotalBytes, ReadBytes);
+      h.Update(@Buffer, ReadBytes);
+    until (ReadBytes = 0) or (TotalBytes = SSize);
+
+    Result := h.HashAsBytes;
+  finally
+    h.Reset;
+  end;
+end;
+
+class function THash.Encode(const s: string): TBytes;
+begin
+  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+end;
+
+class function THash.Encode<T>(const Value: T): TBytes;
+begin
+  Result := Encode(Value, SizeOf(Value));
+end;
+
+class function THash.EncodeAnsiString(const s: AnsiString): TBytes;
+begin
+  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+end;
+
+class function THash.EncodeFile(const AFileName: string): string;
+var
+  vStream: TFileStream;
+begin
+  Result := '';
+  vStream := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
+  try
+    Result := THex.Encode(Encode(vStream));
+  finally
+    vStream.Free;
+  end;
+end;
+
+{ THash.MD5 }
+
+class function THash.MD5.Create: THash.MD5;
+begin
+  result.Hash := THashMD5.Create;
+end;
+
+class function THash.MD5.GetHashBytes(const AData: string): TBytes;
+begin
+  result := THashMD5.GetHashBytes(AData);
+end;
+
+class function THash.MD5.GetHashString(const AData: string): string;
+begin
+  result := THashMD5.GetHashString(AData);
+end;
+
+function THash.MD5.HashAsBytes: TBytes;
+begin
+  { Workaround bug in Hash.HashAsBytes }
+  if Length(Digest)=0 then
+    Digest := Hash.HashAsBytes;
+  result := Digest;
+end;
+
+function THash.MD5.HashAsString: string;
+begin
+  { Workaround bug in Hash.HashAsString }
+  if Length(Digest)=0 then
+    Digest := Hash.HashAsBytes;
+  result := System.Hash.THash.DigestAsString(Digest);
+end;
+
+procedure THash.MD5.Reset;
+begin
+  Hash.Reset;
+  SetLength(Digest, 0);
+end;
+
+procedure THash.MD5.Update(const AData; ALength: Cardinal);
+begin
+  // Workaround bug in Hash.Update(AData, ALength)
+  Hash.Update(@AData, ALength);
+end;
+
+procedure THash.MD5.Update(const AData: TBytes; ALength: Cardinal);
+begin
+  Hash.Update(AData, ALength);
+end;
+
+procedure THash.MD5.Update(const AData: string);
+begin
+  Hash.Update(AData);
+end;
+
+{ THash.SHA1 }
+
+class function THash.SHA1.Create: THash.SHA1;
+begin
+  result.Hash := THashSHA1.Create;
+end;
+
+class function THash.SHA1.GetHashBytes(const AData: string): TBytes;
+begin
+  result := THashSHA1.GetHashBytes(AData);
+end;
+
+class function THash.SHA1.GetHashString(const AData: string): string;
+begin
+  result := THashSHA1.GetHashString(AData);
+end;
+
+function THash.SHA1.HashAsBytes: TBytes;
+begin
+  result := Hash.HashAsBytes;
+end;
+
+function THash.SHA1.HashAsString: string;
+begin
+  result := Hash.HashAsString;
+end;
+
+procedure THash.SHA1.Reset;
+begin
+  Hash.Reset;
+end;
+
+procedure THash.SHA1.Update(const AData; ALength: Cardinal);
+begin
+  { Workaround bug in Hash.Update(AData, ALength) }
+  Hash.Update(@AData, ALength);
+end;
+
+procedure THash.SHA1.Update(const AData: TBytes; ALength: Cardinal);
+begin
+  Hash.Update(AData, ALength);
+end;
+
+procedure THash.SHA1.Update(const AData: string);
+begin
+  Hash.Update(AData);
+end;
+
+{ TSummDouble<TKey> }
+
+constructor TSummDouble<TKey>.Create;
+begin
+  inherited Create;
+  FItems := TDictionary<TKey, double>.Create;
+end;
+
+destructor TSummDouble<TKey>.Destroy;
+begin
+  FreeAndNil(FItems);
+  inherited;
+end;
+
+function TSummDouble<TKey>.Empty: boolean;
+begin
+  result := FItems.Count=0;
+end;
+
+procedure TSummDouble<TKey>.Add(const AKey: TKey; const AValue: double);
+var
+  V: Double;
+begin
+  if FItems.TryGetValue(AKey, V) then
+    V := V + AValue
+  else
+    V := AValue;
+  FItems.AddOrSetValue(AKey, V);
+end;
+
+function TSummDouble<TKey>.Get(const AKey: TKey; out AValue: double): Boolean;
+begin
+  result := FItems.TryGetValue(AKey, AValue);
+end;
+
+function TSummDouble<TKey>.Get(const AKey: TKey): Double;
+begin
+  if not FItems.TryGetValue(AKey, Result) then
+    Result := 0;
+end;
+
+{ TMin<TKeyType, TValueType> }
+
+constructor TMin<TKeyType, TValueType>.Create(const AComparer: IComparer<TValueType> = nil);
+begin
+  FItems := TDictionary<TKeyType, TValueType>.Create;
+  FComparer := AComparer;
+  if FComparer=nil then
+    FComparer := TComparer<TValueType>.Default;
+end;
+
+destructor TMin<TKeyType, TValueType>.Destroy;
+begin
+  FreeAndNil(FItems);
+  inherited;
+end;
+
+function TMin<TKeyType, TValueType>.Empty: boolean;
+begin
+  result := FITems.Count=0;
+end;
+
+function TMin<TKeyType, TValueType>.GetKeyCollection: TKeyCollection;
+begin
+  result := FITems.Keys;
+end;
+
+procedure TMin<TKeyType, TValueType>.Add(const AKey: TKeyType; const AValue: TValueType);
+var
+  V: TValueType;
+begin
+  if not FItems.TryGetValue(AKey, V) then
+    FItems.Add(AKey, AValue)
+  else
+    if FComparer.Compare(AValue, V)<0 then
+      FItems.AddOrSetValue(AKey, AValue);
+end;
+
+function TMin<TKeyType, TValueType>.Get(const AKey: TKeyType; out AValue: TValueType): Boolean;
+begin
+  result := FItems.TryGetValue(AKey, AValue);
+end;
+
+function TMin<TKeyType, TValueType>.Get(const AKey: TKeyType): TValueType;
+begin
+  if not FItems.TryGetValue(AKey, Result) then
+    result := Default(TValueType);
+end;
+
+{ TMax<TKey, TValue> }
+
+constructor TMax<TKeyType, TValueType>.Create(const AComparer: IComparer<TValueType>);
+begin
+  inherited Create( TInvertedComparer<TValueType>.Create(AComparer) );
+end;
+
+{ TInvertedComparer<TValue> }
+
+constructor TInvertedComparer<TValueType>.Create(const AExtComparer: IComparer<TValueType>);
+begin
+  inherited Create;
+  FExtComparer := AExtComparer;
+  if FExtComparer=nil then
+    FExtComparer := TComparer<TValueType>.Default;
+end;
+
+function TInvertedComparer<TValueType>.Compare(const Left, Right: TValueType): Integer;
+begin
+  result := -FExtComparer.Compare(Left, Right);
+end;
+
+{ TDateTimeRec }
+
+class operator TDateTimeRec.implicit(const ADateTime: TDateTime): TDateTimeRec;
+begin
+  with Result do
+    DecodeDateTime(ADateTime, Year, Month, Day, Hour, Minute, Second, Millisecond);
+end;
+
+class operator TDateTimeRec.implicit(const ADateTime: TDateTimeRec): TDateTime;
+begin
+  with ADateTime do
+    Result := EncodeDateTime(Year, Month, Day, Hour, Minute, Second, Millisecond);
+end;
+
+class operator TDateTimeRec.implicit(const ADateTime: String): TDateTimeRec;
+begin
+  Result := StrToDateTime(ADateTime);
+end;
+
+class operator TDateTimeRec.implicit(const ADateTime: TDateTimeRec): String;
+begin
+  Result := DateTimeToStr(ADateTime);
+end;
+
+{ TDelegatedMemoryStream }
+
+constructor TDelegatedMemoryStream.Create(Buf: pointer; Size: integer);
+begin
+  inherited Create;
+  SetPointer(Buf, Size);
+end;
+
+procedure TDelegatedMemoryStream.SetSize(NewSize: Integer);
+begin
+  raise Exception.Create('Error');
+end;
+
+procedure TDelegatedMemoryStream.SetSize(const NewSize: Int64);
+begin
+  raise Exception.Create('Error');
+end;
+
+function TDelegatedMemoryStream.Write(const Buffer; Count: Integer): Longint;
+begin
+  raise Exception.Create('Error');
+end;
+
+function TDelegatedMemoryStream.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
+begin
+  raise Exception.Create('Error');
+end;
+
+{ TCustomStreamExt }
+
+procedure TCustomStreamExt.Clear;
+begin
+  Size := 0;
+end;
+
+procedure TCustomStreamExt.LoadFromFile(const FileName: string);
+var
+  Stream: TStream;
+begin
+  Stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
+  try
+    LoadFromStream(Stream);
+  finally
+    Stream.Free;
+  end;
+end;
+
+procedure TCustomStreamExt.SaveToFile(const FileName: string);
+var
+  Stream: TStream;
+begin
+  Stream := TFileStream.Create(FileName, fmCreate);
+  try
+    SaveToStream(Stream);
+  finally
+    Stream.Free;
+  end;
+end;
+
+procedure TCustomStreamExt.LoadFromStream(Stream: TStream);
+var
+  P: Int64;
+begin
+  Size := Stream.Size;
+  P := Stream.Position;
+  try
+    Stream.Position := 0;
+    CopyFrom(Stream, Stream.Size);
+  finally
+    Stream.Position := P;
+  end;
+end;
+
+procedure TCustomStreamExt.SaveToStream(Stream: TStream);
+var
+  P: Int64;
+begin
+  P := Position;
+  try
+    Position := 0;
+    Stream.CopyFrom(Self, Size);
+  finally
+    Position := P;
+  end;
+end;
+
+{ TArrayStream<T> }
+
+constructor TArrayStream<T>.Create(const AItems: TArray<T>);
+begin
+  inherited Create;
+  Items := AItems;
+end;
+
+procedure TArrayStream<T>.SetItems(const Value: TArray<T>);
+begin
+  FItems := Value;
+  FPos := 0;
+  FCapacity := Length(FItems)*SizeOf(T);
+  FSize := FCapacity;
+end;
+
+procedure TArrayStream<T>.SetCapacity(NewByteCapacity: integer);
+begin
+  if NewByteCapacity mod SizeOf(T)<>0 then
+    raise Exception.Create('Error');
+  SetLength(FItems, NewByteCapacity div SizeOf(T));
+  FCapacity := NewByteCapacity;
+  if FSize>FCapacity then
+    FSize := FCapacity;
+  if FPos>FCapacity then
+    FPos := FCapacity;
+end;
+
+function TArrayStream<T>.Read(var Buffer; Count: Integer): Longint;
+begin
+  if (FPos >= 0) and (Count >= 0) then
   begin
-    c := HexEncodedStr[i];
-    if (c<Low(H2B)) or (c>High(H2B)) or (H2B[c]<0) then
+    Result := FSize - FPos;
+    if Result > 0 then
     begin
-      Result := False;
+      if Result > Count then Result := Count;
+      Move((PByte(FItems) + FPos)^, Buffer, Result);
+      Inc(FPos, Result);
       Exit;
     end;
   end;
-  Result := True;
+  Result := 0;
 end;
 
-class procedure THex.Decode(const HexEncodedStr: String; var Buf);
-var
-  I: Integer;
-  C1,C2: Char;
+function TArrayStream<T>.Read(Buffer: TBytes; Offset, Count: Integer): Longint;
 begin
-  Assert(length(HexEncodedStr) and 1=0);
-  for I := 0 to Length(HexEncodedStr) shr 1 - 1 do
+  Result := Read(Buffer[Offset], Count);
+end;
+
+procedure TArrayStream<T>.SetSize(const NewSize: Int64);
+var
+  OldPosition: Longint;
+begin
+  OldPosition := FPos;
+  SetCapacity(NewSize); { Will check that NewSize mod SizeOf(T)=0 }
+  FSize := NewSize;
+  if OldPosition > NewSize then Seek(0, soEnd);
+end;
+
+procedure TArrayStream<T>.SetSize(NewSize: Longint);
+begin
+  SetSize(Int64(NewSize));
+end;
+
+function TArrayStream<T>.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
+begin
+  case Origin of
+    soBeginning : FPos := Offset;
+    soCurrent   : Inc(FPos, Offset);
+    soEnd       : FPos := FSize + Offset;
+  end;
+  if FPos<0 then
+    FPos := 0;
+  Result := FPos;
+end;
+
+function TArrayStream<T>.Write(const Buffer; Count: Integer): Longint;
+var
+  P: integer;
+begin
+  if (FPos >= 0) and (Count >= 0) then
   begin
-    C1 := HexEncodedStr[Low(HexEncodedStr) + I * 2];
-    C2 := HexEncodedStr[Low(HexEncodedStr) + I * 2 + 1];
-    if (C1>=Low(H2B)) and (C1<=High(H2B)) and (H2B[C1]>=0) and
-       (C2>=Low(H2B)) and (C2<=High(H2B)) and (H2B[C2]>=0)
-    then
-      PByteArray(@Buf)[I] := (H2B[C1] shl 4) or H2B[C2]
-    else
-      Abort;
-  end;
-end;
-
-class function THex.Decode<T>(const HexEncodedStr: String): T;
-begin
-  Decode(HexEncodedStr, Result);
-end;
-
-class function THex.DecodeIdBytes(const HexEncodedStr: String): TIdBytes;
-begin
-  Assert(length(HexEncodedStr) mod 2=0);
-  setlength(result, length(HexEncodedStr) div 2);
-  if Length(Result)>0 then
-    Decode(HexEncodedStr, Result[Low(Result)]);
-end;
-
-class function THex.DecodeBytes(const HexEncodedStr: String): TBytes;
-begin
-  Assert(length(HexEncodedStr) mod 2=0);
-  setlength(result, length(HexEncodedStr) div 2);
-  if Length(Result)>0 then
-    Decode(HexEncodedStr, Result[Low(Result)]);
-end;
-
-class function THex.DecodeString(const HexEncodedStr: String): String;
-begin
-  Assert(length(HexEncodedStr) mod 2=0);
-  setlength(result, (length(HexEncodedStr) div 2) div SizeOf(result[Low(result)]));
-  if Length(Result)>0 then
-    Decode(HexEncodedStr, result[Low(result)]);
-end;
-
-{ TVar }
-
-class function TVar.AsString(const v: Variant): String;
-begin
-  if VarIsClear(v) or VarIsNull(v) then
-    Result := ''
-  else
-    Result := v;
-end;
-
-{ THash }
-
-class function TCryptoHash.Encode(const Buf; ByteBufSize: integer): TValue;
-var
-  h: TIdHashMessageDigest5;
-  s: TDelegatedMemoryStream;
-begin
-  h := nil;
-  s := nil;
-  try
-    h := TIdHashMessageDigest5.Create;
-    s := TDelegatedMemoryStream.Create((@Buf)^, ByteBufSize);
-    result := h.HashStream(s);
-  finally
-    FreeAndNil(s);
-    FreeAndNil(h);
-  end;
-end;
-
-class function TCryptoHash.Encode(const s: TIdBytes): TValue;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function TCryptoHash.Encode(const s: TBytes): TValue;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function TCryptoHash.Encode(s: TStream; AOwnsStream: boolean = False): TValue;
-var
-  h: TIdHashMessageDigest5;
-  p: Int64;
-begin
-  p := s.Position;
-  try
-    s.Position := 0;
-    h := TIdHashMessageDigest5.Create;
-    try
-      result := h.HashStream(s);
-    finally
-      FreeAndNil(h);
+    P := FPos + Count;
+    if P > 0 then
+    begin
+      if P > FSize then
+      begin
+        if P > FCapacity then
+          SetCapacity(P);
+        FSize := P;
+      end;
+      System.Move(Buffer, (PByte(FItems) + FPos)^, Count);
+      FPos := P;
+      Result := Count;
+      Exit;
     end;
-  finally
-    if AOwnsStream then
-      s.Free
-    else
-      s.Position := p;
   end;
+  Result := 0;
 end;
 
-class function TCryptoHash.Encode(const s: string): TValue;
+function TArrayStream<T>.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
 begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
+  Result := Write(Buffer[Offset], Count);
 end;
 
-class function TCryptoHash.Encode<T>(const Value: T): TValue;
-begin
-  Result := Encode(Value, SizeOf(Value));
-end;
+{ TArrayUtils }
 
-{ TFastHash }
-
-class function TFastHash.Encode(const Buf; ByteBufSize: integer): TValue;
-begin
-  {$IF CompilerVersion>=30}
-  result := System.Hash.THashBobJenkins.GetHashValue(Buf, ByteBufSize, 0);
-  {$ELSE}
-  result := BobJenkinsHash(Buf, ByteBufSize, 0);
-  {$ENDIF}
-end;
-
-class function TFastHash.Encode(const s: TIdBytes): TValue;
-begin
-  result := Encode(s[Low(s)], Length(s));
-end;
-
-class function TFastHash.Encode(const s: TBytes): TValue;
-begin
-  result := Encode(s[Low(s)], Length(s));
-end;
-
-class function TFastHash.Encode(const s: string): TValue;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function TFastHash.Encode<T>(const Value: T): TValue;
-begin
-  Result := Encode(Value, SizeOf(Value));
-end;
-
-class function TFastHash.Encode(s: TStream; AOwnsStream: boolean): TValue;
+class function TArrayUtils.Copy<T>(const Src: TArray<T>): TArray<T>;
 var
-  b: TBytes;
-  p: Int64;
+  i: Integer;
 begin
-  result := 0;
-  p := s.Position;
-  try
-    s.Position := 0;
-    setlength(b, s.Size);
-    if s.Read(b[low(b)], length(b))<>length(b) then
-      raise Exception.Create('Error');
-    result := Encode(b);
-  finally
-    if AOwnsStream then
-      s.Free
-    else
-      s.Position := p;
-  end;
+  SetLength(result, Length(Src));
+  for i := 0 to High(Src) do
+    result[i] := Src[i];
 end;
 
-{ TColors }
-
-class function TColors.Distance(A, B: TColor; ADistType: TDistanceType = TDefDist): Integer;
-var
-  CA,CB: Longint;
+class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: T);
+var i: integer;
 begin
-  CA := System.UITypes.TColors.ColorToRGB(A);
-  CB := System.UITypes.TColors.ColorToRGB(B);
-  case ADistType of
-    dtMaxComponentDeviation:
-      Result := Max(
-        Max(
-          Abs(((CA shr  8) and $FF)-((CB shr  8) and $FF)),
-          Abs(((CA shr 16) and $FF)-((CB shr 16) and $FF))
-        ),
-        Abs((CA and $FF)-(CB and $FF))
-      );
-    dtStandardDeviation:
-      Result := (
-        Sqr((CA and $FF)-(CB and $FF)) +
-        Sqr(((CA shr  8) and $FF)-((CB shr  8) and $FF)) +
-        Sqr(((CA shr 16) and $FF)-((CB shr 16) and $FF))
-      ) div 3;
-    else
-      result := High(Result);
-  end;
+  i := Length(Dst);
+  SetLength(Dst, i+1);
+  Dst[i] := Src;
 end;
 
-class function TColors.Spot(ASample: TColor; const AColors: array of TColor;
-  ADistType: TDistanceType = TDefDist): Integer;
+class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
 var
-  Dist: Integer;
   i,j: Integer;
 begin
-  Dist := High(Integer);
-  Result := -1;
-  for i := Low(AColors) to High(AColors) do
-  begin
-    j := Distance(ASample, AColors[i], ADistType);
-    if j<Dist then
+  SetLength(result, Length(Src));
+  j := 0;
+  for i := 0 to High(Src) do
+    if ACopyFilter(Src[i]) then
     begin
-      Dist := j;
-      Result := i;
+      result[j] := Src[i];
+      inc(j);
     end;
-  end;
+  SetLength(result, j);
 end;
 
-class function TColors.Spot(ASample: TColor; ADistType: TDistanceType = TDefDist): TColorClass;
+class procedure TArrayUtils.Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T, Boolean>);
+var
+  i,j: Integer;
 begin
-  Result := TColorClass(Spot(ASample, ColorValues, ADistType));
-end;
-
-class function TColors.GetName(C: TColor; ADistType: TDistanceType = TDefDist): String;
-begin
-  Result := ColorNames[Spot(C, ADistType)];
-end;
-
-class function TColors.GetBaseColorName(C: TColor;
-  ADistType: TDistanceType): String;
-begin
-  case Spot(C, [
-    TColorRec.Red,    TColorRec.Green, TColorRec.Blue,  TColorRec.SkyBlue,
-    TColorRec.Yellow, TColorRec.Black, TColorRec.White, TColorRec.Gray,
-    TColorRec.Silver
-  ]) of
-    0: Result := ColorNames[ccRed];
-    1: Result := ColorNames[ccGreen];
-    2: Result := ColorNames[ccBlue];
-    3: Result := ColorNames[ccBlue];
-    4: Result := ColorNames[ccYellow];
-    5: Result := ColorNames[ccBlack];
-    6: Result := ColorNames[ccWhite];
-    7: Result := ColorNames[ccGray];
-    8: Result := ColorNames[ccSilver];
-    else result := '';
-  end;
-end;
-
-{ TAutofree<T>.TAutoFreeImpl }
-
-constructor TAutofree<T>.TAutoFreeImpl.Create(AObject: TObject);
-begin
-  FObject := AObject;
-end;
-
-destructor TAutofree<T>.TAutoFreeImpl.Destroy;
-begin
-  FreeAndNil(FObject);
-  inherited;
-end;
-
-{ TAutofree<T> }
-
-class function TAutoFree<T>.Create: TAutoFree<T>;
-begin
-  result.FValue := nil;
-  result.FGuard := nil;
-end;
-
-procedure TAutoFree<T>.Clear;
-begin
-  FValue := nil;
-  FGuard := nil;
-end;
-
-class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
-begin
-  result.Value := AValue;
-end;
-
-procedure TAutoFree<T>.SetAsLink(const Value: T);
-begin
-  FGuard := nil;
-  FValue := Value;
-end;
-
-function TAutoFree<T>.GetIsLink: boolean;
-begin
-  result := (FGuard=nil) and (FValue<>nil);
-end;
-
-procedure TAutofree<T>.SetValue(const Value: T);
-begin
-  if FValue = Value then
+  j := -1;
+  for i := 0 to High(Arr) do
+    if AFilter(Arr[i]) then
+    begin
+      j := i;
+      Break;
+    end;
+  if j<0 then
     Exit;
-  FValue := Value;
-  FGuard := TAutoFreeImpl.Create(FValue);
+  for i := j+1 to High(Arr) do
+    if not AFilter(Arr[i]) then
+    begin
+      Arr[j] := Arr[i];
+      inc(j);
+    end;
+  SetLength(Arr, j);
 end;
 
-class operator TAutoFree<T>.Equal(const ALeft, ARight: TAutoFree<T>): Boolean;
+class function TArrayUtils.Equal<T>(const A, B: TArray<T>; AComparer: IEqualityComparer<T>): Boolean;
+var
+  i: Integer;
 begin
-  result := ALeft.Value=ARight.Value;
+  result := Length(A)=Length(B);
+  if result then
+  begin
+    if AComparer=nil then
+      AComparer := TEqualityComparer<T>.Default;
+    for i := 0 to High(A) do
+      if not AComparer.Equals(A[i], B[i]) then
+        Exit(False);
+  end;
 end;
 
-class operator TAutoFree<T>.Equal(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+class procedure TArrayUtils.Fill(var Arr: TArray<byte>; const ASequence: TIntSequenceParams);
+var
+  i: Integer;
 begin
-  result := ALeft.Value=ARight;
+  for i := 0 to High(Arr) do
+    Arr[i] := ASequence.Next;
 end;
 
-procedure TAutoFree<T>.Free;
+class procedure TArrayUtils.Fill(var Arr: TArray<integer>; const ASequence: TIntSequenceParams);
+var
+  i: Integer;
 begin
-  Clear;
+  for i := 0 to High(Arr) do
+    Arr[i] := ASequence.Next;
 end;
 
-class operator TAutoFree<T>.Implicit(const AValue: TAutoFree<T>): T;
+class function TArrayUtils.Get<T>(const Arr: array of T): TArray<T>;
+var
+  i: Integer;
 begin
-  result := AValue.Value;
+  SetLength(result, Length(Arr));
+  for i := 0 to High(result) do
+    result[i] := Arr[i];
 end;
 
-class operator TAutoFree<T>.Implicit(const AValue: T): TAutoFree<T>;
+class procedure TArrayUtils.Inverse<T>(var Arr: TArray<T>; AStartIndex, ACount: integer);
+var
+  i,l,r: Integer;
+  v: T;
 begin
-  result.Value := AValue;
+  if ACount<0 then
+    ACount := Length(Arr);
+  for i := 0 to ACount div 2-1 do
+  begin
+    l := AStartIndex + i;
+    r := AStartIndex + ACount-1 - i;
+    v      := Arr[l];
+    Arr[l] := Arr[r];
+    Arr[r] := v;
+  end;
 end;
 
-class operator TAutoFree<T>.NotEqual(const ALeft, ARight: TAutoFree<T>): Boolean;
+class procedure TArrayUtils.Random_Integer(Dst: PInteger; Count,ValueLen: integer);
 begin
-  result := ALeft.Value<>ARight.Value;
+  if ValueLen<0 then
+    ValueLen := 1000;
+  while Count>0 do
+  begin
+    Dst^ := Random(ValueLen);
+    Inc(Dst);
+    Dec(Count);
+  end;
 end;
 
-class operator TAutoFree<T>.NotEqual(const ALeft: TAutoFree<T>; const ARight: T): Boolean;
+class procedure TArrayUtils.Random_Byte(Dst: PByte; Count,ValueLen: integer);
 begin
-  result := ALeft.Value<>ARight;
+  if ValueLen<0 then
+    ValueLen := 256;
+  while Count>0 do
+  begin
+    Dst^ := Random(ValueLen);
+    Inc(Dst);
+    Dec(Count);
+  end;
 end;
 
-{ TAutoFreeCollection }
-
-function TAutoFreeCollection.Add<T>(AObject: T): T;
+class procedure TArrayUtils.Random_String(var Dst: TArray<String>; Count,ValueLen: integer);
+var
+  i: Integer;
 begin
-  if FGuard=nil then
-    FGuard := TAutoFreeCollectionImpl.Create;
-  FGuard.Add(AObject);
-  result := AObject;
+  if ValueLen<0 then
+    ValueLen := 10;
+  for i := 0 to High(Dst) do
+    Dst[i] := TStr.RandomString(ValueLen, 'a','z');
 end;
 
-procedure TAutoFreeCollection.Clear;
+class procedure TArrayUtils.Random_Double(var Dst: TArray<Double>; Count,ValueLen: integer);
+var
+  i: Integer;
 begin
-  FGuard := nil;
+  if ValueLen<0 then
+    ValueLen := 1000;
+  if ValueLen<0 then
+    for i := 0 to High(Dst) do
+      Dst[i] := Random
+    else
+    for i := 0 to High(Dst) do
+      Dst[i] := Random(ValueLen);
 end;
 
-procedure TAutoFreeCollection.Free;
+//class procedure TArrayUtils.Random_String(var Arr: TArray<>Dst: PInteger; Count,ValueLen: integer);
+class procedure TArrayUtils.Rnd<T>(var Arr: TArray<T>; ItemCount: integer = -1; ValueLen: integer = -1);
 begin
-  Clear;
+  ItemCount := Max(ItemCount, 0);
+  SetLength(Arr, ItemCount);
+  if ItemCount=0 then
+    Exit;
+  if TypeInfo(T)=TypeInfo(integer) then
+    Random_Integer(@Arr[0], Length(Arr), ValueLen)
+  else
+  if TypeInfo(T)=TypeInfo(byte) then
+    Random_Byte(@Arr[0], Length(Arr), ValueLen)
+  else
+  if TypeInfo(T)=TypeInfo(string) then
+    Random_String(TArray<String>(Arr), Length(Arr), ValueLen)
+  else
+  if TypeInfo(T)=TypeInfo(double) then
+    Random_Double(TArray<Double>(Arr), Length(Arr), ValueLen)
+  else
+    raise Exception.Create('Error');
 end;
 
-{ TAutoFreeCollection.TAutoFreeCollectionImpl }
-
-constructor TAutoFreeCollection.TAutoFreeCollectionImpl.Create;
+class procedure TArrayUtils.SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string);
+var
+  Stream: TFileStream;
 begin
-  inherited Create;
-  FList := TObjectList.Create(True);
+  Stream := TFileStream.Create(AFileName, fmCreate);
+  try
+    Stream.Write(Arr[Low(Arr)], SizeOf(T)*Length(Arr))
+  finally
+    Stream.Free;
+  end;
 end;
 
-destructor TAutoFreeCollection.TAutoFreeCollectionImpl.Destroy;
+class procedure TArrayUtils.SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string);
+var
+  Stream: TFileStream;
+  Writer: TStreamWriter;
+  Value: T;
+begin
+  Stream := nil;
+  Writer := nil;
+  try
+    Stream := TFileStream.Create(AFileName, fmCreate);
+    Writer := TStreamWriter.Create(Stream);
+    for Value in Arr do
+      Writer.Write( TValue.From(Value).ToString );
+  finally
+    Writer.Free;
+    Stream.Free;
+  end;
+end;
+
+{ TListIndexed }
+
+constructor TListIndexed.Create;
+begin
+  inherited;
+  FList := TList.Create;
+  FValueToIndex := TDictionary<pointer, integer>.Create;
+end;
+
+destructor TListIndexed.Destroy;
 begin
   FreeAndNil(FList);
+  FreeAndNil(FValueToIndex);
   inherited;
 end;
 
-procedure TAutoFreeCollection.TAutoFreeCollectionImpl.Add(AObject: TObject);
-begin
-  FList.Add(AObject);
-end;
-
-{ TTiming.TTotalStat }
-
-constructor TTiming.TTotalStat.Create(const ASpan: TTimeSpan; const ACalls: int64);
-begin
-  Span := ASpan;
-  Calls := ACalls;
-end;
-
-{ TTiming }
-
-class procedure TTiming.Finilaze;
-begin
-  FreeAndNil(FTimeStack);
-  FreeAndNil(FTotalTimes);
-end;
-
-class function TTiming.GetTimeStack: TStack<TStopwatch>;
-begin
-  if FTimeStack=nil then
-    FTimeStack := TStack<TStopwatch>.Create;
-  result := FTimeStack;
-end;
-
-class function TTiming.GetTotalTimes: TTextDictionary<TTotalStat>;
-begin
-  if FTotalTimes=nil then
-    FTotalTimes := TTextDictionary<TTotalStat>.Create;
-  result := FTotalTimes;
-end;
-
-class procedure TTiming.Start;
-begin
-  TimeStack.Push(TStopwatch.StartNew);
-end;
-
-class function TTiming.Stop: TTimeSpan;
-begin
-  Result := TimeStack.Pop.Elapsed;
-end;
-
-class function TTiming.Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan;
-begin
-  result := Stop;
-  if not TotalTimes.TryGetValue(OpId, ATotalStat) then
-    ATotalStat := TTotalStat.Create(TTimeSpan.Create(0), 0);
-  ATotalStat.Span := ATotalStat.Span + result;
-  inc(ATotalStat.Calls);
-  TotalTimes.AddOrSetValue(OpId, ATotalStat);
-end;
-
-class function TTiming.StopAndGetCaption(const OpId, Msg: string): string;
+procedure TListIndexed.UpdateIndex(StartIdx: integer);
 var
-  OpTime: TTimeSpan;
-  TotalStat: TTotalStat;
+  i: Integer;
 begin
-  OpTime := Stop(OpId, TotalStat);
-  result := Format('%s (%s): %.2f sec (total: %.2f sec; calls: %d)', [
-    OpId, Msg, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
+  for i := StartIdx to FList.Count-1 do
+    if FList.List[i]<>nil then
+      FValueToIndex.AddOrSetValue(FList.List[i], i);
 end;
 
-class function TTiming.StopAndGetCaption(const OpId: string): string;
+function TListIndexed.Add(Value: pointer): integer;
+begin
+  result := FList.Add(Value);
+  if FValueToIndex.ContainsKey(Value) then
+    raise Exception.Create('Error');
+  if Value<>nil then
+    FValueToIndex.AddOrSetValue(Value, result);
+end;
+
+procedure TListIndexed.SetItem(idx: integer; const Value: pointer);
+begin
+  if FList[idx]=Value then
+    Exit;
+  { In some cases, for example TEnheter.SlettFiltrerte, we copy items inside and then trim the list }
+{  if FValueToIndex.ContainsKey(Value) then
+    raise Exception.Create('Error'); }
+  FValueToIndex.Remove(FList.List[idx]);
+  FList.List[idx] := Value;
+  if Value<>nil then
+    FValueToIndex.AddOrSetValue(Value, idx);
+end;
+
+procedure TListIndexed.Delete(Idx: integer);
+begin
+  FValueToIndex.Remove(FList.List[Idx]);
+  FList.Delete(Idx);
+  UpdateIndex(Idx);
+end;
+
+procedure TListIndexed.Exchange(Src, Dst: integer);
+begin
+  FList.Exchange(Src, Dst);
+  if FList.List[Src]<>nil then
+    FValueToIndex.AddOrSetValue(FList.List[Src], Src);
+  if FList.List[Dst]<>nil then
+    FValueToIndex.AddOrSetValue(FList.List[Dst], Dst);
+end;
+
+function TListIndexed.GetCount: integer;
+begin
+  result := FList.Count;
+end;
+
+function TListIndexed.GetFirst: pointer;
+begin
+  result := FList.First;
+end;
+
+function TListIndexed.GetItem(idx: integer): pointer;
+begin
+  result := FList[idx];
+end;
+
+function TListIndexed.GetLast: pointer;
+begin
+  result := FList.Last;
+end;
+
+function TListIndexed.IndexOf(Value: pointer): integer;
+begin
+  if Value=nil then
+    result := FList.IndexOf(nil)
+  else
+    if not FValueToIndex.TryGetValue(Value, result) then
+      result := -1;
+end;
+
+procedure TListIndexed.Insert(Idx: integer; Value: pointer);
+begin
+  if FValueToIndex.ContainsKey(Value) then
+    raise Exception.Create('Error');
+  FList.Insert(idx, Value);
+  UpdateIndex(idx);
+end;
+
+procedure TListIndexed.Move(Src, Dst: integer);
+begin
+  FList.Move(Src, Dst);
+  if Src<>Dst then
+    UpdateIndex(Min(Src, Dst));
+end;
+
+procedure TListIndexed.Pack;
 var
-  OpTime: TTimeSpan;
-  TotalStat: TTotalStat;
+  i: integer;
 begin
-  OpTime := Stop(OpId, TotalStat);
-  result := Format('%s: %.2f sec (total: %.2f sec; calls: %d)', [
-    OpId, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
+  i := FList.Count;
+  FList.Pack;
+  if i<>FList.Count then
+    UpdateIndex(0);
 end;
 
-{ TFileTools }
+procedure TListIndexed.Remove(Value: pointer);
+var
+  Idx: Integer;
+begin
+  if Value=nil then
+    FList.Remove(nil)
+  else
+  begin
+    Idx := IndexOf(Value);
+    if Idx>=0 then
+      Delete(Idx);
+  end;
+end;
 
-class procedure TFileTools.CleanUpOldFiles(const AFileNamePattern: string;
-  const AMaxAllowedTotalSize, AMaxAllowedCount: int64; AChanceToRun: Double = 1);
+procedure TListIndexed.SetCount(const Value: integer);
+var
+  i: Integer;
+begin
+  if FValueToIndex.Count>0 then
+    for i := Value to FList.Count-1 do
+      FValueToIndex.Remove(FList.List[i]);
+  FList.Count := Value;
+end;
+
+procedure TListIndexed.Sort(Comparer: TListSortCompare);
+var
+  i: Integer;
+begin
+  for i := 0 to Count-2 do
+    if Comparer(FList.List[i], FList.List[i+1])>0 then
+    begin
+      FList.Sort(Comparer);
+      UpdateIndex(0);
+      Exit;
+    end;
+end;
+
+procedure TListIndexed.SortList(Comparer: TListSortCompareFunc);
+var
+  i: Integer;
+begin
+  for i := 0 to Count-2 do
+    if Comparer(FList.List[i], FList.List[i+1])>0 then
+    begin
+      FList.SortList(Comparer);
+      UpdateIndex(0);
+      Exit;
+    end;
+end;
+
+{ TDateTimeUtils }
+
+class function TDateTimeUtils.IsCorrectDate(const t: TDateTime): boolean;
+begin
+  result :=
+    (Trunc(t)<>0) and  {       0 (30.12.1899) as empty value }
+    (YearOf(t)>0);     { -700000 (00.00.0000) as empty value + Delphi supports only "01.01.01" and later }
+end;
+
+class function TDateTimeUtils.ToStr(const t: TDateTime; ANoDateStr: string): string;
+begin
+  if IsCorrectDate(t) then
+    result := DateToStr(t)
+  else
+    result := ANoDateStr;
+end;
+
+{ TInterfacedObject<T> }
+
+constructor TInterfacedObject<T>.Create(AData: T);
+begin
+  inherited Create;
+  FData := AData;
+end;
+
+destructor TInterfacedObject<T>.Destroy;
+begin
+  FreeAndNil(FData);
+  inherited;
+end;
+
+function TInterfacedObject<T>.GetData: T;
+begin
+  result := FData;
+end;
+
+procedure TInterfacedObject<T>.SetData(AData: T);
+begin
+  if (FData<>nil) and (FData<>AData) then
+    FreeAndNil(FData);
+  FData := AData;
+end;
+
+function TInterfacedObject<T>.GetRefCount: integer;
+begin
+  result := RefCount;
+end;
+
+{ TIntSequenceParams }
+
+constructor TIntSequenceParams.Create(AStartValue, AStepInc, ARndDeviation: integer);
+begin
+  Init(AStartValue, AStepInc, ARndDeviation);
+end;
+
+procedure TIntSequenceParams.Init(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
+begin
+  FStartValue   := AStartValue;
+  FStepInc      := AStepInc;
+  FRndDeviation := ARndDeviation;
+  Reset;
+end;
+
+procedure TIntSequenceParams.Reset;
+begin
+  FCurrentBase := FStartValue;
+  FCurrent := FStartValue;
+end;
+
+function TIntSequenceParams.Next: integer;
+begin
+  result := FCurrent;
+  inc(FCurrentBase, FStepInc);
+  if FRndDeviation<=0 then
+    FCurrent := FCurrentBase
+  else
+    FCurrent := FCurrentBase - FRndDeviation + Random(FRndDeviation*2+1);
+end;
+
+{ TIndex }
+
+class function TIndex.Get(Count, StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>;
+begin
+  result := Direct(Count,StartIndex);
+  TArray.Sort<integer>(Result, TDelegatedComparer<integer>.Create(AComparer));
+end;
+
+class function TIndex.Random(Count: integer; StartIndex: integer = 0): TArray<integer>;
+var
+  i,j,k: Integer;
+begin
+  result := Direct(Count,StartIndex);
+  for i := 0 to Count-1 do
+  begin
+    j := System.Random(Count);
+    k := result[i];
+    result[i] := result[j];
+    result[j] := k;
+  end;
+end;
+
+class function TIndex.RandomSelection(Count, StartIndex, SelectionCount: integer): TArray<integer>;
+begin
+  Result := Random(Count, StartIndex);
+  SetLength(Result, SelectionCount);
+end;
+
+class function TIndex.Direct(Count, StartIndex: integer): TArray<integer>;
+var
+  i: Integer;
+begin
+  SetLength(Result, Count);
+  for i := 0 to Count-1 do
+    Result[i] := i + StartIndex;
+end;
+
+class function TIndex.Inverse(Count, StartIndex: integer): TArray<integer>;
+var
+  i: Integer;
+begin
+  SetLength(Result, Count);
+  for i := 0 to Count-1 do
+    Result[i] := Count-1 + StartIndex - i;
+end;
+
+function Min3(const A,B,C: integer): integer;
+begin
+  Result := A;
+  if B < Result then
+    Result := B;
+  if C < Result then
+    Result := C;
+end;
+
+function Min3(const A,B,C: double): double;
+begin
+  Result := A;
+  if B < Result then
+    Result := B;
+  if C < Result then
+    Result := C;
+end;
+
+function Max3(const A,B,C: integer): integer;
+begin
+  Result := A;
+  if B > Result then
+    Result := B;
+  if C > Result then
+    Result := C;
+end;
+
+function Max3(const A,B,C: double): double;
+begin
+  Result := A;
+  if B > Result then
+    Result := B;
+  if C > Result then
+    Result := C;
+end;
+
+{ TGUIDUtils }
+
+class function TGUIDUtils.IsValid(const S: string): Boolean;
+var
+  i: Integer;
+begin
+  (*  {41D3CDB4-1249-41CF-91E8-52D2C2EDC314}  *)
+  i := Length(S);
+  result := (i = 38) and
+    (S.Chars[  0] = '{') and
+    (S.Chars[i-1] = '}') and
+    (S.Chars[  9] = '-') and
+    (S.Chars[ 14] = '-') and
+    (S.Chars[ 19] = '-') and
+    (S.Chars[ 24] = '-') and
+    THex.IsValid(S,  1, 8) and
+    THex.IsValid(S, 10, 4) and
+    THex.IsValid(S, 15, 4) and
+    THex.IsValid(S, 20, 4) and
+    THex.IsValid(S, 25,12);
+end;
+
+class function TGUIDUtils.TryStringToGUID(const S: string; out Dst: TGUID): boolean;
+begin
+  result := IsValid(S);
+  if result then
+    Dst := StringToGuid(S);
+end;
+
+{ TStreamUtils }
+
+class procedure TStreamUtils.StringToStream(const S: string; Dst: TStream; Encoding: TEncoding);
+var
+  B: TArray<Byte>;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  B := Encoding.GetBytes(S);
+  Dst.WriteBuffer(B[0], Length(B));
+end;
+
+{ TKeyUtils }
+
+{ converts ID string to value, acceptable as key in INI file for example }
+class function TKeyUtils.StringToKey(const AId: string; AFixedKeySize: Boolean): String;
+var
+  i: Integer;
+  TakeHash: Boolean;
+begin
+  TakeHash := AFixedKeySize or (Length(AId)>32); { we don't want too long keys }
+  if not TakeHash then
+    for i := Low(AId) to High(AId) do
+      if (Word(AId[i])>127) or not (AnsiChar(AId[i]) in KeyChars) then
+      begin
+        TakeHash := True;
+        break;
+      end;
+  if TakeHash then
+    result := THex.Encode(THash.Encode(AId))
+  else
+    result := AId;
+end;
+
+{ TFileUtils }
+
+class procedure TFileUtils.CleanUpOldFiles(const AFileNamePattern: string; const AMaxAllowedTotalSize, AMaxAllowedCount: int64;
+  AChanceToRun: Double);
 type
   TFileInfo = record
     Name: string;
@@ -1190,8 +2171,7 @@ begin
   end;
 end;
 
-class procedure TFileTools.EnumFiles(const AFileNamePattern: string;
-  AOnfile: TDelegatedOnFile);
+class procedure TFileUtils.EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile);
 var
   F: System.SysUtils.TSearchRec;
   B: Boolean;
@@ -1211,77 +2191,798 @@ begin
     end;
 end;
 
-{ TNumbers }
-
-class function TNumbers.IntToStr(const Value: int64; const Digits: integer): String;
+class function TFileUtils.FileModeToString(AMode: Integer): string;
+const
+  OpenMode : array[0..3] of string = ('fmOpenRead', 'fmOpenWrite', 'fmOpenReadWrite', 'unknown_open_mode');
 begin
-  result := System.SysUtils.IntToStr(Value);
-  if length(result)<Digits then
-    result := StringOfChar('0',Digits-length(result)) + result;
+  {$WARN SYMBOL_PLATFORM OFF}
+  result := '{' + OpenMode[AMode and 3];
+  if AMode and fmShareExclusive = fmShareExclusive then result := result + ', fmShareExclusive';
+  if AMode and fmShareDenyWrite = fmShareDenyWrite then result := result + ', fmShareDenyWrite';
+  if AMode and fmShareDenyRead  = fmShareDenyRead  then result := result + ', fmShareDenyRead';
+  if AMode and fmShareDenyNone  = fmShareDenyNone  then result := result + ', fmShareDenyNone';
+  result := result + '}';
+  {$WARN SYMBOL_PLATFORM ON}
 end;
 
-(*
-function murmur3_32(key: PByte; Len: Longword; k: Longword {seed}): Longword;
-type
-  TLongword = array[0..$1FFFFFF0] of Longword;
-  PLongword = ^TLongword;
-const
-	c1: Longword = $cc9e2d51;
-	c2: Longword = $1b873593;
-	r1: Longword = 15;
-	r2: Longword = 13;
-	m : Longword = 5;
-	n : Longword = $e6546b64;
+class function TFileUtils.IsLocked(const AFileName: string; AMode: word): boolean;
+begin
+  result := False;
+  try
+    TFileStream.Create(AFileName, AMode).Free;
+  except
+    on e: Exception do
+    begin
+      result := True;
+      {$IFDEF LogExceptions}
+      try
+        msLog.Log('CheckFileAccess error: %s ("%s")', [e.ClassName, e.Message]);
+        msLog.Log('File "%s" is locked, mode=%s', [AFileName, FileModeToString(aMode)]);
+      except
+      end;
+      {$ENDIF}
+    end;
+  end;
+end;
+
+procedure FindOpenFiles(
+  const AFilesMask  : string;
+        AExceptions : TSet<string>;
+        ARecursive  : boolean;
+        ADst        : TList<string>);
+var
+  Files,Subdirs: TStringDynArray;
+  Dir,FileName,Subdir: string;
+begin
+  try
+    Dir := ExtractFilePath(AFilesMask);
+    if not TDirectory.Exists(Dir) then
+      Exit;
+    Files := TDirectory.GetFiles(Dir, ExtractFileName(AFilesMask));
+    for FileName in Files do
+      if not (FileName in AExceptions) and TFileUtils.IsLocked(FileName) then
+        ADst.Add(FileName);
+    if ARecursive then
+    begin
+      Subdirs := TDirectory.GetDirectories(Dir);
+      for Subdir in Subdirs do
+        FindOpenFiles(Subdir + '\' + ExtractFileName(AFilesMask), AExceptions, True, ADst);
+    end;
+  except
+  end;
+end;
+
+class function TFileUtils.GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean): TArray<string>;
+var
+  FilesMask: string;
+  Exc: TSet<string>;
+  FoundFiles: TList<string>;
+begin
+  FoundFiles := TList<string>.Create;
+  try
+    Exc.Add(Exceptions);
+    for FilesMask in AMasks do
+      FindOpenFiles(FilesMask, Exc, Recursive, FoundFiles);
+    result := FoundFiles.ToArray;
+  finally
+    FreeAndNil(FoundFiles);
+  end;
+end;
+
+class function TFileUtils.GetOpenFiles(const AMasks, Exceptions: array of string; Recursive: boolean; Delim: string): string;
+var
+  FoundFiles: TArray<string>;
+  i: Integer;
+begin
+  FoundFiles := GetOpenFiles(AMasks, Exceptions, Recursive);
+  if Length(FoundFiles)=0 then result := '' else result := FoundFiles[0];
+  for i := 1 to High(FoundFiles) do
+    result := result + Delim + FoundFiles[i];
+end;
+
+class function TFileUtils.GetSize(const AFileName: string): int64;
+var
+  F: TSearchRec;
+begin
+  if FindFirst(AFileName, faAnyfile, F)<>0 then
+    result := 0
+  else
+    try
+      result := F.Size;
+    finally
+      FindClose(F);
+    end;
+end;
+
+class function TFileUtils.RemoveInvalidChars(const AFileName: string): string;
+var
+  I: Integer;
+  vPath, vFile: string;
+begin
+  Result := '';
+  vPath := ExtractFilePath(AFileName);
+  vFile := ExtractFileName(AFileName);
+
+  for I := Low(vPath) to High(vPath) do
+    if TPath.IsValidPathChar(vPath[I]) then
+      Result := Result + vPath[I];
+  Result := IncludeTrailingPathDelimiter(Result);
+
+  for I := Low(vFile) to High(vFile) do
+    if TPath.IsValidFileNameChar(vFile[I]) then
+      Result := Result + vFile[I];
+end;
+
+{ TIfThen }
+
+class function TIfThen.Get<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
+begin
+  if ACondition then result := AValueTrue else result := AValueFalse;
+end;
+
+{ TIndexBackEnumerator }
+
+constructor TIndexBackEnumerator.Create(AIndexFrom, AIndexTo: integer);
+begin
+  FCurrentIndex := AIndexFrom;
+  FToIndex := AIndexTo;
+end;
+
+function TIndexBackEnumerator.MoveNext: Boolean;
+begin
+  result := FCurrentIndex>=FToIndex;
+  if result then
+    dec(FCurrentIndex);
+end;
+
+function TIndexBackEnumerator.GetCurrent: Integer;
+begin
+  result := FCurrentIndex+1;
+end;
+
+{ TTiming.TTotalStat }
+
+constructor TTiming.TTotalStat.Create(const ASpan: TTimeSpan; const ACalls: int64);
+begin
+  Span := ASpan;
+  Calls := ACalls;
+end;
+
+{ TTiming }
+
+class procedure TTiming.Finilaze;
+begin
+  FreeAndNil(FTimeStack);
+  FreeAndNil(FTotalTimes);
+end;
+
+class function TTiming.GetTimeStack: TStack<TStopwatch>;
+begin
+  if FTimeStack=nil then
+    FTimeStack := TStack<TStopwatch>.Create;
+  result := FTimeStack;
+end;
+
+class function TTiming.GetTotalTimes: TDictionary<string, TTotalStat>;
+begin
+  if FTotalTimes=nil then
+    FTotalTimes := TDictionary<string, TTotalStat>.Create(TOrdinalIStringComparer.Ordinal);
+  result := FTotalTimes;
+end;
+
+class procedure TTiming.Start;
+begin
+  TimeStack.Push(TStopwatch.StartNew);
+end;
+
+class function TTiming.Stop: TTimeSpan;
+begin
+  Result := TimeStack.Pop.Elapsed;
+end;
+
+class function TTiming.Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan;
+begin
+  result := Stop;
+  if not TotalTimes.TryGetValue(OpId, ATotalStat) then
+    ATotalStat := TTotalStat.Create(TTimeSpan.Create(0), 0);
+  ATotalStat.Span := ATotalStat.Span + result;
+  inc(ATotalStat.Calls);
+  TotalTimes.AddOrSetValue(OpId, ATotalStat);
+end;
+
+class function TTiming.StopAndGetCaption(const OpId, Msg: string): string;
+var
+  OpTime: TTimeSpan;
+  TotalStat: TTotalStat;
+begin
+  OpTime := Stop(OpId, TotalStat);
+  result := Format('%s (%s): %.2f sec (total: %.2f sec; calls: %d)', [
+    OpId, Msg, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
+end;
+
+class function TTiming.StopAndGetCaption(const OpId: string): string;
+var
+  OpTime: TTimeSpan;
+  TotalStat: TTotalStat;
+begin
+  OpTime := Stop(OpId, TotalStat);
+  result := Format('%s: %.2f sec (total: %.2f sec; calls: %d)', [
+    OpId, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
+end;
+
+{ TTimeOut }
+
+procedure TTimeOut.SetTimedOut(ATimedOut: boolean);
+begin
+  FOpTimedOut := ATimedOut;
+end;
+
+procedure TTimeOut.Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
+begin
+  FMaxTimeForOp:= AMaxTimeForOp;
+  FCheckPeriod := ACheckPeriod;
+  Restart;
+end;
+
+procedure TTimeOut.StartSec(AMaxTimeForOpSec: double; ACheckPeriod: integer = 0);
+begin
+  Start(AMaxTimeForOpSec/SecsPerDay, ACheckPeriod);
+end;
+
+procedure TTimeOut.Restart;
+begin
+  FOpTimedOut  := False;
+  FStartTime   := Now;
+  FCounter     := FCheckPeriod;
+end;
+
+function TTimeOut.TimedOut: Boolean;
+begin
+  if FOpTimedOut then
+    Result := True
+  else
+  begin
+    Dec(FCounter);
+    if FCounter>0 then
+      Result := False
+    else
+    begin
+      FCounter := FCheckPeriod;
+      Result := Now-FStartTime>FMaxTimeForOp;
+      FOpTimedOut := Result;
+    end;
+  end;
+end;
+
+{ TCachable }
+
+procedure TCachable.BegynnKalkulasjon;
+begin
+  if TInterlocked.Increment(FKalkulasjonBalanse)=1 then
+    DoBegynnKalkulasjon;
+end;
+
+procedure TCachable.AvsluttKalkulasjon;
+begin
+  if TInterlocked.Decrement(FKalkulasjonBalanse)=0 then
+    DoAvsluttKalkulasjon;
+end;
+
+//procedure TCachable.EndreKalkulasjonBalanse(AInc: integer);
+//begin
+//  if TInterlocked.Add(FKalkulasjonBalanse, AInc)=AInc then
+//    DoBegynnKalkulasjon;
+//end;
+
+procedure TCachable.OmstartKalkulasjon;
+begin
+  if KalkulasjonErAktiv then
+  begin
+    DoAvsluttKalkulasjon;
+    DoBegynnKalkulasjon;
+  end;
+end;
+
+function TCachable.GetKalkulasjonErAktiv: Boolean;
+begin
+  result := FKalkulasjonBalanse<>0;
+end;
+
+function TCachable.GetKalkulasjonBalanse: Integer;
+begin
+  result := FKalkulasjonBalanse;
+end;
+
+procedure TCachable.DoAvsluttKalkulasjon;
+begin
+end;
+
+procedure TCachable.DoBegynnKalkulasjon;
+begin
+end;
+
+{ TCurrencyUtils }
+
+class function TCurrencyUtils.ToString(const Value: currency; Ore: boolean): string;
+begin
+  result := FormatCurr( IfThen(Ore, '#,##', '#,'), Value);
+end;
+
+{ TPIWriter }
+
+constructor TPIWriter.Create(ADst: TStream);
+begin
+  inherited Create;
+  Writer := TWriter.Create(ADst, 4096);
+end;
+
+destructor TPIWriter.Destroy;
+begin
+  FreeAndNil(Writer);
+  inherited;
+end;
+
+procedure TPIWriter.Write(const Value: Int16);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: UInt16);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Int32);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Char);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Int8);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: UInt8);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Extended);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Double);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Int64);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: UInt32);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: Single);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Value: UInt64);
+begin
+  Writer.WriteVar(Value, SizeOf(Value));
+end;
+
+procedure TPIWriter.Write(const Buf; Count: integer);
+begin
+  Writer.Write(Buf, Count);
+end;
+
+procedure TPIWriter.Write(const Value: TBytes);
+var
+  i: Integer;
+begin
+  i := Length(Value);
+  Write(i);
+  if i>0 then
+    Write(Value[0], i);
+end;
+
+procedure TPIWriter.Write(const Value: string);
+begin
+  Write(TEncoding.UTF8.GetBytes(Value));
+end;
+
+{ TPIReader }
+
+constructor TPIReader.Create(ASrc: TStream);
+begin
+  inherited Create;
+  Reader := TReader.Create(ASrc, 4096);
+end;
+
+destructor TPIReader.Destroy;
+begin
+  FreeAndNil(Reader);
+  inherited;
+end;
+
+procedure TPIReader.Read(out Value: Int16);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: UInt16);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Int32);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Char);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Int8);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: UInt8);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Single);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Double);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Extended);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: UInt32);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: Int64);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(out Value: UInt64);
+begin
+  Reader.ReadVar(Value, SizeOf(Value));
+end;
+
+procedure TPIReader.Read(var Buf; Count: integer);
+begin
+  Reader.Read(Buf, Count);
+end;
+
+procedure TPIReader.Read(out Value: TBytes);
 var
   i: integer;
 begin
-  Result := k;
+  Read(i);
+  SetLength(Value, i);
+  if i>0 then
+    Read(Value[0], i);
+end;
 
-  // main part
-	for i := 0 to len div 4-1 do
+procedure TPIReader.Read(out Value: string);
+var
+  Bytes: TBytes;
+begin
+  Read(Bytes);
+  Value := TEncoding.UTF8.GetString(Bytes);
+end;
+
+{ TNullable<T> }
+
+class function TNullable<T>.Create: TNullable<T>;
+begin
+  result.FValue := Default(T);
+  result.FHasValue := '';
+end;
+
+class function TNullable<T>.Create(const AValue: T): TNullable<T>;
+begin
+  result.FValue := AValue;
+  result.FHasValue := '1';
+end;
+
+function TNullable<T>.GetValue: T;
+begin
+  if IsNull then
+    raise EInvalidOperation.Create('Var is NULL');
+  result := FValue;
+end;
+
+procedure TNullable<T>.SetValue(const AValue: T);
+begin
+  FValue := AValue;
+  IsNull := False;
+end;
+
+function TNullable<T>.GetIsNull: boolean;
+begin
+  result := FHasValue='';
+end;
+
+function TNullable<T>.GetPointer: pointer;
+begin
+  result := @FValue;
+end;
+
+procedure TNullable<T>.SetIsNull(const AIsNull: boolean);
+begin
+  if AIsNull then
   begin
-		k := PLongword(Key)[i];
-		k := k*c1;
-		k := (k shl r1) or (k shr (32 - r1));
-		k := k*c2;
-		Result := Result xor k;
-		Result := ((Result shl r2) or (Result shr (32 - r2))) * m + n;
-	end;
+    FHasValue := '';
+    FValue := Default(T);
+  end
+  else
+    FHasValue := '1';
+end;
 
-  // tail
-	key := (key + (len and not 3));
-	k := 0;
-	case (len and 3) of
-	  1:
-      begin
-        k := k xor key[0];
-      end;
-	  2:
-      begin
-        k := k xor (key[1] shl 8);
-        k := k xor key[0];
-      end;
-	  3:
-      begin
-        k := k xor (key[2] shl 16);
-        k := k xor (key[1] shl 8);
-        k := k xor key[0];
-      end;
-	end;
-  k := k * c1;
-  k := (k shl r1) or (k shr (32 - r1));
-  k := k * c2;
-  Result := Result xor k;
+function TNullable<T>.GetHasValue: boolean;
+begin
+  result := not IsNull;
+end;
 
-  // final mix
-	Result := Result xor len;
-	Result := Result xor (Result shr 16);
-	Result := Result * Longword($85ebca6b);
-	Result := Result xor (Result shr 13);
-	Result := Result * Longword($c2b2ae35);
-	Result := Result xor (Result shr 16);
-End;
-*)
+procedure TNullable<T>.SetHasValue(const AHasValue: boolean);
+begin
+  IsNull := not AHasValue;
+end;
+
+class operator TNullable<T>.Equal(const ALeft, ARight: TNullable<T>): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+begin
+  if ALeft.HasValue and ARight.HasValue then
+  begin
+    Comparer := TEqualityComparer<T>.Default;
+    Result := Comparer.Equals(ALeft.Value, ARight.Value);
+  end
+  else
+    Result := ALeft.HasValue = ARight.HasValue;
+end;
+
+class operator TNullable<T>.Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+begin
+  if ALeft.IsNull then
+    result := False
+  else
+  begin
+    Comparer := TEqualityComparer<T>.Default;
+    Result := Comparer.Equals(ALeft.Value, ARight);
+  end
+end;
+
+class operator TNullable<T>.NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TNullable<T>.NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TNullable<T>.Implicit(const AValue: T): TNullable<T>;
+begin
+  result := TNullable<T>.Create(AValue);
+end;
+
+class operator TNullable<T>.Implicit(const AValue: TNullable<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TNullable<T>.Implicit(const AValue: Variant): TNullable<T>;
+begin
+  if VarIsClear(AValue) then
+    result := TNullable<T>.Create
+  else
+    Result := TNullable<T>.Create( TValue.FromVariant(AValue).AsType<T> );
+end;
+
+class operator TNullable<T>.Implicit(const AValue: PT): TNullable<T>;
+begin
+  if AValue=nil then
+    result := TNullable<T>.Create
+  else
+    result := TNullable<T>.Create(AValue^);
+end;
+
+{ TThreadSafe<T> }
+
+class function TThreadSafe<T>.Create: TThreadSafe<T>;
+begin
+  result := Create(Default(T));
+end;
+
+class function TThreadSafe<T>.Create(const AValue: T): TThreadSafe<T>;
+begin
+  result.FCriticalSection := result.FAutoFreeCollection.Add( TCriticalSection.Create );
+  result.FValue := AValue;
+end;
+
+function TThreadSafe<T>.GetComparer: IEqualityComparer<T>;
+begin
+  CriticalSection.Acquire;
+  try
+    if FComparer=nil then
+      FComparer := TEqualityComparer<T>.Default;
+    result := FComparer;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+class operator TThreadSafe<T>.Equal(const ALeft,
+  ARight: TThreadSafe<T>): Boolean;
+begin
+  Lock([ALeft,ARight]);
+  try
+    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight.FValue);
+  finally
+    Unlock([ALeft,ARight]);
+  end;
+end;
+
+class operator TThreadSafe<T>.Equal(const ALeft: TThreadSafe<T>;
+  const ARight: T): Boolean;
+begin
+  Lock([ALeft,ARight]);
+  try
+    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight);
+  finally
+    Unlock([ALeft,ARight]);
+  end;
+end;
+
+function TThreadSafe<T>.GetValue: T;
+begin
+  CriticalSection.Acquire;
+  try
+    result := FValue;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetComparer(const Value: IEqualityComparer<T>);
+begin
+  CriticalSection.Acquire;
+  try
+    FComparer := Value;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetCopyProc(const Value: TCopyProc);
+begin
+  CriticalSection.Acquire;
+  try
+    FCopyProc := Value;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+procedure TThreadSafe<T>.SetValue(const AValue: T);
+begin
+  CriticalSection.Acquire;
+  try
+    FValue := AValue;
+  finally
+    CriticalSection.Leave;
+  end;
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: TThreadSafe<T>): T;
+begin
+  result := AValue.Value;
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: Variant): TThreadSafe<T>;
+begin
+  if VarIsClear(AValue) then
+    result := TThreadSafe<T>.Create
+  else
+    Result := TThreadSafe<T>.Create( TValue.FromVariant(AValue).AsType<T> );
+end;
+
+class operator TThreadSafe<T>.Implicit(const AValue: T): TThreadSafe<T>;
+begin
+  result.Value := AValue;
+end;
+
+class operator TThreadSafe<T>.NotEqual(const ALeft,
+  ARight: TThreadSafe<T>): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
+  const ARight: T): Boolean;
+begin
+  result := not (ALeft=ARight);
+end;
+
+class procedure TThreadSafe<T>.GetSafeOrder(const AItems: array of TThreadSafe<T>;
+  var AIndex: TArray<integer>);
+var
+  Values: TArray<NativeUInt>;
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  SetLength(Values, Length(AItems));
+  SetLength(Index, Length(AItems));
+  for i := 0 to High(Index) do
+  begin
+    Index[i] := i;
+    Values[i] := NativeUInt(AItems[i].FCriticalSection);
+  end;
+  TArray.Sort<integer>(Index, TDelegatedComparer<integer>.Create(
+    function(const L,R: integer): integer
+    begin
+      if Values[Index[L]]<Values[Index[R]] then
+        result := -1
+      else
+      if Values[Index[L]]>Values[Index[R]] then
+        result := 1
+      else
+        result := 0;
+    end));
+  AIndex := Index;
+end;
+
+class procedure TThreadSafe<T>.Lock(const A: array of TThreadSafe<T>);
+var
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  GetSafeOrder(A, Index);
+  for i := 0 to High(A) do
+    A[Index[i]].FCriticalSection.Acquire;
+end;
+
+class procedure TThreadSafe<T>.Unlock(const A: array of TThreadSafe<T>);
+var
+  Index: TArray<integer>;
+  i: Integer;
+begin
+  GetSafeOrder(A, Index);
+  for i := 0 to High(A) do
+    A[Index[i]].FCriticalSection.Release;
+end;
 
 { TRLE }
 
@@ -1309,36 +3010,36 @@ var
   M,N: cardinal;
   PrevChar: byte;
 
-  // 0 1 [2 3 4] [5 6] {7}
-  //       N=3    M=2 CurPos
+  { 0 1 [2 3 4] [5 6] (7)
+           N=3    M=2 CurPos }
   procedure COPY_N;
   begin
     assert((N>=1) and (N<=128));
     inc(result,N+1);
-    Dst^ := N-1; // copy N (1..128) bytes as is
+    Dst^ := N-1; { copy N (1..128) bytes as is }
     inc(Dst);
     system.move((Src-M-N)^, Dst^, N);
     inc(Dst, N);
   end;
 
-  // M=0!
+  { M=0! }
   procedure COPY_128;
   begin
     assert(N>=128);
     inc(result,129);
-    Dst^ := 127; // copy N (1..128) bytes as is
+    Dst^ := 127; { copy N (1..128) bytes as is }
     inc(Dst);
     system.move((Src-N)^, Dst^, 128);
     inc(Dst, 128);
     dec(N, 128);
   end;
 
-  // 257-x=M -> x=257-M
+  { 257-x=M -> x=257-M }
   procedure PACK_M;
   begin
     assert((M>=2) and (M<=128));
     inc(result,2);
-    dst^ := 257-M; // copy folowing byte 257-x times
+    dst^ := 257-M; { copy folowing byte 257-x times }
     inc(dst);
     dst^ := PrevChar;
     inc(dst);
@@ -1571,522 +3272,37 @@ begin
     raise exception.create('RLDecode error');
 end;
 
-{ TEnumeration<T> }
+{ TComponentUtils }
 
-class function TEnumeration<T>.TypeInfo: PTypeInfo;
-begin
-  Result := System.TypeInfo(T);
-end;
-
-class function TEnumeration<T>.TypeData: PTypeData;
-begin
-  Result := System.TypInfo.GetTypeData(TypeInfo);
-end;
-
-class function TEnumeration<T>.IsEnumeration: Boolean;
-begin
-  Result := TypeInfo.Kind=tkEnumeration;
-end;
-
-class function TEnumeration<T>.ToOrdinal(Enum: T): Integer;
-begin
-  Assert(IsEnumeration);
-  Assert(SizeOf(Enum)<=SizeOf(Result));
-  Result := 0; // needed when SizeOf(Enum) < SizeOf(Result)
-  Move(Enum, Result, SizeOf(Enum));
-  Assert(InRange(Result));
-end;
-
-class function TEnumeration<T>.FromOrdinal(Value: Integer): T;
-begin
-  Assert(IsEnumeration);
-  Assert(InRange(Value));
-  Assert(SizeOf(Result)<=SizeOf(Value));
-  Move(Value, Result, SizeOf(Result));
-end;
-
-class function TEnumeration<T>.ToString(Enum: T): string;
-begin
-  Result := GetEnumName(TypeInfo, ToOrdinal(Enum));
-end;
-
-class function TEnumeration<T>.FromString(const S: string): T;
-begin
-  Result := FromOrdinal(GetEnumValue(TypeInfo, S));
-end;
-
-class function TEnumeration<T>.MinValue: Integer;
-begin
-  Assert(IsEnumeration);
-  Result := TypeData.MinValue;
-end;
-
-class function TEnumeration<T>.MaxValue: Integer;
-begin
-  Assert(IsEnumeration);
-  Result := TypeData.MaxValue;
-end;
-
-class function TEnumeration<T>.InRange(Value: Integer): Boolean;
+class function TComponentUtils.ForEachComponentBrk(AStart: TComponent; ACallback: TForEachComponentBreakProc):Boolean;
 var
-  ptd: PTypeData;
-begin
-  Assert(IsEnumeration);
-  ptd := TypeData;
-  Result := System.Math.InRange(Value, ptd.MinValue, ptd.MaxValue);
-end;
-
-class function TEnumeration<T>.EnsureRange(Value: Integer): Integer;
-var
-  ptd: PTypeData;
-begin
-  Assert(IsEnumeration);
-  ptd := TypeData;
-  Result := System.Math.EnsureRange(Value, ptd.MinValue, ptd.MaxValue);
-end;
-
-{ TNullable<T> }
-
-class function TNullable<T>.Create: TNullable<T>;
-begin
-  result.FValue := Default(T);
-  result.FHasValue := '';
-end;
-
-class function TNullable<T>.Create(const AValue: T): TNullable<T>;
-begin
-  result.FValue := AValue;
-  result.FHasValue := '1';
-end;
-
-function TNullable<T>.GetValue: T;
-begin
-  if IsNull then
-    raise EInvalidOperation.Create('Var is NULL');
-  result := FValue;
-end;
-
-procedure TNullable<T>.SetValue(const AValue: T);
-begin
-  FValue := AValue;
-  IsNull := False;
-end;
-
-function TNullable<T>.GetIsNull: boolean;
-begin
-  result := FHasValue='';
-end;
-
-function TNullable<T>.GetPointer: pointer;
-begin
-  result := @FValue;
-end;
-
-procedure TNullable<T>.SetIsNull(const AIsNull: boolean);
-begin
-  if AIsNull then
-  begin
-    FHasValue := '';
-    FValue := Default(T);
-  end
-  else
-    FHasValue := '1';
-end;
-
-function TNullable<T>.GetHasValue: boolean;
-begin
-  result := not IsNull;
-end;
-
-procedure TNullable<T>.SetHasValue(const AHasValue: boolean);
-begin
-  IsNull := not AHasValue;
-end;
-
-class operator TNullable<T>.Equal(const ALeft, ARight: TNullable<T>): Boolean;
-var
-  Comparer: IEqualityComparer<T>;
-begin
-  if ALeft.HasValue and ARight.HasValue then
-  begin
-    Comparer := TEqualityComparer<T>.Default;
-    Result := Comparer.Equals(ALeft.Value, ARight.Value);
-  end
-  else
-    Result := ALeft.HasValue = ARight.HasValue;
-end;
-
-class operator TNullable<T>.Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
-var
-  Comparer: IEqualityComparer<T>;
-begin
-  if ALeft.IsNull then
-    result := False
-  else
-  begin
-    Comparer := TEqualityComparer<T>.Default;
-    Result := Comparer.Equals(ALeft.Value, ARight);
-  end
-end;
-
-class operator TNullable<T>.NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class operator TNullable<T>.NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class operator TNullable<T>.Implicit(const AValue: T): TNullable<T>;
-begin
-  result := TNullable<T>.Create(AValue);
-end;
-
-class operator TNullable<T>.Implicit(const AValue: TNullable<T>): T;
-begin
-  result := AValue.Value;
-end;
-
-class operator TNullable<T>.Implicit(const AValue: Variant): TNullable<T>;
-begin
-  if VarIsClear(AValue) then
-    result := TNullable<T>.Create
-  else
-    Result := TNullable<T>.Create( TValue.FromVariant(AValue).AsType<T> );
-end;
-
-class operator TNullable<T>.Implicit(const AValue: PT): TNullable<T>;
-begin
-  if AValue=nil then
-    result := TNullable<T>.Create
-  else
-    result := TNullable<T>.Create(AValue^);
-end;
-
-{ TThreadSafe<T> }
-
-class function TThreadSafe<T>.Create: TThreadSafe<T>;
-begin
-  result := Create(Default(T));
-end;
-
-class function TThreadSafe<T>.Create(const AValue: T): TThreadSafe<T>;
-begin
-  result.FValue := AValue;
-  result.FCriticalSection.Value := TCriticalSection.Create;
-end;
-
-function TThreadSafe<T>.GetComparer: IEqualityComparer<T>;
-begin
-  CriticalSection.Acquire;
-  try
-    if FComparer=nil then
-      FComparer := TEqualityComparer<T>.Default;
-    result := FComparer;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-function TThreadSafe<T>.GetCriticalSection: TCriticalSection;
-begin
-  result := FCriticalSection.Value;
-end;
-
-class operator TThreadSafe<T>.Equal(const ALeft,
-  ARight: TThreadSafe<T>): Boolean;
-begin
-  Lock([ALeft,ARight]);
-  try
-    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight.FValue);
-  finally
-    Unlock([ALeft,ARight]);
-  end;
-end;
-
-class operator TThreadSafe<T>.Equal(const ALeft: TThreadSafe<T>;
-  const ARight: T): Boolean;
-begin
-  Lock([ALeft,ARight]);
-  try
-    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight);
-  finally
-    Unlock([ALeft,ARight]);
-  end;
-end;
-
-function TThreadSafe<T>.GetValue: T;
-begin
-  CriticalSection.Acquire;
-  try
-    result := FValue;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetComparer(const Value: IEqualityComparer<T>);
-begin
-  CriticalSection.Acquire;
-  try
-    FComparer := Value;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetCopyProc(const Value: TCopyProc);
-begin
-  CriticalSection.Acquire;
-  try
-    FCopyProc := Value;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetValue(const AValue: T);
-begin
-  CriticalSection.Acquire;
-  try
-    FValue := AValue;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: TThreadSafe<T>): T;
-begin
-  result := AValue.Value;
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: Variant): TThreadSafe<T>;
-begin
-  if VarIsClear(AValue) then
-    result := TThreadSafe<T>.Create
-  else
-    Result := TThreadSafe<T>.Create( TValue.FromVariant(AValue).AsType<T> );
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: T): TThreadSafe<T>;
-begin
-  result.Value := AValue;
-end;
-
-class operator TThreadSafe<T>.NotEqual(const ALeft,
-  ARight: TThreadSafe<T>): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
-  const ARight: T): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class procedure TThreadSafe<T>.GetSafeOrder(const AItems: array of TThreadSafe<T>;
-  var AIndex: TArray<integer>);
-var
-  Values: TArray<NativeUInt>;
-  Index: TArray<integer>;
   i: Integer;
 begin
-  SetLength(Values, Length(AItems));
-  SetLength(Index, Length(AItems));
-  for i := 0 to High(Index) do
-  begin
-    Index[i] := i;
-    Values[i] := NativeUInt(AItems[i].FCriticalSection.Value);
-  end;
-  TArray.Sort<integer>(Index, TDelegatedComparer<integer>.Create(
-    function(const L,R: integer): integer
-    begin
-      if Values[Index[L]]<Values[Index[R]] then
-        result := -1
-      else
-      if Values[Index[L]]>Values[Index[R]] then
-        result := 1
-      else
-        result := 0;
-    end));
-  AIndex := Index;
-end;
-
-class procedure TThreadSafe<T>.Lock(const A: array of TThreadSafe<T>);
-var
-  Index: TArray<integer>;
-  i: Integer;
-begin
-  GetSafeOrder(A, Index);
-  for i := 0 to High(A) do
-    A[Index[i]].FCriticalSection.Value.Acquire;
-end;
-
-class procedure TThreadSafe<T>.Unlock(const A: array of TThreadSafe<T>);
-var
-  Index: TArray<integer>;
-  i: Integer;
-begin
-  GetSafeOrder(A, Index);
-  for i := 0 to High(A) do
-    A[Index[i]].FCriticalSection.Value.Release;
-end;
-
-{ TAuto<T> }
-
-procedure TAuto<T>.Clear;
-begin
-  FValue := nil;
-  FGuard := nil;
-end;
-
-class function TAuto<T>.Create: TAutoFree<T>;
-begin
-  result.FValue := nil;
-  result.FGuard := nil;
-end;
-
-class function TAuto<T>.Create(const AValue: T): TAutoFree<T>;
-begin
-  result.Value := AValue;
-end;
-
-class operator TAuto<T>.Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
-begin
-  result := ALeft.Value=ARight;
-end;
-
-class operator TAuto<T>.Equal(const ALeft, ARight: TAuto<T>): Boolean;
-begin
-  result := ALeft.Value=ARight.Value;
-end;
-
-procedure TAuto<T>.Free;
-begin
-  Clear;
-end;
-
-function TAuto<T>.CreateInstance: T;
-var
-  TypInf: PTypeInfo;
-  Value: TValue;
-  RttiContext: TRttiContext;
-  RttiType: TRttiType;
-  RttiInstanceType: TRttiInstanceType;
-  Method: TRttiMethod;
-  Params: TArray<TRttiParameter>;
-begin
-  TypInf := TypeInfo(T);
-
-  // We use more general solution for "Create(AOwner: TComponent)", but
-  // for descendants of TComponent we can avoid extra checks.
-  if TypInf.TypeData.ClassType.InheritsFrom(TComponent) then
-    result := T(TComponentClass(TypInf.TypeData.ClassType).Create(nil));
-  begin
-    RttiContext := TRttiContext.Create;
-    RttiType := RttiContext.GetType(TypeInfo(T));
-    if not RttiType.IsInstance then
-      Exit;
-    for Method in RttiType.GetMethods do
-      if Method.IsConstructor and SameText(Method.Name, 'Create') then
+  result := False; // break
+  ACallback(AStart, result);
+  if not result then
+    for i := AStart.ComponentCount-1 downto 0 do
+      if ForEachComponentBrk(AStart.Components[i], ACallback) then
       begin
-        Params := Method.GetParameters;
-
-        // "Create()".
-        if Length(Params)=0 then
-        begin
-          RttiInstanceType := RttiType.AsInstance;
-          Value := Method.Invoke(RttiInstanceType.MetaclassType, []);
-          Result := Value.AsType<T>;
-          Exit;
-        end;
-
-        // "Create(ACapacity: integer = 0)".
-        // There is no way to check default value, but usually such constructor
-        // hides "Create()", for example:
-        // "TDictionary<byte,byte>.Create" means "Create(ACapacity = 0)".
-        if (Length(Params)=1) and
-          ((Params[0].Flags=[]) or (Params[0].Flags=[TParamFlag.pfConst])) and
-          (Params[0].ParamType<>nil) and (Params[0].ParamType.TypeKind in [tkInteger, tkInt64]) and
-          (AnsiSameText(Params[0].Name, 'ACapacity') or AnsiSameText(Params[0].Name, 'Capacity'))
-        then
-        begin
-          RttiInstanceType := RttiType.AsInstance;
-          Value := Method.Invoke(RttiInstanceType.MetaclassType, [0]);
-          Result := Value.AsType<T>;
-          Exit;
-        end;
-
-        // "Create(AOwner: TComponent)".
-        if (Length(Params)=1) and
-          (Params[0].Flags=[TParamFlag.pfAddress]) and
-          (Params[0].ParamType<>nil) and (Params[0].ParamType.TypeKind in [tkClass]) and
-          (AnsiSameText(Params[0].Name, 'AOwner') or AnsiSameText(Params[0].Name, 'Owner'))
-        then
-        begin
-          RttiInstanceType := RttiType.AsInstance;
-          Value := Method.Invoke(RttiInstanceType.MetaclassType, [nil]);
-          Result := Value.AsType<T>;
-          Exit;
-        end;
-
-      end; // For Method in RttiType.GetMethods
-  end; // If
-
-  // Should never happend, because TObject has "Create()".
-  raise Exception.Create('Default constructor is not found');
+        result := True;
+        break;
+      end;
 end;
 
-function TAuto<T>.GetValue: T;
+class procedure TComponentUtils.ForEachComponent(AStart: TComponent; ACallback: TForEachComponentBreakProc);
 begin
-  if FGuard=nil then
-    Value := CreateInstance;
-  result := FValue;
+  ForEachComponentBrk(AStart, ACallback);
 end;
 
-class operator TAuto<T>.Implicit(const AValue: T): TAuto<T>;
+class procedure TComponentUtils.ForEachComponent(AStart: TComponent; ACallback: TProc<TComponent>);
+var
+  i: Integer;
 begin
-  result.Value := AValue;
+  if AStart=nil then
+    exit;
+  ACallback(AStart);
+  for i := AStart.ComponentCount-1 downto 0 do
+    ForEachComponent(AStart.Components[i], ACallback);
 end;
-
-class operator TAuto<T>.Implicit(const AValue: TAuto<T>): T;
-begin
-  result := AValue.Value;
-end;
-
-class operator TAuto<T>.NotEqual(const ALeft: TAuto<T>; const ARight: T): Boolean;
-begin
-  result := ALeft.Value<>ARight;
-end;
-
-class operator TAuto<T>.NotEqual(const ALeft, ARight: TAuto<T>): Boolean;
-begin
-  result := ALeft.Value<>ARight.Value;
-end;
-
-procedure TAuto<T>.SetValue(const Value: T);
-begin
-  if FValue = Value then
-    Exit;
-  FValue := Value;
-  FGuard := TAutofree<T>.TAutoFreeImpl.Create(FValue);
-end;
-
-{ TCompound<TypeA, TypeB> }
-
-constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
-begin
-  Self.A := A;
-  Self.B := B;
-end;
-
-initialization
-
-finalization
-  TTiming.Finilaze;
 
 end.
-

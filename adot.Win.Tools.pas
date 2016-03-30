@@ -6,9 +6,18 @@
 interface
 
 uses
-  Winapi.TlHelp32, Winapi.Windows, Winapi.PsAPI, System.Generics.Collections,
-  System.Generics.Defaults, System.Masks, System.SysUtils, System.SyncObjs,
-  System.Math, System.Threading, adot.Generics.Collections, System.Classes;
+  adot.Collections,
+  Winapi.TlHelp32,
+  Winapi.Windows,
+  Winapi.PsAPI,
+  System.Generics.Collections,
+  System.Generics.Defaults,
+  System.Masks,
+  System.SysUtils,
+  System.SyncObjs,
+  System.Math,
+  System.Threading,
+  System.Classes;
 
 type
 
@@ -522,8 +531,8 @@ begin
   inherited;
 end;
 
-// \device\mup\ma-osl-f01\felles\andrei\09.01\delphifeatures.docx
-// '\Device\LanmanRedirector\;V:000000000007d3bd\MA-OSL-F01\Felles
+// \device\mup\my-srv\soft\09.01\delphifeatures.docx
+// '\Device\LanmanRedirector\;V:000000000007d3bd\my-srv\soft
 class procedure TDiskLetters.GetDiskLetters(var ALetters: TDictionary<string, char>);
 const
   Lan = '\device\lanmanredirector\;';

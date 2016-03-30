@@ -3,14 +3,25 @@ unit adot.VCL.Tools;
 interface
 
 uses
-  Vcl.Controls, IdGlobal, System.Classes, IdHashMessageDigest, System.SysUtils,
-  System.Variants, Vcl.Forms, System.Generics.Collections, System.Generics.Defaults,
   {$IFDEF DEX}
-  cxGrid, cxGridCustomView, cxGridCustomTableView, cxGridChartView, cxCustomData,
-  cxStyles,
+  cxGrid, cxGridCustomView, cxGridCustomTableView, cxGridChartView, cxCustomData, cxStyles,
   {$ENDIF}
-  System.StrUtils, Vcl.Graphics, System.Math, System.UITypes,
-  Vcl.ActnList, Winapi.Windows, Winapi.Messages, adot.Tools;
+  IdGlobal,
+  IdHashMessageDigest,
+  System.Classes,
+  System.SysUtils,
+  System.Variants,
+  System.Generics.Collections,
+  System.Generics.Defaults,
+  System.StrUtils,
+  System.Math,
+  System.UITypes,
+  Vcl.Controls,
+  Vcl.Forms,
+  Vcl.Graphics,
+  Vcl.ActnList,
+  Winapi.Windows,
+  Winapi.Messages;
 
 type
   TDelegatedOnControlWithBreak = reference to procedure(AControl: TControl; var ABreak: boolean);
@@ -77,6 +88,10 @@ function FindControlAtMousePos: TControl;
 
 implementation
 
+uses
+  adot.Tools,
+  adot.Graphics;
+
 function ForEachControlBrk(AStart: TControl; ACallback: TDelegatedOnControlWithBreak):Boolean;
 var
   i: Integer;
@@ -129,7 +144,7 @@ begin
   if length(AValue)<=40 then
     result := AValue
   else
-    result := format('MD5(%d)=', [length(AValue)]) + String(THex.Encode(TCryptoHash.Encode(AValue)));
+    result := format('MD5(%d)=', [length(AValue)]) + String(THash.MD5.GetHashString(AValue));
 end;
 
 class procedure TFormSnapshot.GetControlState(C: TControl; Dst: TStrings);
@@ -141,7 +156,7 @@ begin
     C := C.Parent;
   Dst.Add(Format('{"V": %s, "C": %s}', [
     ToJsonStr(ValueToText(S)),
-    ToJsonStr(TColors.GetBaseColorName(TControlH(C).Color))
+    ToJsonStr(adot.Graphics.TColorUtils.GetBasicColorName(TControlH(C).Color))
   ]));
 end;
 
@@ -316,15 +331,23 @@ end;
 type
   TFormsnapshotRec = class
     Id: String;
-    Lines: TAutoFree<TStringList>;
+    Lines: TStringList;
 
     constructor Create(const AId: string);
+    destructor Destroy; override;
   end;
 
 constructor TFormsnapshotRec.Create(const AId: string);
 begin
+  inherited Create;
   Id := AId;
-  Lines.Value := TStringList.Create;
+  Lines := TStringList.Create;
+end;
+
+destructor TFormsnapshotRec.Destroy;
+begin
+  FreeAndNil(Lines);
+  inherited;
 end;
 
 class procedure TFormSnapshot.Get(AForm: TCustomForm; ADst: TStrings);
@@ -342,34 +365,35 @@ begin
   try
 
     // collect info
-    ForEachComponent(AForm, procedure(C: TComponent)
-    var
-      Id: String;
-      Snapshot: TFormsnapshotRec;
-    begin
-      if not (C is TControl) or not TControl(C).Visible then
-        Exit;
-      Id := GetComponentId(C);
-      if Id='' then
-        Exit;
-      Snapshot := TFormsnapshotRec.Create(Id);
-      Items.Add(Snapshot);
-      {$IFDEF DEX}
-      if C is TcxGrid then
-        GetCxGridState(TCxGrid(C), Snapshot.Lines.Value)
-      else
-        GetControlState(TControl(C), Snapshot.Lines.Value);
-      {$ELSE}
-      GetControlState(TControl(C), Snapshot.Lines.Value);
-      {$ENDIF}
-    end);
+    TComponentUtils.ForEachComponent(AForm,
+      procedure(C: TComponent)
+      var
+        Id: String;
+        Snapshot: TFormsnapshotRec;
+      begin
+        if not (C is TControl) or not TControl(C).Visible then
+          Exit;
+        Id := GetComponentId(C);
+        if Id='' then
+          Exit;
+        Snapshot := TFormsnapshotRec.Create(Id);
+        Items.Add(Snapshot);
+        {$IFDEF DEX}
+        if C is TcxGrid then
+          GetCxGridState(TCxGrid(C), Snapshot.Lines)
+        else
+          GetControlState(TControl(C), Snapshot.Lines);
+        {$ELSE}
+        GetControlState(TControl(C), Snapshot.Lines);
+        {$ENDIF}
+      end);
 
     // get result
     Items.Sort;
     ADst.Add('{');
     for i := 0 to Items.Count-1 do
     begin
-      l := Items[i].Lines.Value;
+      l := Items[i].Lines;
       s := IfThen(i<Items.Count-1, ',', '');
       case l.Count of
         0: ADst.Add(Format('  %s: null%s', [ToJsonStr(Items[i].Id), s]));

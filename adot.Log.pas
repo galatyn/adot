@@ -16,8 +16,12 @@ unit adot.Log;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.SyncObjs, System.IOUtils,
-  adot.Tools, System.Generics.Collections, System.TypInfo;
+  System.SysUtils,
+  System.Classes,
+  System.SyncObjs,
+  System.IOUtils,
+  System.Generics.Collections,
+  System.TypInfo;
 
 type
   // All descandants are thread-safe.
@@ -215,8 +219,13 @@ var
 function CreateDefaultLogger: TCustomLog;
 procedure InitDefaultLogger;
 procedure AddLogger(ALogger: TCustomLog);
+procedure ReplaceLogger(ALogger: TCustomLog);
 
 implementation
+
+uses
+  adot.Tools,
+  adot.Tools.Rtti;
 
 { TCustomLog }
 
@@ -312,7 +321,7 @@ class procedure TCustomLog.DeleteOldLogFiles(
   MaxAllowedTotalCount: integer =  {$IFDEF Debug} 100      {$ELSE} 1000        {$ENDIF};
   CleanUpChancePercent: integer =  {$IFDEF Debug} 100      {$ELSE} 10          {$ENDIF});
 begin
-  TFileTools.CleanUpOldFiles(
+  TFileUtils.CleanUpOldFiles(
     GetLogFolder(APlacement, LogSubpath) + FileMask,
     MaxAllowedTotalSize,
     MaxAllowedTotalCount,
@@ -672,6 +681,12 @@ begin
       AppLog,
       ALogger
      ]);
+end;
+
+procedure ReplaceLogger(ALogger: TCustomLog);
+begin
+  FreeAndNil(AppLog);
+  AppLog := ALogger;
 end;
 
 initialization

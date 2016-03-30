@@ -1,4 +1,4 @@
-﻿unit adot.PEG;
+﻿unit adot.Strings.PEG;
 // Parsing expression grammar (PEG) for Delphi.
 
 interface
@@ -7,9 +7,10 @@ uses
   {$IFDEF PEGLOG}
   adot.Log, adot.VCL.Log,
   {$ENDIF}
-  adot.Tools, System.Generics.Collections, System.Generics.Defaults,
+  adot.Tools,
+  System.Generics.Collections, System.Generics.Defaults,
   System.SysUtils, System.Classes, System.Types, System.AnsiStrings,
-  System.StrUtils, System.TypInfo, adot.Generics.Collections,
+  System.StrUtils, System.TypInfo, adot.Collections,
   System.SyncObjs;
 
 type
@@ -106,16 +107,16 @@ type
     FStack: TObjectStack<TPEGInstance>;
     FDataSourceFormat: TSourceFormat;
     FCaseInsensitive: Boolean;
-    FRecursionSet: TSet<TInstanceId>;
+    FRecursionSet: TSetClass<TInstanceId>;
     FRecursionAction: TRecursionAction;
     FIteration: integer;
     FChildInstance: TPEGInstance;
 
-    procedure ExecSubExpression(ASubExpression: TPEGCustom); inline;
-    function GetBytesLeft: integer; inline;
-    function GetDataPosition: integer; inline;
+    procedure ExecSubExpression(ASubExpression: TPEGCustom); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetBytesLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetDataPosition: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure RecursionError;
-    procedure ResetCurrentExpression; inline;
+    procedure ResetCurrentExpression; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     {$IFDEF PEGLOG}
     procedure LogStr(const s: string; const Args: array of const);
@@ -321,6 +322,9 @@ function PEGResToString(ASrc: TPEGOpRes): string;
 
 implementation
 
+uses
+  adot.Tools.RTTI;
+
 function SetToAnsiString(const ASrc: TAnsiCharSet):AnsiString;
 var
   C: AnsiChar;
@@ -353,7 +357,7 @@ begin
   FStack := TObjectStack<TPEGInstance>.Create(False);
   FDataSourceFormat := ADataSourceFormat;
   FCaseInsensitive := ACaseInsensitive;
-  FRecursionSet := TSet<TInstanceId>.Create;
+  FRecursionSet := TSetClass<TInstanceId>.Create;
 end;
 
 destructor TPEGParser.Destroy;

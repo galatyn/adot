@@ -51,10 +51,10 @@ type
 
     procedure InstallHook(AOriginalProc, AHookProc: pointer);
     procedure UninstallHook;
-    function Installed: Boolean; inline;
+    function Installed: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
 
-    procedure DisableHook; inline;
-    procedure EnableHook; inline;
+    procedure DisableHook; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure EnableHook; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
 (*

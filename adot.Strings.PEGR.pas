@@ -1,4 +1,4 @@
-﻿unit adot.PEGR;
+﻿unit adot.Strings.PEGR;
 
 interface
 
@@ -6,8 +6,8 @@ uses
   {$IFDEF PEGLOG}
   adot.Log, adot.VCL.Log,
   {$ENDIF}
-  adot.PEG, adot.Tools, System.Types, System.SysUtils,
-  System.Classes, System.Math, System.StrUtils;
+  adot.Strings.PEG, adot.Tools, System.Types, System.SysUtils,
+  System.Classes, System.Math, System.StrUtils, adot.Collections;
 
 type
 
@@ -23,13 +23,14 @@ type
     ValueStr: string;
     ValueStrCI: boolean;
     ValueBytes: TByteDynArray;
-    ValueAnsiCharSet: array of adot.PEG.TAnsiCharSet; // array to keep TExpr record small
-    ValueByteSet: array of adot.PEG.TByteSet; // we use array to keep TExpr record small
+    ValueAnsiCharSet: array of adot.Strings.PEG.TAnsiCharSet; // array to keep TExpr record small
+    ValueByteSet: array of adot.Strings.PEG.TByteSet; // we use array to keep TExpr record small
     ValueOperands: array of TExpr;
     ValueLink: PExpr;
     ValueRepMin: integer;
     ValueRepMax: integer;
     Initialized: string;
+    AutoFree: TAutoFreeCollection;
     PEG: TAutoFree<TPEGCustom>;
     FName: string;
 
