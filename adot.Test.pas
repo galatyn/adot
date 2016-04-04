@@ -2,6 +2,9 @@ unit adot.Test;
 
 interface
 
+uses
+  adot.Types;
+
 implementation
 
 uses
@@ -29,6 +32,7 @@ type
 
   TTest_adot_Collections = class
   private
+    class procedure Test_Heap_Search; static;
     type
       TTest_TSet = class
       private
@@ -430,13 +434,38 @@ begin
 
 end;
 
+type
+  THackHeap<K,V> = class(TBinaryHeapClass<K,V>);
+
+class procedure TTest_adot_Collections.Test_Heap_Search;
+var
+  h: THackHeap<integer,TEmptyRec>;
+  v: TArray<integer>;
+  i,j: Integer;
+begin
+  h := THackHeap<integer,TEmptyRec>.Create;
+  try
+    v := [1,2,3,4,5];
+    TArrayUtils.Randomize<integer>(v);
+    h.Add(v);
+    for i := 0 to High(v) do
+    begin
+      j := h.Find(v[i]);
+      assert(j>=0);
+      Assert( h[j].Key = v[i] );
+    end;
+  finally
+    h.Free;
+  end;
+end;
+
 class procedure TTest_adot_Collections.Test_Heap;
 const
   TotalAdd = 10*1000;
   AvgInHeap = TotalAdd div 100;
 var
 
-  h: THeap<string>;
+  h: TBinaryHeapClass<string, TEmptyRec>;
   l: TStringList;
   rep: TStringList;
   MinTestSize: integer;
@@ -447,10 +476,10 @@ var
   var i: integer;
   begin
     for i := 0 to h.Count-1 do
-      Assert(h[i]>=h.MinValue);
+      Assert(h[i].Key >= h.MinValue.Key);
   end;
 
-  procedure CheckHeapStrong(h: THeap<string>; l: TStringList);
+  procedure CheckHeapStrong(h: TBinaryHeapClass<string,TEmptyRec>; l: TStringList);
   var
     i: integer;
     s: TStringList;
@@ -461,13 +490,13 @@ var
       if random<0.1 then
       begin
         while not h.Empty do
-          s.Add(h.ExtractMin);
+          s.Add(h.ExtractMin.Key);
         for i := 0 to s.Count-1 do
           h.Add(s[i]);
       end
       else
         for i := 0 to h.Count-1 do
-          s.Add(h[i]);
+          s.Add(h[i].Key);
       s.Sort;
       try
         assert(s.Count=l.Count);
@@ -486,6 +515,7 @@ var
   end;
 
 begin
+  Test_Heap_Search;
   MinTestSize := high(MinTestSize);
   repeat
     h := nil;
@@ -493,7 +523,7 @@ begin
     rep := nil;
     try
       rep := TStringList.Create;
-      h := THeap<string>.Create(TDelegatedComparer<string>.Create(
+      h := TBinaryHeapClass<string,TEmptyRec>.Create(0, TDelegatedComparer<string>.Create(
         function(const a,b: string):integer
         begin
           if a<b then
@@ -508,7 +538,7 @@ begin
       h.Add(['omp', 'yxx']);
       CheckHeap;
       rep.Clear;
-      for s in h do
+      for s in h.Keys do
         rep.Add(s);
       rep.Sort;
       assert(rep[0]='omp');

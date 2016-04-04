@@ -323,6 +323,7 @@ type
     class procedure SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure Rnd<T: record>(var Arr: TArray<T>; ItemCount: integer = -1; ValueLen: integer = -1); static;
+    class procedure Randomize<T>(var Arr: TArray<T>); static;
     class procedure Fill(var Arr: TArray<integer>; const ASequence: TIntSequenceParams); overload; static;
     class procedure Fill(var Arr: TArray<byte>; const ASequence: TIntSequenceParams); overload; static;
     class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
@@ -1631,6 +1632,21 @@ begin
     Dst^ := Random(ValueLen);
     Inc(Dst);
     Dec(Count);
+  end;
+end;
+
+class procedure TArrayUtils.Randomize<T>(var Arr: TArray<T>);
+var
+  I,J,N: Integer;
+  V: T;
+begin
+  N := Length(Arr);
+  for I := 0 to N-1 do
+  begin
+    J      := Random(N);
+    V      := Arr[I];
+    Arr[I] := Arr[J];
+    Arr[J] := V;
   end;
 end;
 

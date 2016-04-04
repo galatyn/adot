@@ -719,22 +719,29 @@ type
     property Keys: TKeyCollection read GetKeys;
   end;
 
-  THeap<T> = class(TEnumerable<T>)
+  THeapClass<T> = class(TEnumerable<T>)
   private
   protected
-    FValues: TList<T>;
-    FComparer: IComparer<T>;
+    type
+      TEnumerator = TList<T>.TEnumerator;
 
-    function GetCount: integer;
-    function GetValue(n: integer): T;
-    function GetCapacity: integer;
-    procedure SetCapacity(const AValue: integer);
+    var
+      FValues: TList<T>;
+      FComparer: IComparer<T>;
+
+    function GetCount: integer;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetValue(n: integer): T;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetCapacity(const AValue: integer);  {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Swap(n1, n2: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
     function DoGetEnumerator: TEnumerator<T>; override;
+    function Find(const AValue: T): integer; { the only slow operation here }
+    function GetOwnsValues: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetOwnsValues(AOwnsValues: boolean); {$IFNDEF DEBUG}inline;{$ENDIF}
   public
-    constructor Create(const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
-    constructor Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
-    constructor Create(const AValues: array of T; const AComparer: IComparer<T> = nil; ACapacity: integer = 0); overload;
+    constructor Create(ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<T>; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const AValues: array of T; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
     destructor Destroy; override;
     function GetEnumerator: TList<T>.TEnumerator;
 
@@ -743,16 +750,223 @@ type
     function Add(const AValue: T): integer; overload;
     procedure Add(const AValues: array of T); overload;
     procedure Add(const ACollection: TEnumerable<T>); overload;
-    function Find(const AValue: T): integer; { the only slow operation here }
     procedure Delete(n: integer);
     procedure DeleteMin; {$IFNDEF DEBUG}inline;{$ENDIF}
     function MinValue: T; {$IFNDEF DEBUG}inline;{$ENDIF}   { O(1)      }
     function ExtractMin: T; {$IFNDEF DEBUG}inline;{$ENDIF} { O(Log(n)) }
     function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
 
+    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property Count: integer read GetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Values[n: integer]: T read GetValue; default;
+  end;
+
+  { Wrapper for TArray<T>. Much simpler than TList, but has some advantages:
+    - faster
+    - provides direct access to array of items
+    - managable (no need for construction/destruction etc) }
+  TVector<T> = record
+  public
+    { we define it before other field to make access more efficient }
+    Items: TArray<T>;
+  private
+    FCount: integer;
+    FOwnsObjects: boolean;
+
+    procedure SetCount(ACount: integer);
+    procedure SetCapacity(ACapacity: integer);
+    procedure Grow;
+    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetItem(ItemIndex: integer): T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetItem(ItemIndex: integer; const Value: T);
+    procedure SetOwnsObjects(const Value: boolean); {$IFNDEF DEBUG}inline;{$ENDIF}
+
+  public
+    type
+      TEnumerator = record
+      private
+        Items: TArray<T>;
+        Len: integer;
+        Pos: integer;
+
+        function GetCurrent: T;
+      public
+        constructor Create(const Items: TArray<T>; ACount: integer);
+        function MoveNext: Boolean;
+        property Current: T read GetCurrent;
+      end;
+
+    function Add(const Value: T): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const Value: TArray<T>); overload;
+    procedure Add(const Value: TEnumerable<T>); overload;
+
+    procedure Delete(ItemIndex: integer); overload;
+    procedure Delete(StartIndex,FinishIndex: integer); overload;
+
+    { Extract deletes the item, but doesn't free (even if OwnsValues=True) }
+    function Extract(ItemIndex: integer): T;
+
+    function GetEnumerator: TEnumerator; reintroduce; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear;
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    property Count: integer read FCount write SetCount;
+    property Length: integer read FCount write SetCount;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
+    property OwnsObjects: boolean read FOwnsObjects write SetOwnsObjects;
+  end;
+
+  { Usually it is better to have "key-value" items to avoid of custom comparer. }
+  TBinaryHeapClass<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
+  public
+    type
+      TPairsEnumerator = TVector<TPair<TKey,TValue>>.TEnumerator;
+
+      { Enumerator for heap (we have to inherit from TEnumerator to be comatible with TEnumerable) }
+      TEnumerator = class(TEnumerator<TPair<TKey, TValue>>)
+      protected
+        PairEnumerator: TPairsEnumerator;
+
+        function DoGetCurrent: TPair<TKey, TValue>; override;
+        function DoMoveNext: Boolean; override;
+      public
+        constructor Create(const PairEnumerator: TPairsEnumerator);
+      end;
+
+      { Enumerator of keys }
+
+      TKeyEnumerator = record
+      private
+        PairEnumerator: TPairsEnumerator;
+
+        function GetCurrent: TKey;
+      public
+        constructor Create(const PairEnumerator: TPairsEnumerator);
+        function MoveNext: Boolean;
+        property Current: TKey read GetCurrent;
+      end;
+
+      TKeyCollection = record
+      private
+        PairEnumerator: TPairsEnumerator;
+      public
+        constructor Create(const PairEnumerator: TPairsEnumerator);
+        function GetEnumerator: TKeyEnumerator;
+      end;
+
+  private
+    function GetCapacity: integer;
+    function GetCount: integer;
+    procedure SetValue(n: integer; const Value: TPair<TKey, TValue>);
+
+  protected
+    FItems: TVector<TPair<TKey,TValue>>;
+    FComparer: IComparer<TKey>;
+
+    procedure SetCapacity(ACapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetValue(Index: integer): TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetKeyCollection: TKeyCollection;
+    function DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>; override;
+
+    { this function is O(N), it doesn't make much sence to use it (used internally for testing) }
+    function Find(const Key: TKey): integer;
+
+  public
+    constructor Create(ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
+    destructor Destroy; override;
+
+    { Ñlass functions operation on array. Class functionality is based on these functions. }
+    class function BHeapGetLeft(ParentIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function BHeapGetRight(ParentIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function BHeapGetParent(ChildIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class procedure BHeapMoveUp(var Items: TArray<TPair<TKey,TValue>>; ItemIndex: integer; Comparer: IComparer<TKey>); static;
+    class procedure BHeapDelete(var Items: TArray<TPair<TKey,TValue>>; ItemIndex,Count: integer; Comparer: IComparer<TKey>); static;
+    class function BHeapExtractMin(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>):TPair<TKey,TValue>; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class procedure BHeapBuild(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>); static;
+    class procedure BHeapSort(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>); static;
+    class procedure BHeapReplace(var Items: TArray<TPair<TKey,TValue>>; ItemIndex,Count: integer;
+      Comparer: IComparer<TKey>; const Pair:TPair<TKey,TValue>); static;
+
+    { add [key,value] }
+    function Add(const AKey: TKey; const AValue: TValue): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Add(const APair: TPair<TKey,TValue>): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const AValues: TEnumerable<TPair<TKey,TValue>>); overload;
+
+    { Add key with empty/default value }
+    function Add(const AKey: TKey): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const AKeys: TArray<TKey>); overload;
+    procedure Add(const AKeys: TEnumerable<TKey>); overload;
+
+    function MinValue: TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}   { O(1)      }
+    function ExtractMin: TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF} { O(Log(n)) }
+    procedure DeleteMin; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Delete(n: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    property Count: integer read GetCount;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Values[n: integer]: TPair<TKey,TValue> read GetValue write SetValue; default;
+    property Keys: TKeyCollection read GetKeyCollection;
+  end;
+
+  THeap<T> = record
+  private
+    FHeapInt: IInterfacedObject<THeapClass<T>>;
+
+    procedure CreateHeap(ACapacity: integer = 0; const AComparer: IComparer<T> = nil);
+    function GetOwnsValues: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetOwnsValues(AOwnsValues: boolean); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetReadonly: THeapClass<T>;
+    function GetReadWrite: THeapClass<T>;
+
+    property ReadOnly: THeapClass<T> read GetReadonly;
+    property ReadWrite: THeapClass<T> read GetReadWrite;
+
+  public
+    type
+      TEnumerator = THeapClass<T>.TEnumerator;
+
+    { Record type TSet<T> can be used without constructor, use constructor only if you
+      need some customization: set Capacity, provide custom comparer etc. }
+    constructor Create(ACapacity: integer; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const V: array of T; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+    constructor Create(const V: TEnumerable<T>; ACapacity: integer = 0; const AComparer: IComparer<T> = nil); overload;
+
+    function GetEnumerator: TEnumerator;
+
+    procedure Add(const V: T); overload;
+    procedure Add(const V: array of T); overload;
+    procedure Add(const V: TEnumerable<T>); overload;
+    procedure Add(V: THeap<T>); overload;
+
+    function MinValue: T; {$IFNDEF DEBUG}inline;{$ENDIF}   { O(1)      }
+    function ExtractMin: T; {$IFNDEF DEBUG}inline;{$ENDIF} { O(Log(n)) }
+    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Count: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    function Copy: THeap<T>;
+    function AsString: string; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function AsArray: TArray<T>; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    class operator Implicit(const a : T) : THeap<T>;
+    class operator Implicit(const a : TEnumerable<T>) : THeap<T>;
+    class operator Implicit(const a : array of T) : THeap<T>;
+
+    class operator Explicit(const a : T) : THeap<T>;
+    class operator Explicit(const a : TEnumerable<T>) : THeap<T>;
+    class operator Explicit(const a : array of T) : THeap<T>;
+
+    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
   end;
 
   { http://en.wikipedia.org/wiki/Circular_buffer
@@ -804,21 +1018,7 @@ type
     {property List: TList<T> read FValues;}
   end;
 
-  { Unlike TList, TVectorClass always keeps valid array .Items and doesn't destroy it after destruction.
-    This class can be uses as simple way to build array without copying. }
-(*  TVectorClass<T> = class
-  protected
-    FItems: TArray<T>;
-    FCapacity: integer;
-    FCount: integer;
-  public
-
-    property Items: TArray<T> read FItems;
-    property Capacity: integer read FCapacity;
-    property Count: integer read FCount;
-  end; *)
-
-  // Similar to TDictionary, but automatically deletes data if they take more space than allowed.
+  { Based on TDictionary, but automatically deletes data if they take more space than allowed. }
   TCache<TKey,TValue> = class
   protected
     Cache: TDictionary<TKey,TValue>;
@@ -831,7 +1031,7 @@ type
     function TryGetValue(K: TKey; var V: TValue):boolean;
   end;
 
-  { AA-tree is balanced BST. It has performance comparable to Red-Black tree, but simplier implementation.
+  { Balanced binary search tree (BST). Has performance comparable to Red-Black tree, but simplier implementation.
     http://en.wikipedia.org/wiki/AA_tree }
   TSearchType = (stAll, stAny);
   TItemHandle = NativeInt;
@@ -1068,6 +1268,14 @@ type
     property Count: integer read FCount;
     property Capacity: integer read FCapacity write SetCapacity;
     property Items: TArray<T> read FItems;
+  end;
+
+  TComparerUtils = class
+  public
+
+    { For string type we use case insensitive comparer by default }
+    class function DefaultComparer<T>: IComparer<T>; static;
+    class function DefaultEqualityComparer<T>: IEqualityComparer<T>; static;
   end;
 
 implementation
@@ -2126,9 +2334,9 @@ begin
   result.Value := FCurrentValue.Current;
 end;
 
-{ THeap<T> }
+{ THeapClass<T> }
 
-constructor THeap<T>.Create(const AComparer: IComparer<T>; ACapacity: integer);
+constructor THeapClass<T>.Create(ACapacity: integer; const AComparer: IComparer<T>);
 begin
   FValues := TList<T>.Create(AComparer);
   if ACapacity>0 then
@@ -2138,75 +2346,80 @@ begin
     FComparer := TComparer<T>.Default;
 end;
 
-constructor THeap<T>.Create(const ACollection: TEnumerable<T>; const AComparer: IComparer<T>;
-  ACapacity: integer);
+constructor THeapClass<T>.Create(const ACollection: TEnumerable<T>; ACapacity: integer; const AComparer: IComparer<T>);
 begin
-  Create(AComparer, ACapacity);
+  Create(ACapacity, AComparer);
   Add(ACollection);
 end;
 
-constructor THeap<T>.Create(const AValues: array of T; const AComparer: IComparer<T>;
-  ACapacity: integer);
+constructor THeapClass<T>.Create(const AValues: array of T; ACapacity: integer; const AComparer: IComparer<T>);
 begin
-  Create(AComparer, ACapacity);
+  Create(ACapacity, AComparer);
   Add(AValues);
 end;
 
-destructor THeap<T>.Destroy;
+destructor THeapClass<T>.Destroy;
 begin
   FreeAndNil(FValues);
   inherited;
 end;
 
-function THeap<T>.DoGetEnumerator: TEnumerator<T>;
+function THeapClass<T>.GetOwnsValues: boolean;
+begin
+
+end;
+
+procedure THeapClass<T>.SetOwnsValues(AOwnsValues: boolean);
+begin
+
+end;
+
+function THeapClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
   result := GetEnumerator;
 end;
 
-procedure THeap<T>.Clear;
+procedure THeapClass<T>.Clear;
 begin
   FValues.Clear;
 end;
 
-function THeap<T>.GetCapacity: integer;
+function THeapClass<T>.GetCapacity: integer;
 begin
   result := FValues.Capacity;
 end;
 
-function THeap<T>.GetCount: integer;
+function THeapClass<T>.GetCount: integer;
 begin
   result := FValues.Count;
 end;
 
-function THeap<T>.GetEnumerator: TList<T>.TEnumerator;
+function THeapClass<T>.GetEnumerator: TList<T>.TEnumerator;
 begin
   result := FValues.GetEnumerator;
 end;
 
-function THeap<T>.GetValue(n: integer): T;
+function THeapClass<T>.GetValue(n: integer): T;
 begin
   result := FValues[n];
 end;
 
-function THeap<T>.MinValue: T;
+function THeapClass<T>.MinValue: T;
 begin
   result := FValues[0];
 end;
 
-function THeap<T>.Find(const AValue: T): integer;
+function THeapClass<T>.Find(const AValue: T): integer;
 var
   i: Integer;
 begin
   for i := 0 to FValues.Count-1 do
     if FComparer.Compare(FValues[i], AValue)=0 then
-    begin
-      result := i;
-      exit;
-    end;
+      Exit(i);
   result := -1;
 end;
 
-function THeap<T>.Add(const AValue: T): integer;
+function THeapClass<T>.Add(const AValue: T): integer;
 var
   i: Integer;
 begin
@@ -2223,7 +2436,7 @@ begin
   FValues[result] := AValue;
 end;
 
-procedure THeap<T>.Add(const AValues: array of T);
+procedure THeapClass<T>.Add(const AValues: array of T);
 var
   i: Integer;
 begin
@@ -2231,7 +2444,7 @@ begin
     Add(AValues[i]);
 end;
 
-procedure THeap<T>.Add(const ACollection: TEnumerable<T>);
+procedure THeapClass<T>.Add(const ACollection: TEnumerable<T>);
 var
   v: T;
 begin
@@ -2239,12 +2452,12 @@ begin
     Add(v);
 end;
 
-procedure THeap<T>.SetCapacity(const AValue: integer);
+procedure THeapClass<T>.SetCapacity(const AValue: integer);
 begin
   FValues.Capacity := AValue;
 end;
 
-procedure THeap<T>.Swap(n1,n2: integer);
+procedure THeapClass<T>.Swap(n1,n2: integer);
 var
   Temp: T;
 begin
@@ -2253,12 +2466,12 @@ begin
   FValues[n2] := Temp;
 end;
 
-procedure THeap<T>.TrimExcess;
+procedure THeapClass<T>.TrimExcess;
 begin
   FValues.TrimExcess;
 end;
 
-procedure THeap<T>.Delete(n: integer);
+procedure THeapClass<T>.Delete(n: integer);
 var
   c: integer;
 begin
@@ -2288,17 +2501,17 @@ begin
   FValues.Delete(c-1);
 end;
 
-procedure THeap<T>.DeleteMin;
+procedure THeapClass<T>.DeleteMin;
 begin
   Delete(0);
 end;
 
-function THeap<T>.Empty: boolean;
+function THeapClass<T>.Empty: boolean;
 begin
   result := FValues.Count=0;
 end;
 
-function THeap<T>.ExtractMin: T;
+function THeapClass<T>.ExtractMin: T;
 begin
   result := MinValue;
   DeleteMin;
@@ -2488,18 +2701,13 @@ end;
 
 procedure TSet<T>.CreateSet(ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
 var
-  c: IEqualityComparer<string>;
-  TempSet: TSetClass<T>;
+  C: IEqualityComparer<T>;
 begin
-  if (AComparer=nil) and (TypeInfo(T) = TypeInfo(string)) then
-  begin
-    { For string type we use case insensitive comparer by default }
-    c := TIStringComparer.Ordinal;
-    TempSet := TSetClass<T>.Create(ACapacity, IEqualityComparer<T>(c));
-  end
+  if AComparer=nil then
+    C := TComparerUtils.DefaultEqualityComparer<T>
   else
-    TempSet := TSetClass<T>.Create(ACapacity, AComparer);
-  FSetInt := TInterfacedObject<TSetClass<T>>.Create(TempSet);
+    C := AComparer;
+  FSetInt := TInterfacedObject<TSetClass<T>>.Create( TSetClass<T>.Create(ACapacity, C) );
 end;
 
 function TSet<T>.GetAsArray: TArray<T>;
@@ -2978,17 +3186,13 @@ end;
 
 procedure TMap<TMapKey, TMapValue>.CreateMap(ACapacity: integer; const AComparer: IEqualityComparer<TMapKey>);
 var
-  c: IEqualityComparer<string>;
-  TempMap: TMapClass<TMapKey,TMapValue>;
+  C: IEqualityComparer<TMapKey>;
 begin
-  if (AComparer=nil) and (TypeInfo(TMapKey) = TypeInfo(string)) then
-  begin
-    c := TIStringComparer.Ordinal;
-    TempMap := TMapClass<TMapKey,TMapValue>.Create(ACapacity, IEqualityComparer<TMapKey>(c));
-  end
+  if AComparer=nil then
+    C := TComparerUtils.DefaultEqualityComparer<TMapKey>
   else
-    TempMap := TMapClass<TMapKey,TMapValue>.Create(ACapacity, AComparer);
-  FMapInt := TInterfacedObject<TMapClass<TMapKey,TMapValue>>.Create(TempMap);
+    C := AComparer;
+  FMapInt := TInterfacedObject<TMapClass<TMapKey,TMapValue>>.Create( TMapClass<TMapKey,TMapValue>.Create(ACapacity, C) );
 end;
 
 function TMap<TMapKey, TMapValue>.GetReadonly: TMapClass<TMapKey, TMapValue>;
@@ -4409,6 +4613,671 @@ end;
 procedure TFastStack<T>.Clear;
 begin
   FCount := 0;
+end;
+
+{ THeap<T> }
+
+constructor THeap<T>.Create(const V: array of T; ACapacity: integer; const AComparer: IComparer<T>);
+begin
+  CreateHeap(ACapacity, AComparer);
+  Add(v);
+end;
+
+constructor THeap<T>.Create(const V: TEnumerable<T>; ACapacity: integer; const AComparer: IComparer<T>);
+begin
+  CreateHeap(ACapacity, AComparer);
+  Add(v);
+end;
+
+constructor THeap<T>.Create(ACapacity: integer; const AComparer: IComparer<T>);
+begin
+  CreateHeap(ACapacity, AComparer);
+end;
+
+procedure THeap<T>.CreateHeap(ACapacity: integer = 0; const AComparer: IComparer<T> = nil);
+var
+  c: IComparer<string>;
+  TempHeap: THeapClass<T>;
+begin
+  if (AComparer=nil) and (TypeInfo(T) = TypeInfo(string)) then
+  begin
+    { For string type we use case insensitive comparer by default }
+    c := TIStringComparer.Ordinal;
+    TempHeap := THeapClass<T>.Create(ACapacity, IComparer<T>(c));
+  end
+  else
+    TempHeap := THeapClass<T>.Create(ACapacity, AComparer);
+  FHeapInt := TInterfacedObject<THeapClass<T>>.Create(TempHeap);
+end;
+
+function THeap<T>.GetReadonly: THeapClass<T>;
+begin
+  if FHeapInt=nil then
+    CreateHeap;
+  result := FHeapInt.Data;
+end;
+
+function THeap<T>.GetReadWrite: THeapClass<T>;
+var
+  SrcHeapInt: IInterfacedObject<THeapClass<T>>;
+begin
+  if FHeapInt=nil then
+    CreateHeap
+  else
+    if FHeapInt.GetRefCount<>1 then
+    begin
+      { Copy on write }
+      SrcHeapInt := FHeapInt;
+      CreateHeap(SrcHeapInt.Data.Count, SrcHeapInt.Data.FComparer);
+      FHeapInt.Data.Add(SrcHeapInt.Data);
+      FHeapInt.Data.OwnsValues := SrcHeapInt.Data.OwnsValues;
+    end;
+  result := FHeapInt.Data;
+end;
+
+procedure THeap<T>.Add(const V: TEnumerable<T>);
+var
+  D: THeapClass<T>;
+  Value: T;
+begin
+  D := ReadWrite;
+  for Value in V do
+    D.Add(Value);
+end;
+
+procedure THeap<T>.Add(V: THeap<T>);
+begin
+
+end;
+
+procedure THeap<T>.Add(const V: T);
+begin
+
+end;
+
+procedure THeap<T>.Add(const V: array of T);
+begin
+
+end;
+
+function THeap<T>.AsArray: TArray<T>;
+begin
+
+end;
+
+function THeap<T>.AsString: string;
+begin
+
+end;
+
+procedure THeap<T>.Clear;
+begin
+
+end;
+
+function THeap<T>.Copy: THeap<T>;
+begin
+
+end;
+
+function THeap<T>.Count: integer;
+begin
+
+end;
+
+function THeap<T>.Empty: boolean;
+begin
+
+end;
+
+class operator THeap<T>.Explicit(const a: array of T): THeap<T>;
+begin
+
+end;
+
+class operator THeap<T>.Explicit(const a: TEnumerable<T>): THeap<T>;
+begin
+
+end;
+
+class operator THeap<T>.Explicit(const a: T): THeap<T>;
+begin
+
+end;
+
+function THeap<T>.ExtractMin: T;
+begin
+
+end;
+
+function THeap<T>.GetEnumerator: TEnumerator;
+begin
+
+end;
+
+function THeap<T>.GetOwnsValues: boolean;
+begin
+
+end;
+
+class operator THeap<T>.Implicit(const a: array of T): THeap<T>;
+begin
+
+end;
+
+class operator THeap<T>.Implicit(const a: TEnumerable<T>): THeap<T>;
+begin
+
+end;
+
+class operator THeap<T>.Implicit(const a: T): THeap<T>;
+begin
+
+end;
+
+function THeap<T>.MinValue: T;
+begin
+
+end;
+
+procedure THeap<T>.SetOwnsValues(AOwnsValues: boolean);
+begin
+
+end;
+
+procedure THeap<T>.TrimExcess;
+begin
+
+end;
+
+{ TBinaryHeapClass<TKey, TValue>.TEnumerator }
+
+constructor TBinaryHeapClass<TKey, TValue>.TEnumerator.Create(const PairEnumerator: TPairsEnumerator);
+begin
+  inherited Create;
+  Self.PairEnumerator := PairEnumerator;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.TEnumerator.DoGetCurrent: TPair<TKey, TValue>;
+begin
+  result := PairEnumerator.Current;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.TEnumerator.DoMoveNext: Boolean;
+begin
+  result := PairEnumerator.MoveNext;
+end;
+
+{ TBinaryHeapClass<TKey, TValue>.TKeyEnumerator }
+
+constructor TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.Create(const PairEnumerator: TPairsEnumerator);
+begin
+  Self.PairEnumerator := PairEnumerator;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.GetCurrent: TKey;
+begin
+  result := PairEnumerator.Current.Key;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.MoveNext: Boolean;
+begin
+  result := PairEnumerator.MoveNext;
+end;
+
+{ TBinaryHeapClass<TKey, TValue>.TKeyCollection }
+
+constructor TBinaryHeapClass<TKey, TValue>.TKeyCollection.Create(const PairEnumerator: TPairsEnumerator);
+begin
+  Self.PairEnumerator := PairEnumerator;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.TKeyCollection.GetEnumerator: TKeyEnumerator;
+begin
+  result := TKeyEnumerator.Create(PairEnumerator);
+end;
+
+{ TBinaryHeapClass<TKey, TValue> }
+
+{ basic operations on array }
+
+class function TBinaryHeapClass<TKey, TValue>.BHeapGetLeft(ParentIdx: integer): integer;
+begin
+  result := (ParentIdx shl 1) + 1;
+end;
+
+class function TBinaryHeapClass<TKey, TValue>.BHeapGetRight(ParentIdx: integer): integer;
+begin
+  result := (ParentIdx shl 1) + 2;
+end;
+
+class function TBinaryHeapClass<TKey, TValue>.BHeapGetParent(ChildIdx: integer): integer;
+begin
+  result := (ChildIdx - 1) shr 1;
+end;
+
+class procedure TBinaryHeapClass<TKey, TValue>.BHeapMoveUp(var Items: TArray<TPair<TKey, TValue>>;
+  ItemIndex: integer; Comparer: IComparer<TKey>);
+var
+  ParentIndex: Integer;
+  Value: TPair<TKey, TValue>;
+begin
+  while ItemIndex > 0 do
+  begin
+    ParentIndex := BHeapGetParent(ItemIndex);
+    if Comparer.Compare(Items[ParentIndex].Key, Items[ItemIndex].Key)<=0 then
+      Break;
+    Value := Items[ParentIndex];
+    Items[ParentIndex] := Items[ItemIndex];
+    Items[ItemIndex] := Value;
+    ItemIndex := ParentIndex;
+  end;
+end;
+
+class procedure TBinaryHeapClass<TKey, TValue>.BHeapReplace(var Items: TArray<TPair<TKey, TValue>>; ItemIndex, Count: integer;
+  Comparer: IComparer<TKey>; const Pair: TPair<TKey, TValue>);
+begin
+  BHeapDelete(Items, ItemIndex,Count, Comparer);
+  Items[Count-1] := Pair;
+  BHeapMoveUp(Items, Count-1, Comparer);
+end;
+
+class procedure TBinaryHeapClass<TKey, TValue>.BHeapDelete(var Items: TArray<TPair<TKey, TValue>>;
+  ItemIndex,Count: integer; Comparer: IComparer<TKey>);
+var
+  L,R: integer;
+begin
+  repeat
+    L := BHeapGetLeft(ItemIndex);
+    if L >= Count then
+      Break;
+    R := BHeapGetRight(ItemIndex);
+    if R >= Count then
+    begin
+      Items[ItemIndex] := Items[L];
+      ItemIndex := L;
+      Break;
+    end;
+    if Comparer.Compare(Items[L].Key, Items[R].Key) < 0 then
+    begin
+      Items[ItemIndex] := Items[L];
+      ItemIndex := L;
+    end
+    else
+    begin
+      Items[ItemIndex] := Items[R];
+      ItemIndex := R;
+    end;
+  until False;
+  if ItemIndex < Count-1 then
+  begin
+    Items[ItemIndex] := Items[Count-1];
+    BHeapMoveUp(Items, ItemIndex, Comparer);
+  end;
+end;
+
+class function TBinaryHeapClass<TKey, TValue>.BHeapExtractMin(var Items: TArray<TPair<TKey, TValue>>;
+  Count: integer; Comparer: IComparer<TKey>): TPair<TKey, TValue>;
+begin
+  result := Items[0];
+  BHeapDelete(Items, 0, Count, Comparer);
+end;
+
+class procedure TBinaryHeapClass<TKey, TValue>.BHeapBuild(var Items: TArray<TPair<TKey, TValue>>;
+  Count: integer; Comparer: IComparer<TKey>);
+var
+  I: Integer;
+begin
+  for I := Low(Items)+1 to Count-1 do
+    BHeapMoveUp(Items, I, Comparer);
+end;
+
+class procedure TBinaryHeapClass<TKey, TValue>.BHeapSort(var Items: TArray<TPair<TKey, TValue>>;
+  Count: integer; Comparer: IComparer<TKey>);
+var
+  I: Integer;
+begin
+  BHeapBuild(Items, Count, Comparer);
+  for I := Length(Items)-1 downto 0 do
+    Items[I] := BHeapExtractMin(Items, I+1, Comparer);
+  TArrayUtils.Inverse<TPair<TKey, TValue>>(Items);
+end;
+
+{ regular class }
+
+constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer; const AComparer: IComparer<TKey>);
+begin
+  inherited Create;
+  Capacity := ACapacity;
+  if AComparer=nil then
+    FComparer := TComparerUtils.DefaultComparer<TKey>
+  else
+    FComparer := AComparer;
+end;
+
+constructor TBinaryHeapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer; const AComparer: IComparer<TKey>);
+begin
+  Create(ACapacity, AComparer);
+  Add(ACollection);
+end;
+
+destructor TBinaryHeapClass<TKey, TValue>.Destroy;
+begin
+  FComparer := nil;
+  inherited;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.Add(const AKey: TKey; const AValue: TValue): integer;
+var
+  P: TPair<TKey,TValue>;
+begin
+  P.Key := AKey;
+  P.Value := AValue;
+  result := FItems.Add(P);
+  BHeapMoveUp(FItems.Items, result, FComparer);
+end;
+
+function TBinaryHeapClass<TKey, TValue>.Add(const APair: TPair<TKey, TValue>): integer;
+begin
+  result := FItems.Add(APair);
+  BHeapMoveUp(FItems.Items, result, FComparer);
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.Add(const AValues: TEnumerable<TPair<TKey, TValue>>);
+var
+  Pair: TPair<TKey, TValue>;
+begin
+  for Pair in AValues do
+    Add(Pair);
+end;
+
+function TBinaryHeapClass<TKey, TValue>.Add(const AKey: TKey): integer;
+begin
+  result := Add(AKey, Default(TValue));
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.Add(const AKeys: TArray<TKey>);
+var
+  P: TPair<TKey, TValue>;
+  I: Integer;
+begin
+  P.Value := Default(TValue);
+  for I := Low(AKeys) to High(AKeys) do
+  begin
+    P.Key := AKeys[I];
+    Add(P);
+  end;
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.Add(const AKeys: TEnumerable<TKey>);
+var
+  P: TPair<TKey, TValue>;
+  K: TKey;
+begin
+  P.Value := Default(TValue);
+  for K in AKeys do
+  begin
+    P.Key := K;
+    Add(P);
+  end;
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.Clear;
+begin
+  FItems.Clear;
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.Delete(n: integer);
+begin
+  BHeapDelete(FItems.Items, n, Count, FComparer);
+  FItems.Delete(Count-1);
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.DeleteMin;
+begin
+  BHeapDelete(FItems.Items, 0, Count, FComparer);
+  FItems.Delete(Count-1);
+end;
+
+function TBinaryHeapClass<TKey, TValue>.Empty: boolean;
+begin
+  result := FItems.Count=0;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.ExtractMin: TPair<TKey, TValue>;
+begin
+  result := MinValue;
+  DeleteMin;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.Find(const Key: TKey): integer;
+var
+  I: Integer;
+begin
+  for I := 0 to Count-1 do
+    if FComparer.Compare(FItems.Items[I].Key, Key)=0 then
+      Exit(I);
+  result := -1;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.GetCapacity: integer;
+begin
+  result := FItems.Capacity;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.GetCount: integer;
+begin
+  result := FItems.Count;
+end;
+
+function TBinaryHeapClass<TKey, TValue>.DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>;
+begin
+  result := TEnumerator.Create(FItems.GetEnumerator);
+end;
+
+function TBinaryHeapClass<TKey, TValue>.GetKeyCollection: TKeyCollection;
+begin
+  result := TKeyCollection.Create( FItems.GetEnumerator );
+end;
+
+function TBinaryHeapClass<TKey, TValue>.GetValue(Index: integer): TPair<TKey, TValue>;
+begin
+  result := FItems.Items[Index];
+end;
+
+function TBinaryHeapClass<TKey, TValue>.MinValue: TPair<TKey, TValue>;
+begin
+  result := FItems.Items[0];
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.SetCapacity(ACapacity: integer);
+begin
+  FItems.Capacity := ACapacity;
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.SetValue(n: integer; const Value: TPair<TKey, TValue>);
+begin
+  BHeapReplace(FItems.Items, n, Count, FComparer, Value);
+end;
+
+procedure TBinaryHeapClass<TKey, TValue>.TrimExcess;
+begin
+  FItems.TrimExcess;
+end;
+
+{ TComparerUtils }
+
+class function TComparerUtils.DefaultComparer<T>: IComparer<T>;
+begin
+  if TypeInfo(T) = TypeInfo(string) then
+    result := IComparer<T>( IComparer<string>(TIStringComparer.Ordinal) )
+  else
+    result := TComparer<T>.Default;
+end;
+
+class function TComparerUtils.DefaultEqualityComparer<T>: IEqualityComparer<T>;
+begin
+  if TypeInfo(T) = TypeInfo(string) then
+    result := IEqualityComparer<T>( IEqualityComparer<string>(TIStringComparer.Ordinal) )
+  else
+    result := TEqualityComparer<T>.Default;
+end;
+
+{ TVector<T>.TEnumerator }
+
+constructor TVector<T>.TEnumerator.Create(const Items: TArray<T>; ACount: integer);
+begin
+  Self.Items := Items;
+  Len := ACount;
+  Pos := 0;
+end;
+
+function TVector<T>.TEnumerator.GetCurrent: T;
+begin
+  result := Items[Pos-1];
+end;
+
+function TVector<T>.TEnumerator.MoveNext: Boolean;
+begin
+  result := Pos<Len;
+  if result then
+    inc(Pos);
+end;
+
+{ TVector<T> }
+
+function TVector<T>.Add(const Value: T): integer;
+begin
+  if Count>=Capacity then
+    Grow;
+  result := FCount;
+  inc(FCount);
+  Items[result] := Value;
+end;
+
+procedure TVector<T>.Add(const Value: TArray<T>);
+var
+  I: Integer;
+begin
+  for I := Low(Value) to High(Value) do
+    Add(Value[I]);
+end;
+
+procedure TVector<T>.Add(const Value: TEnumerable<T>);
+var
+  V: T;
+begin
+  for V in Value do
+    Add(V);
+end;
+
+procedure TVector<T>.Clear;
+var
+  I: Integer;
+  V: T;
+begin
+  V := Default(T);
+  for I := 0 to Count-1 do
+    Items[I] := V;
+  Count := 0;
+end;
+
+procedure TVector<T>.Delete(ItemIndex: integer);
+var
+  I: Integer;
+begin
+  if OwnsObjects then
+    PObject(@Items[I])^.DisposeOf;
+  for I := ItemIndex to Count-2 do
+    Items[I] := Items[I+1];
+  Dec(FCount);
+  Items[FCount] := Default(T);
+end;
+
+procedure TVector<T>.Delete(StartIndex, FinishIndex: integer);
+var
+  I,C: Integer;
+ begin
+  C := Count-(FinishIndex-StartIndex+1); { new Count }
+  for I := StartIndex to C-1 do
+    Items[I] := Items[FinishIndex + (I-StartIndex+1)];
+  Count := C;
+end;
+
+function TVector<T>.Extract(ItemIndex: integer): T;
+begin
+  result := Items[ItemIndex];
+  Items[ItemIndex] := Default(T);
+  Delete(ItemIndex);
+end;
+
+procedure TVector<T>.Grow;
+begin
+  if Capacity<8 then
+    Capacity := Capacity+1
+  else
+  if Capacity<64 then
+    Capacity := 64
+  else
+    Capacity := Capacity * 2;
+end;
+
+function TVector<T>.GetCapacity: integer;
+begin
+  result := System.Length(Items);
+end;
+
+procedure TVector<T>.SetCapacity(ACapacity: integer);
+begin
+  Assert(ACapacity>=Count);
+  SetLength(Items, ACapacity);
+end;
+
+function TVector<T>.GetEnumerator: TEnumerator;
+begin
+  result := TEnumerator.Create(Items, Count);
+end;
+
+function TVector<T>.GetItem(ItemIndex: integer): T;
+begin
+  result := Items[ItemIndex];
+end;
+
+procedure TVector<T>.SetItem(ItemIndex: integer; const Value: T);
+begin
+  if OwnsObjects then
+    PObject(@Items[ItemIndex])^.DisposeOf;
+  Items[ItemIndex] := Value;
+end;
+
+procedure TVector<T>.SetOwnsObjects(const Value: boolean);
+begin
+  if Value and not TRttiUtils.IsInstance<T> then
+    raise Exception.Create('Generic type is not a class.');
+  FOwnsObjects := Value;
+end;
+
+procedure TVector<T>.TrimExcess;
+begin
+  Capacity := Count;
+end;
+
+procedure TVector<T>.SetCount(ACount: integer);
+var
+  I: Integer;
+begin
+  if OwnsObjects then
+    for I := ACount to Count-1 do
+    begin
+      PObject(@Items[I])^.DisposeOf;
+      Items[I] := Default(T);
+    end
+  else
+    for I := ACount to Count-1 do
+      Items[I] := Default(T);
+  FCount := ACount;
+  if ACount > Capacity then
+    Capacity := ACount;
 end;
 
 end.
