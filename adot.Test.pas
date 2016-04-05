@@ -33,6 +33,7 @@ type
   TTest_adot_Collections = class
   private
     class procedure Test_Heap_Search; static;
+    class procedure Test_Heap_Search2; static;
     type
       TTest_TSet = class
       private
@@ -436,16 +437,121 @@ end;
 
 type
   THackHeap<K,V> = class(TBinaryHeapClass<K,V>);
+  THackHeap<K> = class(TBinaryHeapClass<K>);
 
 class procedure TTest_adot_Collections.Test_Heap_Search;
 var
-  h: THackHeap<integer,TEmptyRec>;
+  h: THackHeap<integer,string>;
+  v: TArray<TPair<integer,string>>;
+  i,j: Integer;
+  s: TSet<integer>;
+  p: TPair<integer,string>;
+begin
+  h := THackHeap<integer,string>.Create;
+  try
+    j := 0;
+    setlength(v, 100);
+    for i := 0 to High(v) do
+    begin
+      inc(j, random(10)+1);
+      v[i].Key := j;
+      v[i].Value := 'num ' + j.ToString;
+    end;
+    //v := [1,2,3,4,5];
+    TArrayUtils.Randomize<TPair<integer,string>>(v);
+    h.Add(v);
+    for i := 0 to High(v) do
+    begin
+      j := h.Find(v[i].Key);
+      assert(j>=0);
+      Assert( h[j].Key = v[i].Key );
+    end;
+    TArray.Sort<TPair<integer,string>>(v);
+    for I := 0 to High(v) do
+      Assert(v[i].Key=h.ExtractMin.Key);
+    Assert(h.Count=0);
+    h.Add(v);
+    for I := 0 to High(v) do
+    begin
+      Assert(v[i].Key=h.MinValue.Key);
+      h.DeleteMin;
+    end;
+    Assert(h.Count=0);
+
+    h.Add(v);
+    TArrayUtils.Randomize<TPair<integer,string>>(v);
+    for i := 0 to High(v) div 2 do
+    begin
+      h.Delete(h.Find(v[i].Key));
+      v[i].Key := high(integer);
+    end;
+    assert(h.count=High(v)-(High(v) div 2+1)+1);
+    for i := High(v) div 2+1 to High(v) do
+      assert( h[ h.Find(v[i].Key) ].Key = v[i].Key );
+    TArray.Sort<TPair<integer,string>>(v);
+    j := 0;
+    s.Clear;
+    for i := High(v) div 2+1 to High(v) do
+    begin
+      assert(v[j].Key=h.ExtractMin.Key);
+      inc(j);
+    end;
+    Assert(h.Count=0);
+
+    j := 0;
+    for i := 0 to High(v) do
+    begin
+      inc(j, random(10)+1);
+      v[i].Key := j;
+      v[i].Value := 'value='+j.ToString;
+    end;
+    h.Add(v);
+    for i := 0 to High(v) do
+      s.Add(v[i].Key);
+    assert(h.Count=s.Count);
+    j := 0;
+    for i in h.Keys do
+    begin
+      Assert(i in s);
+      inc(j);
+    end;
+    assert(j=Length(v));
+    j := 0;
+    for p in h do
+    begin
+      Assert(p.Key in s);
+      inc(j);
+    end;
+    assert(j=Length(v));
+    Assert(h.Count=Length(v));
+    Assert(h.Capacity>=h.Count);
+    h.Clear;
+    Assert(h.Count=0);
+    h.TrimExcess;
+    Assert(h.Capacity=0);
+
+  finally
+    h.Free;
+  end;
+end;
+
+class procedure TTest_adot_Collections.Test_Heap_Search2;
+var
+  h: THackHeap<integer>;
   v: TArray<integer>;
   i,j: Integer;
+  s: TSet<integer>;
 begin
-  h := THackHeap<integer,TEmptyRec>.Create;
+  h := THackHeap<integer>.Create;
   try
-    v := [1,2,3,4,5];
+    j := 0;
+    setlength(v, 100);
+    for i := 0 to High(v) do
+    begin
+      inc(j, random(10)+1);
+      v[i] := j;
+    end;
+    //v := [1,2,3,4,5];
     TArrayUtils.Randomize<integer>(v);
     h.Add(v);
     for i := 0 to High(v) do
@@ -454,6 +560,68 @@ begin
       assert(j>=0);
       Assert( h[j].Key = v[i] );
     end;
+    TArray.Sort<integer>(v);
+    for I := 0 to High(v) do
+      Assert(v[i]=h.ExtractMin);
+    Assert(h.Count=0);
+    h.Add(v);
+    for I := 0 to High(v) do
+    begin
+      Assert(v[i]=h.MinValue);
+      h.DeleteMin;
+    end;
+    Assert(h.Count=0);
+
+    h.Add(v);
+    TArrayUtils.Randomize<integer>(v);
+    for i := 0 to High(v) div 2 do
+    begin
+      h.Delete(h.Find(v[i]));
+      v[i] := high(integer);
+    end;
+    assert(h.count=High(v)-(High(v) div 2+1)+1);
+    for i := High(v) div 2+1 to High(v) do
+      assert( h[ h.Find(v[i]) ].Key = v[i] );
+    TArray.Sort<integer>(v);
+    j := 0;
+    s.Clear;
+    for i := High(v) div 2+1 to High(v) do
+    begin
+      assert(v[j]=h.ExtractMin);
+      inc(j);
+    end;
+    Assert(h.Count=0);
+
+    j := 0;
+    for i := 0 to High(v) do
+    begin
+      inc(j, random(10)+1);
+      v[i] := j;
+    end;
+    h.Add(v);
+    s.Add(v);
+    assert(h.Count=s.Count);
+    j := 0;
+    for i in h.Keys do
+    begin
+      Assert(i in s);
+      inc(j);
+    end;
+    assert(j=Length(v));
+    j := 0;
+    for i in h do
+    begin
+      Assert(i in s);
+      inc(j);
+    end;
+    assert(j=Length(v));
+    Assert(h.Count=Length(v));
+    Assert(h.Capacity>=h.Count);
+    h.Clear;
+    Assert(h.Count=0);
+    h.TrimExcess;
+    Assert(h.Capacity=0);
+
   finally
     h.Free;
   end;
