@@ -466,7 +466,11 @@ begin
       assert(j>=0);
       Assert( h[j].Key = v[i].Key );
     end;
-    TArray.Sort<TPair<integer,string>>(v);
+    TArray.Sort<TPair<integer,string>>(v, TDelegatedComparer<TPair<integer,string>>.Create(
+      function(const A,B: TPair<integer,string>): integer
+      begin
+        result := A.Key-B.Key;
+      end));
     for I := 0 to High(v) do
       Assert(v[i].Key=h.ExtractMin.Key);
     Assert(h.Count=0);
@@ -488,7 +492,11 @@ begin
     assert(h.count=High(v)-(High(v) div 2+1)+1);
     for i := High(v) div 2+1 to High(v) do
       assert( h[ h.Find(v[i].Key) ].Key = v[i].Key );
-    TArray.Sort<TPair<integer,string>>(v);
+    TArray.Sort<TPair<integer,string>>(v, TDelegatedComparer<TPair<integer,string>>.Create(
+      function(const A,B: TPair<integer,string>): integer
+      begin
+        result := A.Key-B.Key;
+      end));
     j := 0;
     s.Clear;
     for i := High(v) div 2+1 to High(v) do
@@ -558,7 +566,7 @@ begin
     begin
       j := h.Find(v[i]);
       assert(j>=0);
-      Assert( h[j].Key = v[i] );
+      Assert( h[j] = v[i] );
     end;
     TArray.Sort<integer>(v);
     for I := 0 to High(v) do
@@ -581,7 +589,7 @@ begin
     end;
     assert(h.count=High(v)-(High(v) div 2+1)+1);
     for i := High(v) div 2+1 to High(v) do
-      assert( h[ h.Find(v[i]) ].Key = v[i] );
+      assert( h[ h.Find(v[i]) ] = v[i] );
     TArray.Sort<integer>(v);
     j := 0;
     s.Clear;
@@ -602,7 +610,7 @@ begin
     s.Add(v);
     assert(h.Count=s.Count);
     j := 0;
-    for i in h.Keys do
+    for i in h do
     begin
       Assert(i in s);
       inc(j);
@@ -633,7 +641,7 @@ const
   AvgInHeap = TotalAdd div 100;
 var
 
-  h: TBinaryHeapClass<string, TEmptyRec>;
+  h: TBinaryHeapClass<string>;
   l: TStringList;
   rep: TStringList;
   MinTestSize: integer;
@@ -644,10 +652,10 @@ var
   var i: integer;
   begin
     for i := 0 to h.Count-1 do
-      Assert(h[i].Key >= h.MinValue.Key);
+      Assert(h[i] >= h.MinValue);
   end;
 
-  procedure CheckHeapStrong(h: TBinaryHeapClass<string,TEmptyRec>; l: TStringList);
+  procedure CheckHeapStrong(h: TBinaryHeapClass<string>; l: TStringList);
   var
     i: integer;
     s: TStringList;
@@ -658,13 +666,13 @@ var
       if random<0.1 then
       begin
         while not h.Empty do
-          s.Add(h.ExtractMin.Key);
+          s.Add(h.ExtractMin);
         for i := 0 to s.Count-1 do
           h.Add(s[i]);
       end
       else
         for i := 0 to h.Count-1 do
-          s.Add(h[i].Key);
+          s.Add(h[i]);
       s.Sort;
       try
         assert(s.Count=l.Count);
@@ -683,6 +691,7 @@ var
   end;
 
 begin
+  Test_Heap_Search2;
   Test_Heap_Search;
   MinTestSize := high(MinTestSize);
   repeat
@@ -691,7 +700,7 @@ begin
     rep := nil;
     try
       rep := TStringList.Create;
-      h := TBinaryHeapClass<string,TEmptyRec>.Create(0, TDelegatedComparer<string>.Create(
+      h := TBinaryHeapClass<string>.Create(0, TDelegatedComparer<string>.Create(
         function(const a,b: string):integer
         begin
           if a<b then
@@ -706,7 +715,7 @@ begin
       h.Add(['omp', 'yxx']);
       CheckHeap;
       rep.Clear;
-      for s in h.Keys do
+      for s in h do
         rep.Add(s);
       rep.Sort;
       assert(rep[0]='omp');
