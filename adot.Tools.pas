@@ -286,52 +286,29 @@ type
     property Items: TArray<T> read FItems write SetItems;
   end;
 
-  TIntSequenceParams = record
-  private
-    FStartValue   : integer;
-    FStepInc      : integer;
-    FRndDeviation : integer;
-    FCurrentBase  : integer; { current value }
-    FCurrent      : integer; { current value +/- random_deviation }
-
-  public
-    constructor Create(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
-    procedure Init(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
-
-    procedure Reset;
-
-    { return Current, generates next }
-    function Next: integer;
-
-    property StartValue   : integer read FStartValue    write FStartValue;
-    property StepInc      : integer read FStepInc       write FStepInc;
-    property RndDeviation : integer read FRndDeviation  write FRndDeviation;
-    property Current      : integer read FCurrent       write FCurrent;
-  end;
-
   TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
   TFuncConst<T1,T2,TResult> = reference to function (const Arg1: T1; const Arg2: T2): TResult;
   TFuncConst<T1,T2,T3,TResult> = reference to function (const Arg1: T1; const Arg2: T2; const Arg3: T3): TResult;
   TArrayUtils = record
-  private
-    class procedure Random_Integer(Dst: PInteger; Count,ValueLen: integer); static;
-    class procedure Random_String(var Dst: TArray<String>; Count, ValueLen: integer); static;
-    class procedure Random_Double(var Dst: TArray<Double>; Count, ValueLen: integer); static;
-    class procedure Random_Byte(Dst: PByte; Count, ValueLen: integer); static;
   public
     class function Get<T>(const Arr: array of T):TArray<T>; static;
     class procedure SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
-    class procedure Rnd<T: record>(var Arr: TArray<T>; ItemCount: integer = -1; ValueLen: integer = -1); static;
     class procedure Randomize<T>(var Arr: TArray<T>); static;
-    class procedure Fill(var Arr: TArray<integer>; const ASequence: TIntSequenceParams); overload; static;
-    class procedure Fill(var Arr: TArray<byte>; const ASequence: TIntSequenceParams); overload; static;
     class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
     class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); static;
     class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
     class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; static;
-    class procedure Append<T>(var Dst: TArray<T>; const Src: T); static;
+    class procedure Append<T>(var Dst: TArray<T>; const Src: T); overload; static;
+    class procedure Append<T>(var Dst: TArray<T>; const Src: TArray<T>); overload; static;
+    class procedure Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>); overload; static;
+    class procedure FillRandom(var Dst: TArray<integer>; Count: integer; AValRangeFrom,AValRangeTo: integer); overload; static;
+    class procedure FillRandom(var Dst: TArray<double>; Count: integer; AValRangeFrom,AValRangeTo: double); overload; static;
+    class procedure FillRandom(var Dst: TArray<string>; Count,ValMaxLen: integer); overload; static;
+    class procedure Fill(var Dst: TArray<byte>; Count: integer; AValueStart,AValueInc: integer); overload; static;
+    class procedure Fill(var Dst: TArray<integer>; Count: integer; AValueStart,AValueInc: integer); overload; static;
+    class procedure Fill(var Dst: TArray<double>; Count: integer; AValueStart,AValueInc: double); overload; static;
   end;
 
   { All values must be unique (except NIL). Main purpose: very fast IndexOf
@@ -1529,6 +1506,23 @@ begin
   Dst[i] := Src;
 end;
 
+class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: TArray<T>);
+var i,j: integer;
+begin
+  j := Length(Dst);
+  SetLength(Dst, j + Length(Src));
+  for I := 0 to High(Src) do
+    Dst[I+J] := Src[I];
+end;
+
+class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>);
+var
+  Vector: TVector<T>;
+begin
+  Vector := TVector<T>.Create(Dst);
+  Vector.Add(Src);
+end;
+
 class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
 var
   i,j: Integer;
@@ -1581,20 +1575,73 @@ begin
   end;
 end;
 
-class procedure TArrayUtils.Fill(var Arr: TArray<byte>; const ASequence: TIntSequenceParams);
+class procedure TArrayUtils.Fill(var Dst: TArray<byte>; Count, AValueStart, AValueInc: integer);
 var
-  i: Integer;
+  I: Integer;
 begin
-  for i := 0 to High(Arr) do
-    Arr[i] := ASequence.Next;
+  if Count >= 0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+  begin
+    Dst[I] := AValueStart;
+    inc(AValueStart, AValueInc);
+  end;
 end;
 
-class procedure TArrayUtils.Fill(var Arr: TArray<integer>; const ASequence: TIntSequenceParams);
+class procedure TArrayUtils.Fill(var Dst: TArray<integer>; Count, AValueStart, AValueInc: integer);
+var
+  I: Integer;
+begin
+  if Count >= 0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+  begin
+    Dst[I] := AValueStart;
+    inc(AValueStart, AValueInc);
+  end;
+end;
+
+class procedure TArrayUtils.Fill(var Dst: TArray<double>; Count: integer; AValueStart, AValueInc: double);
+var
+  I: Integer;
+begin
+  if Count >= 0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+  begin
+    Dst[I] := AValueStart;
+    AValueStart := AValueStart + AValueInc;
+  end;
+end;
+
+class procedure TArrayUtils.FillRandom(var Dst: TArray<integer>; Count, AValRangeFrom, AValRangeTo: integer);
+var
+  I: Integer;
+begin
+  if Count >= 0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+    Dst[I] := AValRangeFrom + Random(AValRangeTo-AValRangeFrom+1);
+end;
+
+class procedure TArrayUtils.FillRandom(var Dst: TArray<string>; Count, ValMaxLen: integer);
 var
   i: Integer;
 begin
-  for i := 0 to High(Arr) do
-    Arr[i] := ASequence.Next;
+  if ValMaxLen <= 0 then
+    ValMaxLen := 10;
+  for i := 0 to High(Dst) do
+    Dst[i] := TStr.RandomString(Random(ValMaxLen), 'a','z');
+end;
+
+class procedure TArrayUtils.FillRandom(var Dst: TArray<double>; Count: integer; AValRangeFrom, AValRangeTo: double);
+var
+  i: Integer;
+begin
+  if Count >=0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+    Dst[I] := AValRangeFrom + Random*(AValRangeTo-AValRangeFrom);
 end;
 
 class function TArrayUtils.Get<T>(const Arr: array of T): TArray<T>;
@@ -1623,18 +1670,6 @@ begin
   end;
 end;
 
-class procedure TArrayUtils.Random_Integer(Dst: PInteger; Count,ValueLen: integer);
-begin
-  if ValueLen<0 then
-    ValueLen := 1000;
-  while Count>0 do
-  begin
-    Dst^ := Random(ValueLen);
-    Inc(Dst);
-    Dec(Count);
-  end;
-end;
-
 class procedure TArrayUtils.Randomize<T>(var Arr: TArray<T>);
 var
   I,J,N: Integer;
@@ -1648,64 +1683,6 @@ begin
     Arr[I] := Arr[J];
     Arr[J] := V;
   end;
-end;
-
-class procedure TArrayUtils.Random_Byte(Dst: PByte; Count,ValueLen: integer);
-begin
-  if ValueLen<0 then
-    ValueLen := 256;
-  while Count>0 do
-  begin
-    Dst^ := Random(ValueLen);
-    Inc(Dst);
-    Dec(Count);
-  end;
-end;
-
-class procedure TArrayUtils.Random_String(var Dst: TArray<String>; Count,ValueLen: integer);
-var
-  i: Integer;
-begin
-  if ValueLen<0 then
-    ValueLen := 10;
-  for i := 0 to High(Dst) do
-    Dst[i] := TStr.RandomString(ValueLen, 'a','z');
-end;
-
-class procedure TArrayUtils.Random_Double(var Dst: TArray<Double>; Count,ValueLen: integer);
-var
-  i: Integer;
-begin
-  if ValueLen<0 then
-    ValueLen := 1000;
-  if ValueLen<0 then
-    for i := 0 to High(Dst) do
-      Dst[i] := Random
-    else
-    for i := 0 to High(Dst) do
-      Dst[i] := Random(ValueLen);
-end;
-
-//class procedure TArrayUtils.Random_String(var Arr: TArray<>Dst: PInteger; Count,ValueLen: integer);
-class procedure TArrayUtils.Rnd<T>(var Arr: TArray<T>; ItemCount: integer = -1; ValueLen: integer = -1);
-begin
-  ItemCount := Max(ItemCount, 0);
-  SetLength(Arr, ItemCount);
-  if ItemCount=0 then
-    Exit;
-  if TypeInfo(T)=TypeInfo(integer) then
-    Random_Integer(@Arr[0], Length(Arr), ValueLen)
-  else
-  if TypeInfo(T)=TypeInfo(byte) then
-    Random_Byte(@Arr[0], Length(Arr), ValueLen)
-  else
-  if TypeInfo(T)=TypeInfo(string) then
-    Random_String(TArray<String>(Arr), Length(Arr), ValueLen)
-  else
-  if TypeInfo(T)=TypeInfo(double) then
-    Random_Double(TArray<Double>(Arr), Length(Arr), ValueLen)
-  else
-    raise Exception.Create('Error');
 end;
 
 class procedure TArrayUtils.SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string);
@@ -1952,37 +1929,6 @@ end;
 function TInterfacedObject<T>.GetRefCount: integer;
 begin
   result := RefCount;
-end;
-
-{ TIntSequenceParams }
-
-constructor TIntSequenceParams.Create(AStartValue, AStepInc, ARndDeviation: integer);
-begin
-  Init(AStartValue, AStepInc, ARndDeviation);
-end;
-
-procedure TIntSequenceParams.Init(AStartValue, AStepInc: integer; ARndDeviation: integer = 0);
-begin
-  FStartValue   := AStartValue;
-  FStepInc      := AStepInc;
-  FRndDeviation := ARndDeviation;
-  Reset;
-end;
-
-procedure TIntSequenceParams.Reset;
-begin
-  FCurrentBase := FStartValue;
-  FCurrent := FStartValue;
-end;
-
-function TIntSequenceParams.Next: integer;
-begin
-  result := FCurrent;
-  inc(FCurrentBase, FStepInc);
-  if FRndDeviation<=0 then
-    FCurrent := FCurrentBase
-  else
-    FCurrent := FCurrentBase - FRndDeviation + Random(FRndDeviation*2+1);
 end;
 
 { TIndex }

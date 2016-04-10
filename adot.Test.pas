@@ -3,7 +3,7 @@ unit adot.Test;
 interface
 
 uses
-  adot.Types;
+  adot.Types, System.Math;
 
 implementation
 
@@ -56,6 +56,8 @@ type
     class procedure Test_Multimap; static;
     class procedure Test_Heap; static;
     class procedure Test_AA; static;
+    class procedure Test_ring; static;
+    class procedure Test_TOrderedMapClass_vs_TSet; static;
 
     class procedure Run; static;
   end;
@@ -144,6 +146,8 @@ type
 
 class procedure TTest_adot_Collections.Run;
 begin
+  Test_TOrderedMapClass_vs_TSet;
+  Test_ring;
   TTest_TSet.Run;
   TTest_TMap.Run;
   Test_Multimap;
@@ -863,6 +867,326 @@ begin
   end;
 end;
 
+type
+  TRingSim<T> = class
+  protected
+    FItems: TList<T>;
+    FCapacity: integer;
+
+    constructor Create(Cap: integer);
+    destructor Destroy; override;
+
+    procedure AddToHead(Value: T);
+    procedure AddToTail(Value: T);
+    function FromHead(n: integer): T;
+    function FromTail(n: integer): T;
+    function ExtractHead: T;
+    function ExtractTail: T;
+    function EqualTo(const R: TRingClass<T>): boolean;
+    procedure ChangeCapacity(nc: integer);
+
+    class procedure RandomOperation(A: TRingSim<integer>; B: TRingClass<integer>); static;
+  end;
+
+{ TRingSim<T> }
+
+constructor TRingSim<T>.Create(Cap: integer);
+begin
+  FItems := TList<T>.Create;
+  FItems.Capacity := Cap;
+  FCapacity := Cap;
+end;
+
+destructor TRingSim<T>.Destroy;
+begin
+  FReeAndNil(FItems);
+  FCapacity := 0;
+  inherited;
+end;
+
+procedure TRingSim<T>.ChangeCapacity(nc: integer);
+begin
+  assert(nc >= FItems.Count);
+  FCapacity := nc;
+end;
+
+procedure TRingSim<T>.AddToHead(Value: T);
+begin
+  FItems.Add(Value);
+  if FItems.Count>FCapacity then
+    FItems.Delete(0);
+end;
+
+procedure TRingSim<T>.AddToTail(Value: T);
+begin
+  FItems.Insert(0, Value);
+  if FItems.Count>FCapacity then
+    FItems.Delete(FItems.Count-1);
+end;
+
+function TRingSim<T>.ExtractHead: T;
+begin
+  result := FItems[FItems.Count-1];
+  FItems.Delete(FItems.Count-1);
+end;
+
+function TRingSim<T>.ExtractTail: T;
+begin
+  result := FItems[0];
+  FItems.Delete(0);
+end;
+
+function TRingSim<T>.FromHead(n: integer): T;
+begin
+  result := FItems[FItems.Count-1-n];
+end;
+
+function TRingSim<T>.FromTail(n: integer): T;
+begin
+  result := FItems[n];
+end;
+
+function TRingSim<T>.EqualTo(const R: TRingClass<T>): boolean;
+var
+  I: Integer;
+  C: IEqualityComparer<T>;
+  V: T;
+begin
+  C := TComparerUtils.DefaultEqualityComparer<T>;
+  result := R.Count=FItems.Count;
+  if not result then
+    Exit;
+  if R.Count>0 then
+    result := C.Equals(R.Head, FromHead(0)) and C.Equals(R.Tail, FromTail(0));
+  if not result then
+    Exit;
+  for I := 0 to FItems.Count-1 do
+    if not C.Equals(FromHead(I), R.ItemsFromHead[I]) or not C.Equals(FromTail(I), R.ItemsFromTail[I]) then
+      Exit(False);
+  I := 0;
+  for V in R do
+  begin
+    Assert(C.Equals(FromHead(I), V));
+    inc(I);
+  end;
+  Assert(I=R.Count);
+end;
+
+class procedure TRingSim<T>.RandomOperation(A: TRingSim<integer>; B: TRingClass<integer>);
+var
+  C, I,N: Integer;
+  V: TArray<integer>;
+begin
+  C := Random(6);
+  case C of
+    0,1:
+      begin
+        TArrayUtils.FillRandom(V, Random(10)+1, -100,100);
+        for I := 0 to High(V) do
+          case C of
+            0:
+              begin
+                A.AddToHead(V[I]);
+                B.Add(V[I]);
+              end;
+            1:
+              begin
+                A.AddToTail(V[I]);
+                B.AddToTail(V[I]);
+              end;
+          end;
+      end;
+    2,3:
+      begin
+        N := Random(10) + 1;
+        for I := 0 to N-1 do
+          if A.FItems.Count=0 then
+            Break
+          else
+          case C of
+            2: Assert(A.ExtractHead = B.ExtractHead);
+            3: Assert(A.ExtractTail = B.Extract);
+          end;
+      end;
+    4:
+      if Random(100)<20 then
+      begin
+        A.FItems.Clear;
+        B.Clear;
+      end;
+    5:
+      begin
+        i := random(5)+1;
+        A.ChangeCapacity(A.FItems.Count + i);
+        B.Capacity := B.Count + i;
+      end;
+  end;
+end;
+
+class procedure TTest_adot_Collections.Test_ring;
+var
+  r: TRingClass<integer>;
+  s: TRingSim<integer>;
+  i,j: Integer;
+begin
+  r := TRingClass<integer>.create(5);
+  try
+    r.Add([1,2,3]);
+    Assert(r.Count=3);
+    Assert(r.Head=3);
+    Assert(r.ItemsFromHead[0]=3);
+    Assert(r.ItemsFromHead[1]=2);
+    Assert(r.ItemsFromHead[2]=1);
+    Assert(r.Tail=1);
+    Assert(r.ItemsFromTail[0]=1);
+    Assert(r.ItemsFromTail[1]=2);
+    Assert(r.ItemsFromTail[2]=3);
+    r.Add([4,5]);
+    Assert(r.Count=5);
+    Assert(r.ItemsFromHead[0]=5);
+    Assert(r.ItemsFromHead[4]=1);
+    Assert(r.ItemsFromTail[0]=1);
+    Assert(r.ItemsFromTail[4]=5);
+    r.Add(6);
+    Assert(r.Count=5);
+    Assert(r.ItemsFromHead[0]=6);
+    Assert(r.ItemsFromHead[4]=2);
+    Assert(r.ItemsFromTail[0]=2);
+    Assert(r.ItemsFromTail[4]=6);
+    r.Add(7);
+    Assert(r.Count=5);
+    Assert(r.ItemsFromHead[0]=7);
+    Assert(r.ItemsFromHead[4]=3);
+    Assert(r.ItemsFromTail[0]=3);
+    Assert(r.ItemsFromTail[4]=7);
+  finally
+    FreeAndNil(r);
+  end;
+
+  r := TRingClass<integer>.Create(2);
+  s := TRingSim<integer>.Create(2);
+  try
+    r.AddToTail(73);
+    r.AddToTail(35);
+    r.AddToTail(-36);
+    assert(r.Count=2);
+    assert(r.Tail=-36);
+    assert(r.Head=35);
+
+    r.Clear;
+    r.AddToTail([73, 35, -36, -68]);
+    Assert(r.ItemsFromTail[0]=-68);
+    Assert(r.ItemsFromTail[1]=-36);
+    Assert(r.ItemsFromHead[0]=-36);
+    Assert(r.ItemsFromHead[1]=-68);
+
+    s.AddToTail(73);
+    s.AddToTail(35);
+    s.AddToTail(-36);
+    s.AddToTail(-68);
+    Assert(s.FromTail(0)=-68);
+    Assert(s.FromTail(1)=-36);
+    Assert(s.FromHead(0)=-36);
+    Assert(s.FromHead(1)=-68);
+
+    r.Clear;
+    r.AddToTail([1,2]);
+    Assert(r.ItemsFromTail[0]=2);
+    Assert(r.ItemsFromTail[1]=1);
+    Assert(r.ItemsFromHead[0]=1);
+    Assert(r.ItemsFromHead[1]=2);
+
+  finally
+    FReeandNil(r);
+    FReeandNil(s);
+  end;
+
+  for j := 1 to 21 do
+  begin
+    r := TRingClass<integer>.Create(j);
+    s := TRingSim<integer>.Create(j);
+    try
+      for i := 0 to 99 do
+      begin
+        s.RandomOperation(s,r);
+        Assert(s.EqualTo(r));
+      end;
+    finally
+      FReeAndNil(r);
+      FReeAndNil(s);
+    end;
+  end;
+end;
+
+function EqualSets(a: TOrderedMapClass<integer, string>; b: TSet<integer>): Boolean;
+var
+  d: TDictionary<integer, TEmptyRec>;
+  e: TEmptyRec;
+  I: integer;
+begin
+  d := TDictionary<integer, TEmptyRec>.create;
+  try
+    for I in B do
+      d.Add(I, e);
+    result := (a.Count=b.Count) and (a.Count=d.Count);
+    if not result then
+      Exit;
+    for I in a.KeyCollection do
+      d.Remove(I);
+    result := d.Count=0;
+  finally
+    d.Free;
+  end;
+end;
+
+class procedure TTest_adot_Collections.Test_TOrderedMapClass_vs_TSet;
+var
+  a: TOrderedMapClass<integer, string>;
+  s: TSet<integer>;
+  v: TArray<integer>;
+  I,J,N: Integer;
+begin
+  a := TOrderedMapClass<integer, string>.Create;
+  try
+    TArrayUtils.Fill(v, 1000, 0, 3);
+    TArrayUtils.Randomize<integer>(v);
+    for I := 0 to High(v) do
+    begin
+      J := Random(10);
+      case J of
+        0..3:
+          begin
+            A.Add(V[I], V[I].ToString);
+            S.Add(V[I]);
+          end;
+        4..7:
+          begin
+            N := Random(I);
+            A.Add(V[N], V[N].ToString);
+            S.Add(V[N]);
+          end;
+        8:
+          begin
+            N := Max(High(v), I + 1 + Random(High(v)-I));
+            if A.ContainsKey(V[N]) then
+              A.Remove(V[N]);
+            S.Remove(V[N]);
+          end;
+        9:
+          begin
+            N := Random(I);
+            if A.ContainsKey(V[N]) then
+              A.Remove(V[N]);
+            S.Remove(V[N]);
+          end;
+      end;
+      Assert(EqualSets(a,s));
+    end;
+  finally
+    FreeAndNil(a);
+  end;
+end;
+
 { TOwnsValuesTestClass }
 
 constructor TOwnsValuesTestClass.Create(AInt: PInteger);
@@ -1275,7 +1599,7 @@ begin
 
   SetLength(b, 3);
   SetLength(c, 4);
-  TArrayUtils.Fill(b, TIntSequenceParams.Create(0,1));
+  TArrayUtils.Fill(b, -1, 0,1);
 
   { class function Encode(const Buf; ByteBufSize: integer): String; overload; static; }
   Assert(THex.Encode(b[0], length(b)) = '000102');
