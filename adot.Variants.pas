@@ -15,6 +15,8 @@ type
 
   { Utils/helpers for variant type }
   TVar = class
+  private
+    class function VarTypeIsBoolean(const AVarType: TVarType): Boolean; static;
   public
     class function IsArray(const v: variant): boolean; static;
     class function IsRef(const v: variant): boolean;
@@ -46,12 +48,13 @@ type
     class function ToCharDef(const Src: variant; const Default: char = #0): char; static;
     class function ToGUIDDef(const Src: variant; const Default: TGUID): TGUID; overload; static;
     class function ToGUIDDef(const Src: variant): TGUID; overload; static;
-    class function ToBooleanDef(const Src: variant; const Default: boolean): boolean; static;
-    class function ToStringDef(const Src: variant; const Default: string): string; reintroduce; static;
-    class function ToDateTimeDef(const Src: variant; const Default: TDateTime): TDateTime; static;
+    class function ToBooleanDef(const Src: variant; const Default: boolean = False): boolean; static;
+    class function ToStringDef(const Src: variant; const Default: string = ''): string; reintroduce; static;
+    class function ToDateTimeDef(const Src: variant; const Default: TDateTime = 0): TDateTime; static;
 
     class function VarOrArrayToStr(const V: variant; const ArrElemDelimeter: string = #13#10): string; static;
     class function IsEmpty(const V: variant): Boolean; { Null, Unassigned }
+    class function VarIsBoolean(const Src: variant): boolean; static;
   end;
 
   TEnumFloatProc = reference to procedure(var AValue: Double; const ADim: TArray<integer>);
@@ -615,16 +618,19 @@ class function TVar.ToBoolean(const Src: variant): boolean;
 var
   S: string;
 begin
+  if VarIsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
+    result := Src
+  else
   if VarIsStr(Src) then
   begin
     S := Src;
     result := AnsiSameText(S, 'True') or AnsiSameText(S, 'Ja') or AnsiSameText(S, '1');
   end
   else
-    if VarIsNumeric(Src) then
-      result := Integer(Src)=1
-    else
-      result := Src; { varBoolean and other }
+  if VarIsNumeric(Src) then
+    result := Integer(Src)=1
+  else
+    result := Src; { give a try }
 end;
 
 class function TVar.ToBooleanDef(const Src: variant; const Default: boolean): boolean;
@@ -711,22 +717,36 @@ begin
     result := Default;
 end;
 
+class function TVar.VarTypeIsBoolean(const AVarType: TVarType): Boolean;
+begin
+  Result := AVarType = varBoolean;
+end;
+
+class function TVar.VarIsBoolean(const Src: variant): boolean;
+begin
+  Result := VarTypeIsBoolean(FindVarData(Src)^.VType);
+end;
+
 class function TVar.TryToBoolean(const Src: variant; out Dst: boolean): boolean;
 var
   S: string;
 begin
   try
-    if VarIsStr(Src) then
-    begin
-      S := Src;
-      Dst := AnsiSameText(S, 'True') or AnsiSameText(S, 'Ja') or AnsiSameText(S, '1');
-    end
-    else
+    result := not IsEmpty(Src);
+    if result then
+      if VarIsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
+        Dst := Src
+      else
+      if VarIsStr(Src) then
+      begin
+        S := Src;
+        Dst := AnsiSameText(S, 'True') or AnsiSameText(S, 'Ja') or AnsiSameText(S, '1');
+      end
+      else
       if VarIsNumeric(Src) then
         Dst := Integer(Src)=1
       else
-        Dst := Src; { varBoolean and other }
-    result := True;
+        Dst := Src; { give a try }
   except
     result := False; { type conversion to integer/boolean may raise exceptions }
   end;

@@ -3,8 +3,15 @@ unit adot.VCL.Log;
 interface
 
 uses
-  adot.Log, adot.VCL.Tools, System.SysUtils, Winapi.Messages,
-  Winapi.Windows, System.SyncObjs, System.Classes, System.StrUtils;
+  adot.Log,
+  adot.VCL.Tools,
+  adot.Win.Tools,
+  Winapi.Messages,
+  Winapi.Windows,
+  System.SysUtils,
+  System.SyncObjs,
+  System.Classes,
+  System.StrUtils;
 
 type
 

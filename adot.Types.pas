@@ -7,8 +7,6 @@ uses
 
 const
   NullGuid: TGUID = '{00000000-0000-0000-0000-000000000000}';
-  TeamViewerExeName = 'TeamViewerQS_no-idc9gek29q.exe';
-  scShiftF1 = $2070;
 
 type
 
@@ -17,6 +15,18 @@ type
   TEmptyRec = record end;
   TSetOfByte = set of Byte;
   TSetOfAnsiChar = set of AnsiChar;
+
+  TProcConst<T> = reference to procedure (const Arg1: T);
+  TProcConst<T1,T2> = reference to procedure (const Arg1: T1; const Arg2: T2);
+  TProcConst<T1,T2,T3> = reference to procedure (const Arg1: T1; const Arg2: T2; const Arg3: T3);
+
+  TProcVar<T> = reference to procedure (var Arg1: T);
+  TProcVar<T1,T2> = reference to procedure (var Arg1: T1; var Arg2: T2);
+  TProcVar<T1,T2,T3> = reference to procedure (var Arg1: T1; var Arg2: T2; var Arg3: T3);
+
+  TProcVar1<T> = reference to procedure (var Arg1: T);
+  TProcVar1<T1,T2> = reference to procedure (Arg1: T1; var Arg2: T2);
+  TProcVar1<T1,T2,T3> = reference to procedure (Arg1: T1; Arg2: T2; var Arg3: T3);
 
   { interfaces }
 
@@ -55,6 +65,15 @@ type
     property KalkulasjonErAktiv: Boolean read GetKalkulasjonErAktiv;
     property KalkulasjonBalanse: Integer read GetKalkulasjonBalanse;
   end;
+
+  TCopyFileInfo = record
+    FileSize    : int64;
+    Copied      : int64;
+    SrcFileName : string;
+    DstFileName : string;
+  end;
+  TCopyFileProgressProc = reference to procedure(const Info: TCopyFileInfo; var Cancel: boolean);
+  TCopyStreamProgressProc = reference to procedure(const Transferred: int64; var Cancel: boolean);
 
 implementation
 

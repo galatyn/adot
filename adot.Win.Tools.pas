@@ -6,9 +6,11 @@
 interface
 
 uses
+  adot.Types,
   adot.Collections,
   Winapi.TlHelp32,
   Winapi.Windows,
+  Winapi.Messages,
   Winapi.PsAPI,
   System.Generics.Collections,
   System.Generics.Defaults,
@@ -151,6 +153,51 @@ type
 
     function DiskPathToLetter(const APath: string): String;
     function ResolvePath(const APath: string): String;
+  end;
+
+  TWinFileUtils = class
+  public
+
+    { Copy file functions (from simple to feature-rich):
+      1. TFileUtils.CopyFile:
+           uses standard Delphi streams, UI will freeze until operation is complete.
+      2. TWinFileUtils.CopyFile:
+           uses Windows function CopyFileEx, UI will freeze until operation is complete.
+      3. TVCLFileUtils.Copyfile:
+           uses standard Delphi streams, UI will not freeze.
+      4. TCopyFileProgressDlg.CopyFile:
+           uses either Delphi streams or CopyFileEx, UI will not freeze,
+           progress bar with cancel command will be available for long operations). }
+    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean; overload;
+    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string): boolean; overload;
+  end;
+
+  { To receive/process messages in component when it is not inherited from TWinControl.
+    For every message (call of WndProc) will call handler twice - before and after standard processing. }
+  TMessenger = class
+  public
+    type
+      TOnMessage = procedure(var AMessage: TMessage) of object;
+      TOnMessageRef = reference to procedure(var AMessage: TMessage);
+
+  protected
+    FOnMessage: TOnMessage;
+    FOnMessageRef: TOnMessageRef;
+    FWnd: HWND;
+
+    procedure WndProc(var Message: TMessage);
+
+  public
+    constructor Create; overload;
+    constructor Create(AMessageHandler: TOnMessageRef); overload;
+    constructor Create(AMessageHandler: TOnMessage); overload;
+    destructor Destroy; override;
+
+    procedure Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0);
+
+    property OnMessage: TOnMessage read FOnMessage write FOnMessage;
+    property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
+    property Handle: HWND read FWnd;
   end;
 
 // AH: We should remove it when Embarcadero include it into Winapi.Windows
@@ -601,6 +648,111 @@ begin
       end;
     SetLength(s, Max(0,j-Low(s)));
   end;
+end;
+
+{ TWinFileUtils }
+
+type
+  TWinCopyFileData = record
+    Progress    : TCopyFileProgressProc;
+    Cancel      : Bool;
+    SrcFileName : string;
+    DstFileName : string;
+  end;
+  PWinCopyFileData = ^TWinCopyFileData;
+
+function CopyFile_CallBackProc(
+  TotalFileSize          : LARGE_INTEGER; // total file size, in bytes
+  TotalBytesTransferred  : LARGE_INTEGER; // total number of bytes transferred
+  StreamSize             : LARGE_INTEGER; // total number of bytes for this stream
+  StreamBytesTransferred : LARGE_INTEGER; // total number of bytes transferred for this stream
+  dwStreamNumber         : DWORD;         // the current stream
+  dwCallbackReason       : DWORD;         // reason for callback
+  hSourceFile            : THANDLE;       // handle to the source file
+  hDestinationFile       : THandle;       // handle to the destination file
+  lpData                 : PWinCopyFileData
+): DWord; stdcall;
+var
+  CopyfileInfo: TCopyFileInfo;
+  Cancel: Boolean;
+begin
+  if (lpData=nil) or not Assigned(lpData.Progress) then
+    Exit(PROGRESS_CONTINUE);
+  CopyfileInfo.FileSize    := TotalFileSize.QuadPart;
+  CopyfileInfo.Copied      := TotalBytesTransferred.QuadPart;
+  CopyfileInfo.SrcFileName := lpData.SrcFileName;
+  CopyfileInfo.DstFileName := lpData.DstFileName;
+  Cancel                   := False;
+  lpData.Progress(CopyfileInfo, Cancel);
+  result := IfThen(Cancel, PROGRESS_CANCEL, PROGRESS_CONTINUE);
+end;
+
+class function TWinFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean;
+var
+  Data: TWinCopyFileData;
+  Error: DWORD;
+begin
+  Data.Progress    := ProgressProc;
+  Data.Cancel      := False;
+  Data.SrcFileName := SrcFileName;
+  Data.DstFileName := DstFileName;
+  result := Winapi.Windows.CopyFileEx(PChar(SrcFileName), PChar(DstFileName), @CopyFile_CallBackProc, @Data, @Data.Cancel, 0);
+  if not result then
+  begin
+    Error := GetLastError;
+    case Error of
+      ERROR_ACCESS_DENIED:
+        ErrorMessage := 'Ingen tilgang';
+      ERROR_REQUEST_ABORTED:
+        ErrorMessage := 'Kopiering ble avbrutt';
+      else
+        ErrorMessage := 'Feilkode ' + IntToStr(Error)+'-'+SysErrorMessage(Error);
+    end;
+  end;
+end;
+
+class function TWinFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string): boolean;
+begin
+  result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
+end;
+
+{ TMessenger }
+
+constructor TMessenger.Create;
+begin
+  inherited;
+  FWnd := AllocateHWnd(WndProc);
+end;
+
+destructor TMessenger.Destroy;
+begin
+  inherited;
+  DeallocateHWnd(FWnd);
+end;
+
+procedure TMessenger.Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0);
+begin
+  PostMessage(Handle, Msg, wParam, lPAram);
+end;
+
+constructor TMessenger.Create(AMessageHandler: TOnMessage);
+begin
+  Create;
+  FOnMessage := AMessageHandler;
+end;
+
+constructor TMessenger.Create(AMessageHandler: TOnMessageRef);
+begin
+  Create;
+  FOnMessageRef := AMessageHandler;
+end;
+
+procedure TMessenger.WndProc(var Message: TMessage);
+begin
+  if Assigned(FOnMessage) then
+    FOnMessage(Message);
+  if Assigned(FOnMessageRef) then
+    FOnMessageRef(Message);
 end;
 
 end.

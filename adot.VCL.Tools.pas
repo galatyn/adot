@@ -3,592 +3,844 @@ unit adot.VCL.Tools;
 interface
 
 uses
-  {$IFDEF DEX}
-  cxGrid, cxGridCustomView, cxGridCustomTableView, cxGridChartView, cxCustomData, cxStyles,
-  {$ENDIF}
-  IdGlobal,
-  IdHashMessageDigest,
+  adot.Types,
+  Winapi.ShellAPI,
+  Winapi.Windows,
+  Winapi.Messages,
   System.Classes,
   System.SysUtils,
-  System.Variants,
+  System.Math,
+  System.Character,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.StrUtils,
-  System.Math,
-  System.UITypes,
-  Vcl.Controls,
+  Vcl.ActnList,
   Vcl.Forms,
   Vcl.Graphics,
-  Vcl.ActnList,
-  Winapi.Windows,
-  Winapi.Messages;
+  Vcl.Menus,
+  Vcl.Controls;
 
 type
-  TDelegatedOnControlWithBreak = reference to procedure(AControl: TControl; var ABreak: boolean);
-  TDelegatedOnControl = reference to procedure(AControl: TControl);
 
-procedure ForEachControl(AStart: TControl; ACallback: TDelegatedOnControlWithBreak); overload;
-procedure ForEachControl(AStart: TControl; ACallback: TDelegatedOnControl); overload;
+  {  Simple interface to search for MDI form of specific type. Example:
+     var
+       MVA: TMVAAvstemmingForm;
+     begin
+       MVA := TMDIHelper<TMVAAvstemmingForm>.FindMDIChild;
+     end; }
+  TMDIHelper<T: class> = class
+  public
+    class function FindMDIChild(ParentForm:TForm; BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
+    class function FindMDIChild(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
+    //class function MdiParentClientArea(AParent: TForm = nil): TRect; static;
+  end;
 
-type
-  TFormSnapshot = class
+  { Search for all "executable" components of (main) form (TMenu/TAction/...).
+    Used by automated testing framework & quick search window (available by F11). }
+  TAppActions = class
+  public
+    type
+      TVerb = record
+        Text: string;
+        Obj: TComponent;
+
+        constructor Create(const AText: string; AObj: TComponent); overload;
+        constructor Create(const AText: string); overload;
+      end;
+
   private
-  protected
-    type
-      TControlH = class(TControl);
+    class function GetIntInPos(const s: string; n: integer): string; static;
+    class function FilterAccept(
+          Caption, SoekeTekst : String;
+          InnholdSoek         : Boolean;
+      var Tekst               : string;
+      var Indeks              : integer;
+          AddedItems          : TDictionary<string, boolean>
+    ): Boolean; static;
+    class function IsInteger(const s: string): Boolean; static;
+    class function GetActionObjComparer(const ASoeketekst: string): TDelegatedComparer<TAppActions.TVerb>; static;
 
-    class function GetComponentId(C: TComponent): String; static;
-    {$IFDEF DEX}
-    class procedure GetCxGridState(Grid: TcxGrid; Dst: TStrings); overload; static;
-    class procedure GetCxViewState(View: TcxCustomGridTableView; Dst: TStrings); overload; static;
-    class procedure GetCxViewState(View: TcxGridChartView; Dst: TStrings); overload; static;
-    {$ENDIF}
-    class procedure GetControlState(C: TControl; Dst: TStrings); static;
-    class function StrToReadable(s: string): String; static;
-    class function ValueToText(AValue: string): string; static;
-    class function ToJsonStr(const s: string; const q: string = '"'): string; static;
   public
-    class procedure Get(AForm: TCustomForm; ADst: TStrings); overload; static;
-    class procedure Get(ADst: TStrings); overload; static;
-    class function CaptureScreen(ADst: Vcl.Graphics.TBitmap; x,y,w,h,screenx,screeny: integer):Boolean; static;
+
+    { Both chars belong to same type (printable char, digit, space, or special char) }
+    class function SameCharCategory(const a, b: Char): Boolean; static;
+
+    { TMenu, TButton, ... -> TBasicAction }
+    class function ComponentAction(aComponent: TComponent): TBasicAction; static;
+
+    { Component (TMenu, TButton, ...) and/or assigned action are visible }
+    class function ComponentVisible(aComponent: TComponent): Boolean; static;
+
+    { Component (TMenu, TButton, ...) and/or assigned action are enabled }
+    class function ComponentEnabled(aComponent: TComponent): Boolean; static;
+
+    { Parent of TMenuItem is TMenuITem, parent of TControl is TControl, etc }
+    class function ComponentParent(aComponent: TComponent): TComponent; static;
+
+    { Component (TMenu, TAction) has assigned OnClick/OnExecute }
+    class function ComponentExecutable(aComponent: TComponent): Boolean; static;
+
+    { Component is enabled&visible + all parents are visible }
+    class function ComponentAccessible(aComponent: TComponent): Boolean; static;
+
+    { Execute corresponding OnClick/Action.OnExecute/... for component }
+    class function ExecuteComponent(aComponent: TComponent): Boolean; static;
+
+    { find all objects which can be executed (actions, menus, ...) }
+    class function FindFormActions(
+      AForm                   : TForm;
+      AExtraComponents        : TStrings;
+      ASoeketekst             : string;
+      AAutoAppendMenuItemsTag : integer;
+      AAutoAppendActionsTag   : integer;
+      ATest                   : TFunc<TComponent,Boolean>
+    ): TList<TAppActions.TVerb>;
+
   end;
 
-  // To receive/process messages in component when it is not inherited from TWinControl.
-  // For every message (call of WndProc) will call handler twice - before and after standard processing.
-  TMessenger = class
+  { MaxFitLength and other functions }
+  TCanvasUtils = class
+  public
+    class procedure BlendRectangle(Dst: TCanvas; const R: TRect; C: TColor; MixPercent: Byte); static;
+    class function MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer; static;
+  end;
+
+  { ForEach, FindForm, GetShortCaption and other }
+  TControlUtils = class
   public
     type
-      TOnMessage = procedure(var AMessage: TMessage) of object;
-      TOnMessageRef = reference to procedure(var AMessage: TMessage);
+      TControlBrkProc = reference to procedure(AControl: TControl; var ABreak: boolean);
+      TControlProc = reference to procedure(AControl: TControl);
 
-  protected
-    FOnMessage: TOnMessage;
-    FOnMessageRef: TOnMessageRef;
-    FWnd: HWND;
+    class procedure SetEnabled(C: TControl; Value: Boolean; Recursive: Boolean = True); static;
+    class function FindParentOfClass(AControl: TControl; const AParentClass: TClass): TControl; static;
+    class function FindForm(C: TControl): TForm; static;
 
-    procedure WndProc(var Message: TMessage);
 
-  public
-    constructor Create; overload;
-    constructor Create(AMessageHandler: TOnMessageRef); overload;
-    constructor Create(AMessageHandler: TOnMessage); overload;
-    destructor Destroy; override;
+    { "file://c:\aaaa\sss\ddddddd\file.zip" -> "file://c:\aaa...\file.zip" }
+    class function GetShortCaption(
+      const Caption        : string;
+            FixedHeadChars : integer;
+            FixedTailChars : integer;
+            Dst            : TCanvas;
+            WidthPixels    : integer;
+            Separator      : string = '...'): string; static;
 
-    property OnMessage: TOnMessage read FOnMessage write FOnMessage;
-    property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
-    property Handle: HWND read FWnd;
+    { returns True if enumeration complete, False if canceled }
+    class function ForEach(AStart: TControl; ACallback: TControlBrkProc): Boolean; overload; static;
+    class procedure ForEach(AStart: TControl; ACallback: TControlProc); overload; static;
+    class function GetAll(AStart: TControl): TArray<TControl>; static;
   end;
-  
-procedure DebugMsg(const Msg: String);
-procedure DisableFormDraw(f: TWinControl);
-procedure EnableFormDraw(f: TWinControl);
 
-function FindControlAtPos(AScreenPos: TPoint): TControl;
-function FindControlAtMousePos: TControl;
+  { Copy streams without locking UI etc }
+  TVCLStreamUtils = class
+  public
+
+    { Copy stream functions (from simple to feature-rich):
+      1. TStreamUtils.Copy:
+           uses standard Delphi streams, UI will freeze until operation is complete.
+      2. TVCLStreamUtils.Copy:
+           uses standard Delphi streams, UI will not freeze. }
+    class function Copy(Src,Dst: TStream; Count,BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
+    class function Copy(Src,Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
+    class function Copy(Src,Dst: TStream): int64; overload; static;
+  end;
+
+  { CopyFile without locking UI etc }
+  TVCLFileUtils = class
+  public
+
+    { Copy file functions (from simple to feature-rich):
+      1. TFileUtils.CopyFile:
+           uses standard Delphi streams, UI will freeze until operation is complete.
+      2. TWinFileUtils.CopyFile:
+           uses Windows function CopyFileEx, UI will freeze until operation is complete.
+      3. TVCLFileUtils.Copyfile:
+           uses standard Delphi streams, UI will not freeze.
+      4. TCopyFileProgressDlg.CopyFile:
+           uses either Delphi streams or CopyFileEx, UI will not freeze,
+           progress bar with cancel command will be available for long operations). }
+    class function CopyFile(
+      const SrcFileName,DstFileName : string;
+        out ErrorMessage            : string;
+            ProgressProc            : TCopyFileProgressProc): boolean; overload;
+
+    class function CopyFile(
+      const SrcFileName,DstFileName : string;
+        out ErrorMessage            : string): boolean; overload;
+  end;
 
 implementation
 
 uses
+  adot.Collections,
   adot.Tools,
-  adot.Graphics;
+  adot.Win.Tools;
 
-function ForEachControlBrk(AStart: TControl; ACallback: TDelegatedOnControlWithBreak):Boolean;
+{ MDIHelper }
+
+class function TMDIHelper<T>.FindMDIChild(ParentForm: TForm; BringToFront: Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil): T;
+var
+  I: integer;
+begin
+  for I := 0 to ParentForm.MDIChildcount-1 do
+    if (ParentForm.MDIChildren[I] is T) and (not Assigned(Sjekk) or Sjekk(ParentForm.MDIChildren[I])) then
+    begin
+      result := ParentForm.MDIChildren[I] as T;
+      if BringToFront then
+      begin
+        (result as TForm).Show;
+        (result as TForm).BringToFront;
+      end;
+      exit;
+    end;
+  result := nil;
+end;
+
+class function TMDIHelper<T>.FindMDIChild(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T;
+begin
+  Result := FindMDIChild(Application.MainForm, BringToFront, Sjekk);
+end;
+
+//class function TMDIHelper<T>.MdiParentClientArea(AParent: TForm): TRect;
+//begin
+//  if AParent=nil then
+//    AParent := Application.MainForm;
+//  if (AParent=nil) or not GetClientRect(AParent.ClientHandle, Result) then
+//    result := TRect.Empty;
+//end;
+
+{ TVerb }
+
+constructor TAppActions.TVerb.Create(const AText: string; AObj: TComponent);
+begin
+  Text := AText;
+  Obj := AObj;
+end;
+
+constructor TAppActions.TVerb.Create(const AText: string);
+begin
+  Create(AText, nil);
+end;
+
+{ TAppActions }
+
+class function TAppActions.ComponentAction (aComponent : TComponent):TBasicAction;
+begin
+  if aComponent is TMenuItem then
+    Result := TMenuItem(aComponent).Action
+  else if aComponent is TAction then
+    Result := TBasicAction(aComponent)
+  else if aComponent is TControl then
+    Result := TControl(aComponent).Action
+  else
+    Result := nil;
+end;
+
+class function TAppActions.ComponentVisible (aComponent : TComponent):Boolean;
+begin
+  if aComponent is TMenuItem then
+    Result := TMenuItem(aComponent).Visible
+  else if aComponent is TAction then
+    Result := TAction(aComponent).Visible
+  else if aComponent is TControl then
+    Result := TControl(aComponent).Visible
+  else
+    Result := True;
+end;
+
+class function TAppActions.ComponentEnabled (aComponent : TComponent):Boolean;
+begin
+  if aComponent is TMenuItem then
+    Result := TMenuItem(aComponent).Enabled
+  else if aComponent is TAction then
+    Result := TAction(aComponent).Enabled
+  else if aComponent is TControl then
+    Result := TControl(aComponent).Enabled
+  else
+    Result := True;
+end;
+
+class function TAppActions.ComponentParent (aComponent : TComponent):TComponent;
+begin
+  if aComponent is TMenuItem then
+    Result := TMenuItem(aComponent).Parent
+  else if aComponent is TControl then
+    Result := TControl(aComponent).Parent
+  else
+    Result := nil;
+end;
+
+type
+  TControlHack = class (TControl);
+
+class function TAppActions.ComponentExecutable (aComponent : TComponent) : Boolean;
+begin
+  if aComponent is TMenuItem then
+    Result := Assigned (TMenuItem(aComponent).OnClick)
+  else if aComponent is TAction then
+    Result := Assigned (TAction(aComponent).OnExecute)
+  else if aComponent is TControl then
+    Result := Assigned (TControlHack(aComponent).OnClick)
+  else
+    Result := False;
+end;
+
+class function TAppActions.ComponentAccessible(aComponent: TComponent): Boolean;
+var
+  Cmp:TComponent;
+begin
+  Result:= False;
+
+  if aComponent = nil then
+    Exit;
+  {* Kontrollerer aComponent (enabled og visible)*}
+  Cmp:= aComponent;
+  if ComponentAction(Cmp) <> nil then
+    ComponentAction(Cmp).Update;
+  if (not ComponentEnabled(cmp)) or (not ComponentVisible(Cmp)) then
+    Exit;
+
+  {* Kontrollerer parents (visible) *}
+  Cmp:= ComponentParent (Cmp);
+  while Cmp <> nil do
+  begin
+    if ComponentAction(Cmp) <> nil then
+      ComponentAction(Cmp).Update;
+    if not ComponentVisible(Cmp) then
+      Exit;
+    Cmp:= ComponentParent (Cmp);
+  end;
+
+  Result:= True;
+end;
+
+class function TAppActions.ExecuteComponent(aComponent : TComponent): Boolean;
+begin
+  result := Assigned(aComponent);
+  if result then
+    if (aComponent is TMenuItem) and Assigned(TMenuItem(aComponent).OnClick) then
+      TMenuItem(aComponent).OnClick(aComponent)
+    else if aComponent is TBasicAction then
+      TBasicAction(aComponent).Execute
+    else if aComponent is TControl then
+      TControlHack (aComponent).Click
+    else
+      result := false;
+end;
+
+class function TAppActions.SameCharCategory(const a,b: Char): Boolean;
+var
+  f1, f2: integer;
+begin
+  f1 :=
+    IfThen(a.IsWhiteSpace,   1, 0) +
+    IfThen(a.IsSeparator,    2, 0) +
+    IfThen(a.IsDigit,        4, 0) +
+    IfThen(a.IsLetter,       8, 0) +
+    IfThen(a.IsPunctuation, 16, 0) +
+    IfThen(a.IsSymbol,      32, 0);
+  f2 :=
+    IfThen(b.IsWhiteSpace,   1, 0) +
+    IfThen(b.IsSeparator,    2, 0) +
+    IfThen(b.IsDigit,        4, 0) +
+    IfThen(b.IsLetter,       8, 0) +
+    IfThen(b.IsPunctuation, 16, 0) +
+    IfThen(b.IsSymbol,      32, 0);
+  result := f1=f2;
+end;
+
+class function TAppActions.GetIntInPos(const s: string; n: integer): string;
 var
   i: Integer;
 begin
-  result := False; // break
-  ACallback(AStart, result);
-  if not result and (AStart is TWinControl) then
-    for i := TWinControl(AStart).ControlCount-1 downto 0 do
-      if ForEachControlBrk(TWinControl(AStart).Controls[i], ACallback) then
-      begin
-        result := True;
-        break;
-      end;
+  for i := n to High(s) do
+    if not s[i].IsDigit then
+    begin
+      result := s.Substring(n, i-n);
+      exit;
+    end;
+  result := s.Substring(n);
 end;
 
-procedure ForEachControl(AStart: TControl; ACallback: TDelegatedOnControlWithBreak);
+class function TAppActions.IsInteger(const s: string): Boolean;
+var
+  n: integer;
 begin
-  ForEachControlBrk(AStart, ACallback);
+  result := TryStrToInt(Trim(s), n);
 end;
 
-procedure ForEachControl(AStart: TControl; ACallback: TDelegatedOnControl);
+class function TAppActions.FilterAccept(
+      Caption, SoekeTekst : String;
+      InnholdSoek         : Boolean;
+  var Tekst               : string;
+  var Indeks              : integer;
+      AddedItems          : TDictionary<string, boolean>
+): Boolean;
+var
+  i: Integer;
+  RF,Num: Boolean;
+  b: Boolean;
+begin
+  //Tekstlengde:= Length(Soeketekst);
+  Tekst:= StripHotKey(Caption);
+
+  // Sørger for at vi ikke får like elementer
+  if AddedItems.TryGetValue(AnsiLowerCase(Tekst), b) then
+  //if ListBox.Items.IndexOf(Tekst) <> -1 then
+  begin
+    Result := False;
+    Exit;
+  end;
+  Indeks:= Pos(AnsiLowerCase(Soeketekst), AnsiLowerCase(Tekst));
+
+  // RF:= (Indeks in [3,4]) and ErHeltall(AnsiLowercase(Soeketekst), True);
+  Num := IsInteger(SoekeTekst);
+  RF := false;
+  if Indeks>0 then
+    if Num then
+      RF := Pos(AnsiLowerCase('rf-'+Soeketekst), AnsiLowerCase(Tekst))>0
+    else
+    if (Pos('rf-',AnsiLowercase(Soeketekst))>0) then
+      RF := true;
+
+  Result :=
+    InnholdSoek and (Indeks <> 0) //and ((Tekstlengde > 0) or Num)
+    or ((not Innholdsoek) and (Indeks = 1))
+    or ((not Innholdsoek) and RF)
+    or (Indeks>1) and // example: searcrh "kost" should find "10 Kostnader"
+      ((Tekst[Indeks-1]<'0') or (Tekst[Indeks-1]>'9')) and
+      TryStrToInt(Trim(Copy(Tekst,1,Indeks-1)), i)
+    or (Soeketekst = '');
+end;
+
+class function TAppActions.GetActionObjComparer(const ASoeketekst: string):TDelegatedComparer<TAppActions.TVerb>;
+begin
+  // priority of items ordering:
+  // - items where Query and Result have same category (digit or nondigit)
+  // - both items starts from number - compare as numbers
+  // otherwise compare case insensitively as strings
+  result := TDelegatedComparer<TAppActions.TVerb>.Create(
+    function(const A,B: TAppActions.TVerb):Integer
+    var
+      c1,c2: Boolean;
+      n1,n2: integer;
+    begin
+
+      // category
+      c1 := (ASoeketekst<>'') and (A.Text<>'') and SameCharCategory(A.Text[Low(A.Text)], ASoeketekst[Low(ASoeketekst)]);
+      c2 := (ASoeketekst<>'') and (B.Text<>'') and SameCharCategory(B.Text[Low(B.Text)], ASoeketekst[Low(ASoeketekst)]);
+      if (c1 or c2) and (c1<>c2) then
+      begin
+        result := IfThen(c1, -1, 1);
+        exit;
+      end;
+
+      // number
+      if (A.Text<>'') and (B.Text<>'') and
+        A.Text[Low(A.Text)].IsDigit and B.Text[Low(B.Text)].IsDigit and
+        TryStrToInt(GetIntInPos(A.Text,Low(A.Text)), n1) and
+        TryStrToInt(GetIntInPos(B.Text,Low(B.Text)), n2)
+      then
+        result := n1-n2
+      else
+        result := AnsiCompareText(A.Text, B.Text);
+    end
+  );
+end;
+
+class function TAppActions.FindFormActions(
+  AForm                   : TForm;
+  AExtraComponents        : TStrings;
+  ASoeketekst             : string;
+  AAutoAppendMenuItemsTag : integer;
+  AAutoAppendActionsTag   : integer;
+  ATest                   : TFunc<TComponent,Boolean>
+): TList<TAppActions.TVerb>;
+var
+  InnholdSoek: Boolean;
+  i,j: Integer;
+  Cmp: TComponent;
+  Tekst: String;
+  Indeks: Integer;
+  AddedItems: TAutoFree<TDictionary<string, boolean>>;
+  s: string;
+begin
+  Assert(AForm <> nil, 'HostForm ikke satt under init.');
+  AddedItems.Value := TDictionary<string, boolean>.Create;
+
+  InnholdSoek := Trim(ASoeketekst).StartsWith('*');
+  while Trim(ASoeketekst).StartsWith('*') do
+    ASoeketekst := ASoeketekst.Replace('*', '');
+
+  result := TList<TAppActions.TVerb>.Create(GetActionObjComparer(ASoeketekst));
+
+  // manually added components
+  if AExtraComponents<>nil then
+    for i := 0 to AExtraComponents.Count - 1 do
+      if AExtraComponents.Objects[i]<>nil then
+      begin
+        Cmp := TComponent(AExtraComponents.Objects[i]);
+        if TAppActions.ComponentExecutable(Cmp) and
+          (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
+          FilterAccept(AExtraComponents[i], ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+        then
+        begin
+          result.Add(TAppActions.TVerb.Create(Tekst, AExtraComponents.Objects[i] as TComponent));
+          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+        end;
+      end;
+
+  // components from HostForm
+  if AForm<>nil then
+    for i:= 0 to AForm.ComponentCount-1 do
+    begin
+      Cmp := AForm.components[i];
+
+      if (AAutoAppendMenuItemsTag<>0) and (Cmp is TMenuItem) then
+        if (Cmp.tag = AAutoAppendMenuItemsTag) and
+          TAppActions.ComponentExecutable(Cmp) and
+          (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
+          FilterAccept(TMenuItem(Cmp).Caption, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+        then
+        begin
+          result.Add(TAppActions.TVerb.Create(Tekst, Cmp));
+          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+        end;
+
+      if (AAutoAppendActionsTag<>0) and (Cmp is TAction) then
+      begin
+        s := TAction(Cmp).Caption;
+        if TryStrToInt(s, j) then
+          s := Trim(s + ' ' + TAction(Cmp).Hint);
+        if (Cmp.tag = AAutoAppendActionsTag) and
+          TAppActions.ComponentExecutable(Cmp) and
+          (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
+          FilterAccept(s, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+        then
+        begin
+          result.Add(TAppActions.TVerb.Create(Tekst, AForm.components[i]));
+          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+        end;
+      end;
+
+    end;
+
+  Result.Sort;
+end;
+
+{ TCanvasUtils }
+
+class procedure TCanvasUtils.BlendRectangle(Dst: TCanvas; const R: TRect; C: TColor; MixPercent: Byte);
+var
+  Bmp: TBitmap;
+  Blend: TBlendFunction;
+begin
+  Bmp := TBitmap.Create;
+  try
+    Bmp.Width              := 1;
+    Bmp.Height             := 1;
+    Bmp.Canvas.Pixels[0,0] := C;
+
+    Blend.BlendOp             := AC_SRC_OVER;
+    Blend.BlendFlags          := 0;
+    Blend.SourceConstantAlpha := (50 + 255*MixPercent) Div 100;
+    Blend.AlphaFormat         := 0;
+
+    AlphaBlend(Dst.Handle, R.Left, R.Top, R.Right-R.Left, R.Bottom-R.Top, Bmp.Canvas.Handle, 0, 0, 1, 1, Blend);
+  finally
+    Bmp.Free;
+  end;
+end;
+
+class function TCanvasUtils.MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer;
+var
+  l,r,w: integer;
+begin
+  result := 0;
+  if Src='' then
+    Exit;
+  l := 1;
+  r := Length(Src);
+  while r-l>=2 do
+  begin
+    result := (r+l) shr 1;
+    w := Dst.TextWidth(Src.Substring(0,result));
+    if w=WidthPixels then
+      Break;
+    if w<WidthPixels then
+      l := result
+    else
+      r := result;
+  end;
+  if not (r-l>=2) then
+    if Dst.TextWidth(Src.Substring(0,r)) <= WidthPixels then
+      result := r
+    else
+      result := l;
+  if Dst.TextWidth(Src.Substring(0,result)) > WidthPixels then
+    dec(result);
+  if result<0 then
+    result := 0;
+end;
+
+{ TControlUtils }
+
+class procedure TControlUtils.SetEnabled(C: TControl; Value, Recursive: Boolean);
+var
+  I: Integer;
+begin
+  C.Enabled := Value;
+  if Recursive and (C is TWinControl) then
+    for I := 0 to TWinControl(C).ControlCount-1 do
+      SetEnabled(TWinControl(C).Controls[I], Value, Recursive);
+end;
+
+class function TControlUtils.ForEach(AStart: TControl; ACallback: TControlBrkProc): Boolean;
+var
+  i: Integer;
+begin
+  if AStart<>nil then
+  begin
+
+    { check if canceled by callback function }
+    result := False;
+    ACallback(AStart, result);
+    if result then
+      Exit(False);
+
+    { check if any subsearch canceled }
+    if AStart is TWinControl then
+      for i := TWinControl(AStart).ControlCount-1 downto 0 do
+        if not ForEach(TWinControl(AStart).Controls[i], ACallback) then
+          Exit(False);
+  end;
+  result := True;
+end;
+
+class function TControlUtils.FindForm(C: TControl): TForm;
+begin
+  Result := TForm(FindParentOfClass(C, TForm));
+end;
+
+class function TControlUtils.FindParentOfClass(AControl: TControl; const AParentClass: TClass): TControl;
+begin
+  result := AControl;
+  while (result<>nil) and not (result is AParentClass) do
+    result := result.Parent;
+end;
+
+class procedure TControlUtils.ForEach(AStart: TControl; ACallback: TControlProc);
 var
   i: Integer;
 begin
   if AStart=nil then
-    exit;
+    Exit;
   ACallback(AStart);
   if AStart is TWinControl then
     for i := TWinControl(AStart).ControlCount-1 downto 0 do
-      ForEachControl(TWinControl(AStart).Controls[i], ACallback);
+      ForEach(TWinControl(AStart).Controls[i], ACallback);
 end;
 
-{ TFormSnapshot }
-
-class function TFormSnapshot.StrToReadable(s: string): String;
+class function TControlUtils.GetAll(AStart: TControl): TArray<TControl>;
 var
-  i: Integer;
+  Dst: TArray<TControl>;
+  Count: integer;
 begin
-  result := '';
-  for i := Low(s) to High(s) do
-    if (s[i]<#32) or (s[i]=#255) then
-      result := result + '#' + IntToStr(Integer(s[i]))
-    else
-      result := result + s[i];
-end;
-
-class function TFormSnapshot.ValueToText(AValue: string): string;
-begin
-  AValue := StrToReadable(AValue);
-  if length(AValue)<=40 then
-    result := AValue
-  else
-    result := format('MD5(%d)=', [length(AValue)]) + String(THash.MD5.GetHashString(AValue));
-end;
-
-class procedure TFormSnapshot.GetControlState(C: TControl; Dst: TStrings);
-var
-  S: String;
-begin
-  S := TControlH(C).Text;
-  while TControlH(C).ParentColor and (TControlH(C).Parent<>nil) do
-    C := C.Parent;
-  Dst.Add(Format('{"V": %s, "C": %s}', [
-    ToJsonStr(ValueToText(S)),
-    ToJsonStr(adot.Graphics.TColorUtils.GetBasicColorName(TControlH(C).Color))
-  ]));
-end;
-
-class function TFormSnapshot.GetComponentId(C: TComponent): String;
-var
-  s: TList<String>;
-  i: Integer;
-begin
-  s := TList<String>.Create;
-  try
-    while (c<>nil) do
-      // Normally it is "inner" editors created internally by higher-level
-      // controls, so we can skip them.
-      if c.Name='' then
-        Break
-      else
-      begin
-        s.Add(c.Name);
-        c := c.Owner;
-      end;
-    if s.Count=0 then
-      result := ''
-    else
-      result := s[s.Count-1];
-    for i := s.Count-2 downto 0 do
-      result := result + '\' + s[i];
-  finally
-    FreeAndNil(s);
-  end;
-end;
-
-class function TFormSnapshot.ToJsonStr(const s: string; const q: string = '"'):string;
-var
-  i: Integer;
-begin
-  if (pos('"', s)<Low(s)) and (pos('\', s)<Low(s)) then
-    result := q + s + q
-  else
-  begin
-    result := q;
-    for i := Low(s) to High(s) do
-      if (s[i]='"') or (s[i]='\') then
-        result := result + '\' + s[i]
-      else
-        result := result + s[i];
-    result := result + q;
-  end;
-end;
-
-{$IFDEF DEX}
-class procedure TFormSnapshot.GetCxViewState(View: TcxCustomGridTableView; Dst: TStrings);
-var
-  i,j: Integer;
-  Rec: TcxCustomGridRecord;
-  CellStyle: TcxStyle;
-  t,s: string;
-begin
-  Dst.Add('{');
-
-  // columns
-  j := 0;
-  for i := 0 to View.VisibleItemCount-1 do
-    if Trim(View.VisibleItems[i].Caption)<>'' then
-      inc(j);
-  if j>0 then
-  begin
-    Dst.Add('  "Columns": [');
-      s := '    ';
-      for i := 0 to View.VisibleItemCount-1 do
-        s := s + IfThen(i=0,'',', ') + ToJsonStr(Trim(View.VisibleItems[i].Caption));
-      Dst.Add(s);
-    Dst.Add('  ],');
-  end;
-
-  // data
-  Dst.Add('  "Data": [');
-  View.ViewData.Expand(True);
-  for i := 0 to View.ViewData.RecordCount-1 do
-  begin
-    Rec := View.ViewData.Records[i];
-    if not Rec.IsData then
-      Continue;
-    s := '    [';
-    for j := 0 to View.VisibleItemCount-1 do
+  Count := 0;
+  SetLength(Dst, 1000);
+  ForEach(AStart,
+    procedure(C: TControl)
     begin
-      s := s + IfThen(j=0,'',', ') + '{';
-      if Assigned(View.Styles.OnGetContentStyle) then
-        View.Styles.OnGetContentStyle(View, Rec, View.VisibleItems[j], CellStyle)
-      else
-        CellStyle := View.Styles.Content;
-      if CellStyle=nil then
-        t := 'default'
-      else
-        t := TColors.GetBaseColorName(CellStyle.Color);
-      s := s + format('"V": %s, ', [ToJsonStr(TVar.AsString(Rec.Values[View.VisibleItems[j].Index]))]);
-      s := s + format('"C": %s', [ToJsonStr(t)]);
-      s := s + '}';
-    end;
-    s := s + ']' + IfThen(i<View.ViewData.RecordCount-1,',','');
-    Dst.Add(s);
-  end;
-  Dst.Add('  ]'); // data
-  Dst.Add('}'); // view
-
-{  dc := View.DataController;
-  for i := 0 to dc.FilteredRecordCount-1 do
-  begin
-    RecordIndex := dc.FilteredRecordIndex[i];
-    s := '';
-    for j := 0 to View.VisibleItemCount-1 do
-      s := s + IfThen(j=0,'',' ') + EnquoteCaption(TVar.AsString(dc.Values[RecordIndex, View.VisibleItems[j].Index]));
-    result := result + s + #13#10;
-  end;}
+      if Count>=Length(Dst) then
+        SetLength(Dst, Length(Dst)*2);
+      Dst[Count] := C;
+      inc(Count);
+    end);
+  SetLength(Dst, Count);
+  Result := Dst;
 end;
-{$ENDIF}
 
-{$IFDEF DEX}
-class procedure TFormSnapshot.GetCxViewState(View: TcxGridChartView; Dst: TStrings);
+class function TControlUtils.GetShortCaption(
+  const Caption        : string;
+        FixedHeadChars : integer;
+        FixedTailChars : integer;
+        Dst            : TCanvas;
+        WidthPixels    : integer;
+        Separator      : string = '...'): string;
 var
-  i,j: Integer;
-  s: String;
-  Series: TcxGridChartSeries;
+  L,FixedLen: Integer;
 begin
-  Dst.Add('{');
-  j := 0;
-  for i := 0 to View.VisibleSeriesCount-1 do
-    if Trim(View.VisibleSeries[i].DisplayText)<>'' then
-      inc(j);
-  if j>0 then
-  begin
-    Dst.Add('  "Columns": [');
-      s := '  ';
-      for i := 0 to View.VisibleSeriesCount-1 do
-        s := s + IfThen(i=0,'',', ') + ToJsonStr(Trim(View.VisibleSeries[i].DisplayText));
-      Dst.Add(s);
-    Dst.Add('  ],');
-  end;
 
-  // data
-  Dst.Add('  "Data": [');
-  for i := 0 to View.VisibleSeriesCount-1 do
-  begin
-    s := '    [';
-    Series := View.VisibleSeries[i];
-    for j := 0 to Series.ValueCount-1 do
-      s := s + IfThen(j=0,'',', ') + ToJsonStr(TVar.AsString(Series.Values[j]));
-    s := s + ']' + IfThen(i<View.VisibleSeriesCount-1, ',', '');
-    Dst.Add(s);
-  end;
-  Dst.Add('  ]'); // data
-  Dst.Add('}'); // view
-end;
-{$ENDIF}
+  { full caption is ok }
+  Result := Caption;
+  if Dst.TextWidth(Result) <= WidthPixels then
+    Exit;
 
-{$IFDEF DEX}
-class procedure TFormSnapshot.GetCxGridState(Grid: TcxGrid; Dst: TStrings);
-var
-  View: TcxCustomGridView;
-begin
-  if Grid.Levels.Count=1 then
-  begin
-    View := Grid.Levels[0].GridView;
-    if View is TcxCustomGridTableView then
-      GetCxViewState(TcxCustomGridTableView(View), Dst)
-    else
-    if View is TcxGridChartView then
-      GetCxViewState(TcxGridChartView(View), Dst);
-  end;
+  { only fixed part may fit }
+  Result :=
+    Caption.Substring(0,FixedHeadChars) +
+    Separator +
+    Caption.Substring(Length(Caption)-FixedTailChars,FixedTailChars);
+  FixedLen := Dst.TextWidth(Result);
+  if Dst.TextWidth(Result) >= WidthPixels then
+    Exit;
+
+  { we have to cut some part }
+  Result := Caption.Substring(FixedHeadChars, Length(Caption) - FixedHeadChars - FixedTailChars);
+  L := TCanvasUtils.MaxFitLength(Result, Dst, WidthPixels-FixedLen);
+  result :=
+    Caption.Substring(0, FixedHeadChars+L) +
+    Separator +
+    Caption.Substring(Length(Caption)-FixedTailChars,FixedTailChars);
 end;
-{$ENDIF}
 
 type
-  TFormsnapshotRec = class
-    Id: String;
-    Lines: TStringList;
+  TCopyStreamsForm = class(TForm)
+  protected
+    FSrc, FDst: TStream;
+    FCount, FBufSize: integer;
+    FProgressProc: TCopyStreamProgressProc;
+    FLocked: boolean;
+    FTransferred: int64;
 
-    constructor Create(const AId: string);
-    destructor Destroy; override;
+    procedure FormShow(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+    procedure CreateParams(var Params:TCreateParams); override;
+  public
+    constructor Create(Src, Dst: TStream; Count, BufSize: integer; ProgressProc: TCopyStreamProgressProc); reintroduce;
+
+    property Transferred: int64 read FTransferred;
   end;
 
-constructor TFormsnapshotRec.Create(const AId: string);
+{ TCopyStreamsForm }
+
+constructor TCopyStreamsForm.Create(Src, Dst: TStream; Count, BufSize: integer; ProgressProc: TCopyStreamProgressProc);
 begin
-  inherited Create;
-  Id := AId;
-  Lines := TStringList.Create;
+  inherited CreateNew(nil);
+
+  { form properties (we will try to make the form invisible/transparent) }
+  BorderStyle  := bsNone;
+  Left         := 0;
+  Top          := 0;
+  Width        := 0;
+  Height       := 0;
+  OnShow       := FormShow;
+  OnCloseQuery := FormCloseQuery;
+
+  FSrc          := Src;
+  FDst          := Dst;
+  FCount        := Count;
+  FBufSize      := BufSize;
+  FProgressProc := ProgressProc;
+  FLocked       := True;
+
 end;
 
-destructor TFormsnapshotRec.Destroy;
+procedure TCopyStreamsForm.CreateParams(var Params: TCreateParams);
 begin
-  FreeAndNil(Lines);
   inherited;
+  Params.ExStyle := WS_EX_TRANSPARENT or WS_EX_TOPMOST;
 end;
 
-class procedure TFormSnapshot.Get(AForm: TCustomForm; ADst: TStrings);
-var
-  Items: TObjectList<TFormsnapshotRec>;
-  i,j: Integer;
-  l: TStrings;
-  s: string;
+procedure TCopyStreamsForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
-  Items := TObjectList<TFormsnapshotRec>.Create(TDelegatedComparer<TFormsnapshotRec>.Create(
-    function(const L,R: TFormsnapshotRec): Integer
-    begin
-      Result := CompareText(L.Id, R.Id);
-    end));
-  try
+  CanClose := not FLocked;
+end;
 
-    // collect info
-    TComponentUtils.ForEachComponent(AForm,
-      procedure(C: TComponent)
-      var
-        Id: String;
-        Snapshot: TFormsnapshotRec;
+procedure TCopyStreamsForm.FormShow(Sender: TObject);
+begin
+  FLocked := True;
+  try
+    FTransferred := TStreamUtils.Copy(FSrc, FDst, FCount, FBufSize,
+      procedure(const Transferred: int64; var Cancel: boolean)
       begin
-        if not (C is TControl) or not TControl(C).Visible then
-          Exit;
-        Id := GetComponentId(C);
-        if Id='' then
-          Exit;
-        Snapshot := TFormsnapshotRec.Create(Id);
-        Items.Add(Snapshot);
-        {$IFDEF DEX}
-        if C is TcxGrid then
-          GetCxGridState(TCxGrid(C), Snapshot.Lines)
-        else
-          GetControlState(TControl(C), Snapshot.Lines);
-        {$ELSE}
-        GetControlState(TControl(C), Snapshot.Lines);
-        {$ENDIF}
+
+        { user defined callback }
+        if Assigned(FProgressProc) then
+          FProgressProc(Transferred, Cancel);
+
+        { to keep ui alive ()}
+        Application.ProcessMessages;
       end);
-
-    // get result
-    Items.Sort;
-    ADst.Add('{');
-    for i := 0 to Items.Count-1 do
-    begin
-      l := Items[i].Lines;
-      s := IfThen(i<Items.Count-1, ',', '');
-      case l.Count of
-        0: ADst.Add(Format('  %s: null%s', [ToJsonStr(Items[i].Id), s]));
-        1: ADst.Add(Format('  %s: %s%s', [ToJsonStr(Items[i].Id), l[0], s]));
-        else
-        begin
-          ADst.Add(Format('  %s:', [ToJsonStr(Items[i].Id)]));
-          for j := 0 to l.Count-2 do
-            ADst.Add(Format('    %s', [l[j]]));
-          ADst.Add(Format('    %s%s', [l[l.Count-1], s]));
-        end;
-      end;
-    end;
-    ADst.Add('}');
   finally
-    FreeAndNil(Items);
+    FLocked := False;
+    ModalResult := mrOk;
+
+    { .Close mwthod will not close the form from FormShow, so we send wm_close message instead }
+    PostMessage(Handle, wm_close,0,0);
+
   end;
 end;
 
-class function TFormSnapshot.CaptureScreen(ADst: Vcl.Graphics.TBitmap; x, y, w, h, screenx,
-  screeny: integer): Boolean;
-var
-  DC: hWnd;
-begin
-  DC := GetDC(0);
-  Result := DC<>0;
-  if Result then
-    bitblt(ADst.Canvas.Handle, x, y, w, h, DC, screenx, screeny, SRCCOPY{ or CAPTUREBLT});
-  ReleaseDC(0, DC);
-end;
+{ TVCLStreamUtils }
 
-class procedure TFormSnapshot.Get(ADst: TStrings);
+class function TVCLStreamUtils.Copy(Src, Dst: TStream; Count, BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64;
 var
-  i: Integer;
-  c: TComponent;
-  VisibleForms: TDictionary<TForm, Byte>;
+  LockUIForm: TCopyStreamsForm;
 begin
-  VisibleForms := TDictionary<TForm, Byte>.Create;
+  LockUIForm := TCopyStreamsForm.Create(Src, Dst, Count, BufSize, ProgressProc);
   try
-    for i := 0 to Application.MainForm.ComponentCount-1 do
-    begin
-      c := Application.MainForm.Components[i];
-      if not (c is TAction) or
-        not Assigned(TAction(c).OnExecute) or
-        not TAction(c).Visible or
-        not TAction(c).Enabled
-      then
-        Continue;
-      VisibleForms.Clear;
-
-    end;
+    LockUIForm.ShowModal;
+    result := LockUIForm.Transferred;
   finally
-    FreeAndNil(VisibleForms);
+    LockUIForm.Free;
   end;
 end;
 
-procedure DebugMsg(const Msg: String);
+class function TVCLStreamUtils.Copy(Src, Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64;
 begin
-  OutputDebugString(PChar(Msg))
+  result := Copy(Src, Dst, 0,0,ProgressProc);
 end;
 
-procedure InvalidateComponent(c: TComponent; Recursive: boolean = True);
+class function TVCLStreamUtils.Copy(Src, Dst: TStream): int64;
+begin
+  result := Copy(Src, Dst, 0,0,nil);
+end;
+
+{ TVCLFileUtils }
+
+class function TVCLFileUtils.CopyFile(
+  const SrcFileName, DstFileName : string;
+    out ErrorMessage             : string;
+        ProgressProc             : TCopyFileProgressProc): boolean;
 var
-  i: Integer;
+  AutoFreeCollection: TAutoFreeCollection;
+  CI: TCopyFileInfo;
+  Src,Dst: TStream;
 begin
-  if c=nil then
-    exit;
-  if c is TControl then
-    TControl(c).Invalidate;
-  if Recursive then
-    for i := 0 to c.ComponentCount-1 do
-      InvalidateComponent(c.Components[i], True);
-end;
-
-procedure DisableFormDraw(f: TWinControl);
-begin
-  if f=nil then
-    exit;
-  SendMessage(f.Handle, WM_SETREDRAW, WPARAM(False), 0);
-end;
-
-procedure EnableFormDraw(f: TWinControl);
-begin
-  if f=nil then
-    exit;
-  SendMessage(f.Handle, WM_SETREDRAW, WPARAM(True), 0);
-  RedrawWindow(f.Handle, nil, 0,
-    RDW_INVALIDATE or
-    RDW_INTERNALPAINT or
-    RDW_ERASE or
-    RDW_ALLCHILDREN or
-    RDW_UPDATENOW or
-    RDW_ERASENOW or
-    RDW_FRAME
-  );
-(*    //RDW_ERASE or RDW_INVALIDATE or RDW_FRAME or RDW_ALLCHILDREN);
-  InvalidateComponent(f);
-  f.Repaint;
-  for i := 0 to Application.MainForm.MDIChildCount-1 do
-  begin
-    Application.MainForm.MDIChildren[i].Width := Application.MainForm.MDIChildren[i].Width+1;
-    Application.MainForm.MDIChildren[i].Width := Application.MainForm.MDIChildren[i].Width-1;
-  end;*)
-end;
-
-{ TMessenger }
-
-constructor TMessenger.Create;
-begin
-  inherited;
-  FWnd := AllocateHWnd(WndProc);
-end;
-
-destructor TMessenger.Destroy;
-begin
-  inherited;
-  DeallocateHWnd(FWnd);
-end;
-
-constructor TMessenger.Create(AMessageHandler: TOnMessage);
-begin
-  Create;
-  FOnMessage := AMessageHandler;
-end;
-
-constructor TMessenger.Create(AMessageHandler: TOnMessageRef);
-begin
-  Create;
-  FOnMessageRef := AMessageHandler;
-end;
-
-procedure TMessenger.WndProc(var Message: TMessage);
-begin
-  if Assigned(FOnMessage) then
-    FOnMessage(Message);
-  if Assigned(FOnMessageRef) then
-    FOnMessageRef(Message);
-end;
-
-function FindSubcontrolAtPos(AControl: TControl; AScreenPos, AClientPos: TPoint): TControl;
-var
-  i: Integer;
-  C: TControl;
-begin
-  Result := nil;
-  C := AControl;
-  if (C=nil) or not C.Visible or not TRect.Create(C.Left, C.Top, C.Left+C.Width, C.Top+C.Height).Contains(AClientPos) then
-    Exit;
-  Result := AControl;
-  if AControl is TWinControl then
-    for i := 0 to TWinControl(AControl).ControlCount-1 do
+  try
+    Result := True;
+    Src := AutoFreeCollection.Add(TFileStream.Create(SrcFileName, fmOpenRead or fmShareDenyWrite));
+    Dst := AutoFreeCollection.Add(TFileStream.Create(DstFileName, fmCreate));
+    CI.FileSize    := Src.Size;
+    CI.SrcFileName := SrcFileName;
+    CI.DstFileName := DstFileName;
+    if not Assigned(ProgressProc) then
+      TVCLStreamUtils.Copy(Src, Dst)
+    else
     begin
-      C := FindSubcontrolAtPos(TWinControl(AControl).Controls[i], AScreenPos, AControl.ScreenToClient(AScreenPos));
-      if C<>nil then
-        Result := C;
+      TVCLStreamUtils.Copy(Src, Dst,
+        procedure(const Transferred: int64; var Cancel: boolean)
+        begin
+          CI.Copied := Transferred;
+          ProgressProc(CI, Cancel);
+        end);
     end;
-end;
-
-function FindControlAtPos(AScreenPos: TPoint): TControl;
-var
-  i: Integer;
-  f,m: TForm;
-  p: TPoint;
-  r: TRect;
-begin
-  Result := nil;
-  for i := Screen.FormCount-1 downto 0 do
+  except
+    on e: exception do
     begin
-      f := Screen.Forms[i];
-      if f.Visible and (f.Parent=nil) and (f.FormStyle<>fsMDIChild) and
-        TRect.Create(f.Left, f.Top, f.Left+f.Width, f.Top+f.Height).Contains(AScreenPos)
-      then
-        Result := f;
+      Result := True;
+      ErrorMessage := Format('Can''t copy file "%s" to "%s": %s', [SrcFileName, DstFileName, SysErrorMessage(GetLastError)]);
     end;
-  Result := FindSubcontrolAtPos(Result, AScreenPos, AScreenPos);
-  if (Result is TForm) and (TForm(Result).ClientHandle<>0) then
-  begin
-    WinAPI.Windows.GetWindowRect(TForm(Result).ClientHandle, r);
-    p := TPoint.Create(AScreenPos.X-r.Left, AScreenPos.Y-r.Top);
-    m := nil;
-    for i := TForm(Result).MDIChildCount-1 downto 0 do
-    begin
-      f := TForm(Result).MDIChildren[i];
-      if TRect.Create(f.Left, f.Top, f.Left+f.Width, f.Top+f.Height).Contains(p) then
-        m := f;
-    end;
-    if m<>nil then
-      Result := FindSubcontrolAtPos(m, AScreenPos, p);
   end;
 end;
 
-function FindControlAtMousePos: TControl;
+class function TVCLFileUtils.CopyFile(
+  const SrcFileName, DstFileName : string;
+    out ErrorMessage             : string): boolean;
 begin
-  Result := FindControlAtPos(Mouse.CursorPos);
+  result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
 end;
 
 end.
-

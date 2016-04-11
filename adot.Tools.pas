@@ -48,7 +48,8 @@ uses
   System.TimeSpan,
   System.Diagnostics,  { TStopwatch }
   System.SyncObjs,     { TInterlocked.* }
-  System.Variants;
+  System.Variants,
+  System.ZLib;
 
 type
 
@@ -124,102 +125,82 @@ type
     class function HexToPointer(const HexEncodedPointer: String):Pointer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
-  { Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
+  { Conversion routines etc. to be available in THashes and internal classes (THashes.DataHash etc) }
+  THashHelperFunctions = class abstract
+  public
+    class function HashToString(const AHash: TBytes): string; static;
+    class function HashToCardinal(const AHash: TBytes): Cardinal; static;
+    class function HashToInteger(const AHash: TBytes): Integer; static; inline;
+    class function Mix(const HashA,HashB: integer): integer; overload; static; inline;
+    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
+  end;
+
+  { Abstract class for hashes }
+  TCustomHash = class abstract(THashHelperFunctions)
+  protected
+    class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
+  public
+    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload; virtual;
+    class function Encode(S: TStream): TBytes; overload; virtual; abstract;
+
+    class function Encode<T: Record>(const Value: T): TBytes; overload;
+    class function Encode(const S: TBytes): TBytes; overload;
+    class function Encode(const S: string): TBytes; overload;
+    class function EncodeAnsiString(const S: AnsiString): TBytes;
+    class function EncodeFile(const AFileName: string): TBytes; overload;
+  end;
+
+  { AH: Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
     http://qc.embarcadero.com/wc/qcmain.aspx?d=132100
-    If you need reset/update functionality, use THash.MD5/THash.SHA1/THash.BobJenkins
-    (they implemented to workaround bugs in Delphi implementations). }
-  THash = class
-  private
+    AH (update from 05.04.2016): The issue is fixed, in Delphi 10 Seattle it works correctly.
+    Why we still keep THashes class:
+    - Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
+    - In object model it is much easier to introduce new function (like hash file/stream etc)
+    - If other issues will be doscovered in Delphi hash, we can fix it witghout changes in other code }
+  THashes = class(THashHelperFunctions)
   public
+    const
+      StreamingBufSize = 64*1024;
+
     type
-      MD5 = record
-      private
-        Hash: THashMD5;
-        Digest: TBytes;
+      MD5 = class(TCustomHash)
       public
-
-        class function Create: THash.MD5; static;
-
-        procedure Reset;
-        procedure Update(const AData; ALength: Cardinal); overload;
-        procedure Update(const AData: TBytes; ALength: Cardinal = 0); overload;
-        procedure Update(const AData: string); overload;
-        function HashAsBytes: TBytes;
-        function HashAsString: string;
-
-        class function GetHashBytes(const AData: string): TBytes; static;
-        class function GetHashString(const AData: string): string; static;
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function Encode(S: TStream): TBytes; override;
       end;
 
-      SHA1 = record
-      private
-        Hash: THashSHA1;
+      SHA1 = class(TCustomHash)
       public
-
-        class function Create: THash.SHA1; static;
-
-        procedure Reset;
-        procedure Update(const AData; ALength: Cardinal); overload;
-        procedure Update(const AData: TBytes; ALength: Cardinal = 0); overload;
-        procedure Update(const AData: string); overload;
-        function HashAsBytes: TBytes;
-        function HashAsString: string;
-
-        class function GetHashBytes(const AData: string): TBytes; static;
-        class function GetHashString(const AData: string): string; static;
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function Encode(S: TStream): TBytes; override;
       end;
 
-      { THashBobJenkins seems to be ok in XE8. }
-      BobJenkins = THashBobJenkins;
+      CRC32 = class(TCustomHash)
+      public
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function Encode(S: TStream): TBytes; override;
+      end;
 
-    { MD5 }
-    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload; static;
-    class function Encode<T: Record>(const Value: T): TBytes; overload; static;
-    class function Encode(s: TBytes): TBytes; overload; static;
-    class function Encode(const s: string): TBytes; overload; static;
-    class function EncodeAnsiString(const s: AnsiString): TBytes; static;
-    class function Encode(s: TStream): TBytes; overload; static;
-    class function EncodeFile(const AFileName: string): string; overload; static;
-  end;
+      Adler32 = class(TCustomHash)
+      public
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function Encode(S: TStream): TBytes; override;
+      end;
 
-  { In many classes we need to get sum of elements according to some condition.
-    The class supposed to simplify and make such operations simple and very efficient. }
-  TSummDouble<TKey> = class
-  protected
-    FItems: TDictionary<TKey, double>;
-  public
-    constructor Create;
-    destructor Destroy; override;
-    procedure Add(const AKey: TKey; const AValue: double);
-    function Get(const AKey: TKey; out AValue: double): Boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Get(const AKey: TKey): Double; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-  end;
+      BobJenkins32 = class(TCustomHash)
+      public
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function Encode(S: TStream): TBytes; override;
+      end;
 
-  { Sometimes we need to search min element among object.
-    All conditions (year, period etc) can be present as key. }
-  TMin<TKeyType,TValueType> = class
-  protected
-    type
-      TKeyCollection = TDictionary<TKeyType, TValueType>.TKeyCollection;
-    var
-      FItems: TDictionary<TKeyType, TValueType>;
-      FComparer: IComparer<TValueType>;
-
-    function GetKeyCollection: TKeyCollection;
-  public
-    constructor Create(const AComparer: IComparer<TValueType> = nil);
-    destructor Destroy; override;
-    procedure Add(const AKey: TKeyType; const AValue: TValueType);
-    function Get(const AKey: TKeyType; out AValue: TValueType): Boolean; overload;
-    function Get(const AKey: TKeyType): TValueType; overload;
-    function Empty: boolean;
-    property Keys: TKeyCollection read GetKeyCollection;
-  end;
-
-  TMax<TKeyType,TValueType> = class(TMin<TKeyType,TValueType>)
-  public
-    constructor Create(const AComparer: IComparer<TValueType> = nil);
+      { Strong hash for critical parts (password checksum etc).
+        MD5 is outdated for use in cryptography, but for other tasks it's still good enough }
+      Strong = MD5;
+      { Fast hash with good avalanche effect (hash tables etc). }
+      Fast = BobJenkins32;
+      { Fastest hash for detection of modifications in massive data arrays (file checksum etc).
+        We use Adler32, it's two times faster than Crc32 and still quite good. }
+      Fastest = Adler32;
   end;
 
   TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
@@ -309,6 +290,7 @@ type
     class procedure Fill(var Dst: TArray<byte>; Count: integer; AValueStart,AValueInc: integer); overload; static;
     class procedure Fill(var Dst: TArray<integer>; Count: integer; AValueStart,AValueInc: integer); overload; static;
     class procedure Fill(var Dst: TArray<double>; Count: integer; AValueStart,AValueInc: double); overload; static;
+    class procedure StableSort<T>(var Dst: TArray<T>; StartIndex,Count: integer; Comparer: IComparer<T>); static;
   end;
 
   { All values must be unique (except NIL). Main purpose: very fast IndexOf
@@ -356,8 +338,8 @@ type
     class function ToStr(const t: TDateTime; ANoDateStr: string = NoDateStr): string; static;
   end;
 
-  { Wrapper class to make any class available through interface (that means that
-    lifetime of the class will be controlled automaticaly over reference counter) }
+  { Wrapper class to make any class type available through interface (that means that
+    lifetime of the class will be controlled by reference counter) }
   TInterfacedObject<T: class> = class(TInterfacedObject, IInterfacedObject<T>)
   protected
     FData: T;
@@ -373,12 +355,12 @@ type
   end;
 
 
-  { Sometimes we need to access array/TList/TEnhet etc according to specific order.
+  { Sometimes we need to access array/TList etc according to specific order.
     This record type helps to create index providing comparator and basic properties:
-      AOrdningerIdx := TIndex.Get(AOrdninger.Antall, AOrdninger.StartIndex,
+      Idx := TIndex.Get(List.Count, 0,
         function(const Left,Right: integer): integer
         begin
-          result := integer(AOrdninger[Left].Period) - integer(AOrdninger[Right].Period);
+          result := integer(List[Left].Period) - integer(List[Right].Period);
         end);  }
   TIndex = class
   public
@@ -389,27 +371,46 @@ type
     class function Inverse(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
   end;
 
+  { IsValid and other utils }
   TGUIDUtils = class
   public
     class function IsValid(const S: string): Boolean; static;
     class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
   end;
 
+  { Block reader and other utils }
   TStreamUtils = class
   public
+    type
+
+      { Stream block reader (ReadNext to get next block of data from stream as array of byte) }
+      TReader = record
+      private
+        AutoFreeCollection: TAutoFreeCollection;
+        Stream: TStream;
+        BytesToRead: int64;
+      public
+        Bytes: TArray<Byte>;
+        Count: integer;
+
+        constructor Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
+        function ReadNext: Boolean;
+      end;
+
     class procedure StringToStream(const S: string; Dst: TStream; Encoding: TEncoding = nil); static;
-  end;
 
-  TKeyUtils = class
-  public
-    const
-      KeyChars = ['a'..'z','A'..'Z','0'..'9','_', '.','!','?','+','-','(',')'];
-
-    { If string is long or contains any char except of KeyChars, then hash is generated as key }
-    class function StringToKey(const AId: string; AFixedKeySize: Boolean = False):String; static;
+    { Copy stream functions (from simple to feature-rich):
+      1. TStreamUtils.Copy:
+           uses standard Delphi streams, UI will freeze until operation is complete.
+      2. TVCLStreamUtils.Copy:
+           uses standard Delphi streams, UI will not freeze. }
+    class function Copy(Src,Dst: TStream; Count,BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
+    class function Copy(Src,Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
+    class function Copy(Src,Dst: TStream): int64; overload; static;
   end;
 
   TDelegatedOnFile = reference to procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean);
+  { File manipulation utils }
   TFileUtils = class
   public
 
@@ -430,6 +431,25 @@ type
       const AFileNamePattern                       : string;
       const AMaxAllowedTotalSize, AMaxAllowedCount : int64;
             AChanceToRun                           : Double = 1 { 1 = 100%, 0.3=30% etc }); static;
+
+    class function DeleteFile(const AFileName: string; out AErrorMessage: string): boolean; static;
+    class function RenameFile(const ASrcFileName,ADstFileName: string; out AErrorMessage: string): boolean; static;
+
+    { Copy file functions (from simple to feature-rich):
+      1. TFileUtils.CopyFile:
+           uses standard Delphi streams, UI will freeze until operation is complete.
+      2. TWinFileUtils.CopyFile:
+           uses Windows function CopyFileEx, UI will freeze until operation is complete.
+      3. TVCLFileUtils.Copyfile:
+           uses standard Delphi streams, UI will not freeze.
+      4. TCopyFileProgressDlg.CopyFile:
+           uses either Delphi streams or CopyFileEx, UI will not freeze,
+           progress bar with cancel command will be available for long operations). }
+    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean; overload;
+    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string): boolean; overload;
+
+    class function Load(const FileName: string; var Dst: TArray<byte>; var ErrMsg: string): boolean; overload;
+    class function Load(const FileName: string; var Dst: TArray<byte>): boolean; overload;
   end;
 
   { Generic implementation of IfThen (to accept virtually any type). Example:
@@ -441,9 +461,9 @@ type
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
 
-     function TEnheter.GetEnumerator: TIndexBackEnumerator;
+     function TListExt.GetEnumerator: TIndexBackEnumerator;
      begin
-       result := TIndexBackEnumerator.Create(SisteIndex, StartIndex);
+       result := TIndexBackEnumerator.Create(LastIndex, StartIndex);
      end; }
   TIndexBackEnumerator = record
   private
@@ -528,6 +548,7 @@ type
     function TimedOut: Boolean;
   end;
 
+  { Basic class for objects with data caching/other read optimizations }
   TCachable = class(TCustomCachable, ICachable)
   protected
     FKalkulasjonBalanse: integer;
@@ -570,12 +591,14 @@ type
       property KalkulasjonBalanse: Integer read GetKalkulasjonBalanse; }
   end;
 
+  { Currency type utils }
   TCurrencyUtils = class
   public
-    class function ToString(const Value: currency; Ore: boolean = False): string; reintroduce; static;
+    class function ToString(const Value: Currency; FractionalPart: boolean = False): string; reintroduce; static;
   end;
 
-  { Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
+  { Platform independent stream writer.
+    Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
     But TWriter class has set of platform independent functions WriteVar. We write wrapper around TWriter
     in order to expose only platform independent functionality (and extend it for other basic types). }
   TPIWriter = class
@@ -605,6 +628,7 @@ type
     procedure Write(const Value: string); overload;
   end;
 
+  { Platform independent stream reader }
   TPIReader = class
   protected
     Reader: TReader;
@@ -632,6 +656,7 @@ type
     procedure Read(out Value: string); overload;
   end;
 
+  { Extends any type by IsNull property }
   TNullable<T> = record
   private
     type
@@ -665,50 +690,6 @@ type
     property Ptr: pointer read GetPointer;
   end;
 
-  { All operations are thread-safe and deadlock-free. }
-  TThreadSafe<T: record> = record
-  public
-    type
-      TCopyProc = reference to procedure(const ASrc: T; var Dst: T);
-  private
-    var
-      FValue: T;
-      FAutoFreeCollection: TAutoFreeCollection;
-      FCriticalSection: TCriticalSection;
-      FComparer: IEqualityComparer<T>;
-      FCopyProc: TCopyProc;
-
-    function GetComparer: IEqualityComparer<T>;
-    function GetValue: T;
-    procedure SetValue(const AValue: T);
-    procedure SetComparer(const Value: IEqualityComparer<T>);
-    procedure SetCopyProc(const Value: TCopyProc);
-    class procedure GetSafeOrder(const AItems: array of TThreadSafe<T>;
-      var AIndex: TArray<integer>); static;
-  public
-    class function Create: TThreadSafe<T>; overload; static;
-    class function Create(const AValue: T): TThreadSafe<T>; overload; static;
-    class operator Equal(const ALeft, ARight: TThreadSafe<T>): Boolean;
-    class operator Equal(const ALeft: TThreadSafe<T>; const ARight: T): Boolean;
-    class operator NotEqual(const ALeft, ARight: TThreadSafe<T>): Boolean;
-    class operator NotEqual(const ALeft: TThreadSafe<T>; const ARight: T): Boolean;
-    class operator Implicit(const AValue: TThreadSafe<T>): T;
-    class operator Implicit(const AValue: T): TThreadSafe<T>;
-    class operator Implicit(const AValue: Variant): TThreadSafe<T>;
-
-    { If access to several variables is required (copy, moving, ...), then
-      it is not safe to lock records one by one, it may lead to deadlock
-      (one thread has A and waiting for B, another has B and waiting for A).
-      Lock/Unlock should be used in this case. }
-    class procedure Lock(const A: array of TThreadSafe<T>); static;
-    class procedure Unlock(const A: array of TThreadSafe<T>); static;
-
-    property Value: T read GetValue write SetValue;
-    property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
-    property CopyProc: TCopyProc read FCopyProc write SetCopyProc;
-    property CriticalSection: TCriticalSection read FCriticalSection;
-  end;
-
   { PDF-compatible RLE codec }
   TRLE = class
   public
@@ -720,12 +701,18 @@ type
   end;
 
   TForEachComponentBreakProc = reference to procedure(AComponent: TComponent; var ABreak: boolean);
+
+  { Enumeration and other component-specific tools }
   TComponentUtils = class
-  private
-    class function ForEachComponentBrk(AStart: TComponent; ACallback: TForEachComponentBreakProc): Boolean; static;
   public
-    class procedure ForEachComponent(AStart: TComponent; ACallback: TForEachComponentBreakProc); overload; static;
-    class procedure ForEachComponent(AStart: TComponent; ACallback: TProc<TComponent>); overload; static;
+    type
+      TComponentBrkProc = reference to procedure(AComponent: TComponent; var ABreak: boolean);
+      TComponentProc = reference to procedure(AComponent: TComponent);
+
+    { returns True if enumeration complete, False if canceled }
+    class function ForEach(AStart: TComponent; ACallback: TComponentBrkProc): Boolean; overload; static;
+    class procedure ForEach(AStart: TComponent; ACallback: TComponentProc); overload; static;
+    class function GetAll(AStart: TComponent): TArray<TComponent>; static;
   end;
 
 function Min3(const A,B,C: integer): integer; overload;
@@ -978,283 +965,6 @@ end;
 class function THex.PointerToHex(s: Pointer): string;
 begin
   result := NativeIntToHex(NativeInt(s));
-end;
-
-{ THash }
-
-class function THash.Encode(const Buf; ByteBufSize: integer): TBytes;
-var
-  h: THashMD5;
-begin
-  try
-    h := THashMD5.Create;
-    h.Update(@Buf, ByteBufSize);
-    Result := h.HashAsBytes;
-  finally
-    h.Reset;
-  end;
-end;
-
-class function THash.Encode(s: TBytes): TBytes;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function THash.Encode(s: TStream): TBytes;
-var
-  h: THashMD5;
-  Buffer: array[0..4095] of Byte;
-  SSize : Integer;
-  ReadBytes : Integer;
-  TotalBytes : Integer;
-  BufSize: Integer;
-begin
-
-  SSize := s.Size;
-  BufSize := SizeOf(Buffer);
-  TotalBytes := 0;
-
-  s.Position := 0;
-
-  h := THashMD5.Create;
-  try
-    repeat
-      ReadBytes := s.Read(Buffer, BufSize);
-      Inc(TotalBytes, ReadBytes);
-      h.Update(@Buffer, ReadBytes);
-    until (ReadBytes = 0) or (TotalBytes = SSize);
-
-    Result := h.HashAsBytes;
-  finally
-    h.Reset;
-  end;
-end;
-
-class function THash.Encode(const s: string): TBytes;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function THash.Encode<T>(const Value: T): TBytes;
-begin
-  Result := Encode(Value, SizeOf(Value));
-end;
-
-class function THash.EncodeAnsiString(const s: AnsiString): TBytes;
-begin
-  result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
-end;
-
-class function THash.EncodeFile(const AFileName: string): string;
-var
-  vStream: TFileStream;
-begin
-  Result := '';
-  vStream := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
-  try
-    Result := THex.Encode(Encode(vStream));
-  finally
-    vStream.Free;
-  end;
-end;
-
-{ THash.MD5 }
-
-class function THash.MD5.Create: THash.MD5;
-begin
-  result.Hash := THashMD5.Create;
-end;
-
-class function THash.MD5.GetHashBytes(const AData: string): TBytes;
-begin
-  result := THashMD5.GetHashBytes(AData);
-end;
-
-class function THash.MD5.GetHashString(const AData: string): string;
-begin
-  result := THashMD5.GetHashString(AData);
-end;
-
-function THash.MD5.HashAsBytes: TBytes;
-begin
-  { Workaround bug in Hash.HashAsBytes }
-  if Length(Digest)=0 then
-    Digest := Hash.HashAsBytes;
-  result := Digest;
-end;
-
-function THash.MD5.HashAsString: string;
-begin
-  { Workaround bug in Hash.HashAsString }
-  if Length(Digest)=0 then
-    Digest := Hash.HashAsBytes;
-  result := System.Hash.THash.DigestAsString(Digest);
-end;
-
-procedure THash.MD5.Reset;
-begin
-  Hash.Reset;
-  SetLength(Digest, 0);
-end;
-
-procedure THash.MD5.Update(const AData; ALength: Cardinal);
-begin
-  // Workaround bug in Hash.Update(AData, ALength)
-  Hash.Update(@AData, ALength);
-end;
-
-procedure THash.MD5.Update(const AData: TBytes; ALength: Cardinal);
-begin
-  Hash.Update(AData, ALength);
-end;
-
-procedure THash.MD5.Update(const AData: string);
-begin
-  Hash.Update(AData);
-end;
-
-{ THash.SHA1 }
-
-class function THash.SHA1.Create: THash.SHA1;
-begin
-  result.Hash := THashSHA1.Create;
-end;
-
-class function THash.SHA1.GetHashBytes(const AData: string): TBytes;
-begin
-  result := THashSHA1.GetHashBytes(AData);
-end;
-
-class function THash.SHA1.GetHashString(const AData: string): string;
-begin
-  result := THashSHA1.GetHashString(AData);
-end;
-
-function THash.SHA1.HashAsBytes: TBytes;
-begin
-  result := Hash.HashAsBytes;
-end;
-
-function THash.SHA1.HashAsString: string;
-begin
-  result := Hash.HashAsString;
-end;
-
-procedure THash.SHA1.Reset;
-begin
-  Hash.Reset;
-end;
-
-procedure THash.SHA1.Update(const AData; ALength: Cardinal);
-begin
-  { Workaround bug in Hash.Update(AData, ALength) }
-  Hash.Update(@AData, ALength);
-end;
-
-procedure THash.SHA1.Update(const AData: TBytes; ALength: Cardinal);
-begin
-  Hash.Update(AData, ALength);
-end;
-
-procedure THash.SHA1.Update(const AData: string);
-begin
-  Hash.Update(AData);
-end;
-
-{ TSummDouble<TKey> }
-
-constructor TSummDouble<TKey>.Create;
-begin
-  inherited Create;
-  FItems := TDictionary<TKey, double>.Create;
-end;
-
-destructor TSummDouble<TKey>.Destroy;
-begin
-  FreeAndNil(FItems);
-  inherited;
-end;
-
-function TSummDouble<TKey>.Empty: boolean;
-begin
-  result := FItems.Count=0;
-end;
-
-procedure TSummDouble<TKey>.Add(const AKey: TKey; const AValue: double);
-var
-  V: Double;
-begin
-  if FItems.TryGetValue(AKey, V) then
-    V := V + AValue
-  else
-    V := AValue;
-  FItems.AddOrSetValue(AKey, V);
-end;
-
-function TSummDouble<TKey>.Get(const AKey: TKey; out AValue: double): Boolean;
-begin
-  result := FItems.TryGetValue(AKey, AValue);
-end;
-
-function TSummDouble<TKey>.Get(const AKey: TKey): Double;
-begin
-  if not FItems.TryGetValue(AKey, Result) then
-    Result := 0;
-end;
-
-{ TMin<TKeyType, TValueType> }
-
-constructor TMin<TKeyType, TValueType>.Create(const AComparer: IComparer<TValueType> = nil);
-begin
-  FItems := TDictionary<TKeyType, TValueType>.Create;
-  FComparer := AComparer;
-  if FComparer=nil then
-    FComparer := TComparer<TValueType>.Default;
-end;
-
-destructor TMin<TKeyType, TValueType>.Destroy;
-begin
-  FreeAndNil(FItems);
-  inherited;
-end;
-
-function TMin<TKeyType, TValueType>.Empty: boolean;
-begin
-  result := FITems.Count=0;
-end;
-
-function TMin<TKeyType, TValueType>.GetKeyCollection: TKeyCollection;
-begin
-  result := FITems.Keys;
-end;
-
-procedure TMin<TKeyType, TValueType>.Add(const AKey: TKeyType; const AValue: TValueType);
-var
-  V: TValueType;
-begin
-  if not FItems.TryGetValue(AKey, V) then
-    FItems.Add(AKey, AValue)
-  else
-    if FComparer.Compare(AValue, V)<0 then
-      FItems.AddOrSetValue(AKey, AValue);
-end;
-
-function TMin<TKeyType, TValueType>.Get(const AKey: TKeyType; out AValue: TValueType): Boolean;
-begin
-  result := FItems.TryGetValue(AKey, AValue);
-end;
-
-function TMin<TKeyType, TValueType>.Get(const AKey: TKeyType): TValueType;
-begin
-  if not FItems.TryGetValue(AKey, Result) then
-    result := Default(TValueType);
-end;
-
-{ TMax<TKey, TValue> }
-
-constructor TMax<TKeyType, TValueType>.Create(const AComparer: IComparer<TValueType>);
-begin
-  inherited Create( TInvertedComparer<TValueType>.Create(AComparer) );
 end;
 
 { TInvertedComparer<TValue> }
@@ -1716,6 +1426,30 @@ begin
   end;
 end;
 
+class procedure TArrayUtils.StableSort<T>(var Dst: TArray<T>; StartIndex, Count: integer; Comparer: IComparer<T>);
+var
+  Idx: TArray<integer>;
+  Src,Tmp: TArray<T>;
+  I: Integer;
+begin
+  SetLength(Idx, Count);
+  for I := 0 to High(Idx) do
+    Idx[I] := I + StartIndex;
+  Src := Dst;
+  TArray.Sort<integer>(Idx, TDelegatedComparer<integer>.Create(
+    function(const A,B: integer): integer
+    begin
+      result := Comparer.Compare(Src[Idx[A]], Src[Idx[B]]);
+      if result=0 then
+        result := Idx[B]-Idx[A];
+    end));
+  SetLength(Tmp, Count);
+  for I := 0 to High(Tmp) do
+    Tmp[I] := Dst[Idx[I]];
+  for I := 0 to High(Tmp) do
+    Dst[I+StartIndex] := Tmp[I];
+end;
+
 { TListIndexed }
 
 constructor TListIndexed.Create;
@@ -2042,7 +1776,96 @@ begin
     Dst := StringToGuid(S);
 end;
 
+{ TStreamUtils.TReader }
+
+constructor TStreamUtils.TReader.Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
+begin
+  Stream := Src;
+  if AOwnsStream then
+    AutoFreeCollection.Add(Stream);
+  SetLength(Bytes, BufSize);
+  if not FromBeginning then
+    BytesToRead := Stream.Size - Stream.Position
+  else
+  begin
+    Stream.Position := 0;
+    BytesToRead := Stream.Size;
+  end;
+end;
+
+function TStreamUtils.TReader.ReadNext: Boolean;
+begin
+  Result := BytesToRead > 0;
+  if Result then
+  begin
+    Count := Min(BytesToRead, Length(Bytes));
+    Stream.ReadBuffer(Bytes,  Count);
+    Dec(BytesToRead, Count);
+  end
+  else
+  begin
+    SetLength(Bytes, 0);
+    Count := 0;
+  end;
+end;
+
 { TStreamUtils }
+
+class function TStreamUtils.Copy(Src, Dst: TStream; Count,BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64;
+var
+  N: Integer;
+  Buffer: TBytes;
+  LastOnProgressTime: TDateTime;
+  Cancel: Boolean;
+begin
+  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
+  { based on TStream.CopyFrom, but provides time-based callback ProgressProc }
+  Result := 0;
+  LastOnProgressTime := 0;
+  if Count <= 0 then
+  begin
+    Src.Position := 0;
+    Count := Src.Size;
+  end;
+  if BufSize=0 then
+    BufSize := 65536
+  else
+    BufSize := Max(BufSize, 4096);
+  SetLength(Buffer, BufSize);
+  Cancel := False;
+  if Assigned(ProgressProc) then
+  begin
+    ProgressProc(0, Cancel);
+    LastOnProgressTime := Now;
+  end;
+  while (Count <> 0) and not Cancel do
+  begin
+    N := Min(Count, BufSize);
+    Src.ReadBuffer(Buffer, N);
+    Dst.WriteBuffer(Buffer, N);
+    Dec(Count, N);
+    Inc(Result, N);
+    if Assigned(ProgressProc) and (MilliSecondsBetween(Now, LastOnProgressTime)>=50) then
+    begin
+      ProgressProc(Result, Cancel);
+      LastOnProgressTime := Now;
+    end;
+  end;
+  if Assigned(ProgressProc) then
+    ProgressProc(Result, Cancel);
+end;
+
+class function TStreamUtils.Copy(Src, Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64;
+begin
+  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
+  result := Copy(Src, Dst, 0,0,ProgressProc);
+end;
+
+class function TStreamUtils.Copy(Src, Dst: TStream): int64;
+begin
+  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
+  result := Copy(Src, Dst, 0,0,nil);
+end;
 
 class procedure TStreamUtils.StringToStream(const S: string; Dst: TStream; Encoding: TEncoding);
 var
@@ -2052,28 +1875,6 @@ begin
     Encoding := TEncoding.UTF8;
   B := Encoding.GetBytes(S);
   Dst.WriteBuffer(B[0], Length(B));
-end;
-
-{ TKeyUtils }
-
-{ converts ID string to value, acceptable as key in INI file for example }
-class function TKeyUtils.StringToKey(const AId: string; AFixedKeySize: Boolean): String;
-var
-  i: Integer;
-  TakeHash: Boolean;
-begin
-  TakeHash := AFixedKeySize or (Length(AId)>32); { we don't want too long keys }
-  if not TakeHash then
-    for i := Low(AId) to High(AId) do
-      if (Word(AId[i])>127) or not (AnsiChar(AId[i]) in KeyChars) then
-      begin
-        TakeHash := True;
-        break;
-      end;
-  if TakeHash then
-    result := THex.Encode(THash.Encode(AId))
-  else
-    result := AId;
 end;
 
 { TFileUtils }
@@ -2133,6 +1934,60 @@ begin
   end;
 end;
 
+class function TFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean;
+var
+  AutoFreeCollection: TAutoFreeCollection;
+  CI: TCopyFileInfo;
+  Src,Dst: TStream;
+begin
+  { check TVCLFileUtils.CopyFile if you don''t want UI to freeze until operation is complete }
+  try
+    Result := True;
+    Src := AutoFreeCollection.Add(TFileStream.Create(SrcFileName, fmOpenRead or fmShareDenyWrite));
+    Dst := AutoFreeCollection.Add(TFileStream.Create(DstFileName, fmCreate));
+    if not Assigned(ProgressProc) then
+      TStreamUtils.Copy(Src, Dst)
+    else
+    begin
+      CI.FileSize    := Src.Size;
+      CI.SrcFileName := SrcFileName;
+      CI.DstFileName := DstFileName;
+      TStreamUtils.Copy(Src, Dst,
+        procedure(const Transferred: int64; var Cancel: boolean)
+        begin
+          CI.Copied := Transferred;
+          ProgressProc(CI, Cancel);
+        end);
+    end;
+  except
+    on e: exception do
+    begin
+      Result := True;
+      ErrorMessage := Format('Can''t copy file "%s" to "%s": %s', [SrcFileName, DstFileName, SysErrorMessage(GetLastError)]);
+    end;
+  end;
+end;
+
+class function TFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string): boolean;
+begin
+  { check TVCLFileUtils.CopyFile if you don''t want UI to freeze until operation is complete }
+  result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
+end;
+
+class function TFileUtils.DeleteFile(const AFileName: string; out AErrorMessage: string): boolean;
+begin
+  result := System.SysUtils.DeleteFile(AFileName);
+  if not result then
+    AErrorMessage := Format('Can''t delete file "%s" (%s)', [AFileName, SysErrorMessage(GetLastError)]);
+end;
+
+class function TFileUtils.RenameFile(const ASrcFileName, ADstFileName: string; out AErrorMessage: string): boolean;
+begin
+  result := System.SysUtils.RenameFile(ASrcFileName, ADstFileName);
+  if not result then
+    AErrorMessage := Format('Can''t rename file "%s" to "%s" (%s)', [ASrcFileName, ADstFileName, SysErrorMessage(GetLastError)]);
+end;
+
 class procedure TFileUtils.EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile);
 var
   F: System.SysUtils.TSearchRec;
@@ -2185,6 +2040,37 @@ begin
       {$ENDIF}
     end;
   end;
+end;
+
+class function TFileUtils.Load(const FileName: string; var Dst: TArray<byte>; var ErrMsg: string): boolean;
+var
+  s: TFileStream;
+begin
+  try
+    result := FileExists(FileName);
+    s := TFileStream.Create(FileName, fmOpenRead);
+    try
+      SetLength(Dst, s.Size);
+      if Length(Dst)>0 then
+        s.ReadBuffer(Dst[0], Length(Dst));
+    finally
+      s.Free;
+    end;
+  except
+    on e: Exception do
+    begin
+      SetLength(Dst, 0);
+      ErrMsg := e.Message;
+      result := False;
+    end;
+  end;
+end;
+
+class function TFileUtils.Load(const FileName: string; var Dst: TArray<byte>): boolean;
+var
+  Msg: string;
+begin
+  result := Load(FileName, Dst, Msg);
 end;
 
 procedure FindOpenFiles(
@@ -2465,9 +2351,9 @@ end;
 
 { TCurrencyUtils }
 
-class function TCurrencyUtils.ToString(const Value: currency; Ore: boolean): string;
+class function TCurrencyUtils.ToString(const Value: currency; FractionalPart: boolean): string;
 begin
-  result := FormatCurr( IfThen(Ore, '#,##', '#,'), Value);
+  result := FormatCurr( IfThen(FractionalPart, '#,##', '#,'), Value);
 end;
 
 { TPIWriter }
@@ -2781,171 +2667,6 @@ begin
     result := TNullable<T>.Create(AValue^);
 end;
 
-{ TThreadSafe<T> }
-
-class function TThreadSafe<T>.Create: TThreadSafe<T>;
-begin
-  result := Create(Default(T));
-end;
-
-class function TThreadSafe<T>.Create(const AValue: T): TThreadSafe<T>;
-begin
-  result.FCriticalSection := result.FAutoFreeCollection.Add( TCriticalSection.Create );
-  result.FValue := AValue;
-end;
-
-function TThreadSafe<T>.GetComparer: IEqualityComparer<T>;
-begin
-  CriticalSection.Acquire;
-  try
-    if FComparer=nil then
-      FComparer := TEqualityComparer<T>.Default;
-    result := FComparer;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-class operator TThreadSafe<T>.Equal(const ALeft,
-  ARight: TThreadSafe<T>): Boolean;
-begin
-  Lock([ALeft,ARight]);
-  try
-    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight.FValue);
-  finally
-    Unlock([ALeft,ARight]);
-  end;
-end;
-
-class operator TThreadSafe<T>.Equal(const ALeft: TThreadSafe<T>;
-  const ARight: T): Boolean;
-begin
-  Lock([ALeft,ARight]);
-  try
-    Result := ALeft.Comparer.Equals(ALeft.FValue, ARight);
-  finally
-    Unlock([ALeft,ARight]);
-  end;
-end;
-
-function TThreadSafe<T>.GetValue: T;
-begin
-  CriticalSection.Acquire;
-  try
-    result := FValue;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetComparer(const Value: IEqualityComparer<T>);
-begin
-  CriticalSection.Acquire;
-  try
-    FComparer := Value;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetCopyProc(const Value: TCopyProc);
-begin
-  CriticalSection.Acquire;
-  try
-    FCopyProc := Value;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-procedure TThreadSafe<T>.SetValue(const AValue: T);
-begin
-  CriticalSection.Acquire;
-  try
-    FValue := AValue;
-  finally
-    CriticalSection.Leave;
-  end;
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: TThreadSafe<T>): T;
-begin
-  result := AValue.Value;
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: Variant): TThreadSafe<T>;
-begin
-  if VarIsClear(AValue) then
-    result := TThreadSafe<T>.Create
-  else
-    Result := TThreadSafe<T>.Create( TValue.FromVariant(AValue).AsType<T> );
-end;
-
-class operator TThreadSafe<T>.Implicit(const AValue: T): TThreadSafe<T>;
-begin
-  result.Value := AValue;
-end;
-
-class operator TThreadSafe<T>.NotEqual(const ALeft,
-  ARight: TThreadSafe<T>): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class operator TThreadSafe<T>.NotEqual(const ALeft: TThreadSafe<T>;
-  const ARight: T): Boolean;
-begin
-  result := not (ALeft=ARight);
-end;
-
-class procedure TThreadSafe<T>.GetSafeOrder(const AItems: array of TThreadSafe<T>;
-  var AIndex: TArray<integer>);
-var
-  Values: TArray<NativeUInt>;
-  Index: TArray<integer>;
-  i: Integer;
-begin
-  SetLength(Values, Length(AItems));
-  SetLength(Index, Length(AItems));
-  for i := 0 to High(Index) do
-  begin
-    Index[i] := i;
-    Values[i] := NativeUInt(AItems[i].FCriticalSection);
-  end;
-  TArray.Sort<integer>(Index, TDelegatedComparer<integer>.Create(
-    function(const L,R: integer): integer
-    begin
-      if Values[Index[L]]<Values[Index[R]] then
-        result := -1
-      else
-      if Values[Index[L]]>Values[Index[R]] then
-        result := 1
-      else
-        result := 0;
-    end));
-  AIndex := Index;
-end;
-
-class procedure TThreadSafe<T>.Lock(const A: array of TThreadSafe<T>);
-var
-  Index: TArray<integer>;
-  i: Integer;
-begin
-  GetSafeOrder(A, Index);
-  for i := 0 to High(A) do
-    A[Index[i]].FCriticalSection.Acquire;
-end;
-
-class procedure TThreadSafe<T>.Unlock(const A: array of TThreadSafe<T>);
-var
-  Index: TArray<integer>;
-  i: Integer;
-begin
-  GetSafeOrder(A, Index);
-  for i := 0 to High(A) do
-    A[Index[i]].FCriticalSection.Release;
-end;
-
 { TRLE }
 
 class function TRLE.MaxEncodedSize(ASrcSize: cardinal): cardinal;
@@ -3236,35 +2957,280 @@ end;
 
 { TComponentUtils }
 
-class function TComponentUtils.ForEachComponentBrk(AStart: TComponent; ACallback: TForEachComponentBreakProc):Boolean;
+class function TComponentUtils.ForEach(AStart: TComponent; ACallback: TComponentBrkProc): Boolean;
 var
   i: Integer;
 begin
-  result := False; // break
-  ACallback(AStart, result);
-  if not result then
+  if AStart<>nil then
+  begin
+
+    { check if canceled by callback function }
+    result := False;
+    ACallback(AStart, result);
+    if result then
+      Exit(False);
+
+    { check if any subsearch canceled }
     for i := AStart.ComponentCount-1 downto 0 do
-      if ForEachComponentBrk(AStart.Components[i], ACallback) then
-      begin
-        result := True;
-        break;
-      end;
+      if not ForEach(AStart.Components[i], ACallback) then
+        Exit(False);
+  end;
+  result := True;
 end;
 
-class procedure TComponentUtils.ForEachComponent(AStart: TComponent; ACallback: TForEachComponentBreakProc);
-begin
-  ForEachComponentBrk(AStart, ACallback);
-end;
-
-class procedure TComponentUtils.ForEachComponent(AStart: TComponent; ACallback: TProc<TComponent>);
+class procedure TComponentUtils.ForEach(AStart: TComponent; ACallback: TComponentProc);
 var
   i: Integer;
 begin
   if AStart=nil then
-    exit;
+    Exit;
   ACallback(AStart);
   for i := AStart.ComponentCount-1 downto 0 do
-    ForEachComponent(AStart.Components[i], ACallback);
+    ForEach(AStart.Components[i], ACallback);
+end;
+
+class function TComponentUtils.GetAll(AStart: TComponent): TArray<TComponent>;
+var
+  Dst: TArray<TComponent>;
+  Count: integer;
+begin
+  Count := 0;
+  SetLength(Dst, 1000);
+  ForEach(AStart,
+    procedure(C: TComponent)
+    begin
+      if Count>=Length(Dst) then
+        SetLength(Dst, Length(Dst)*2);
+      Dst[Count] := C;
+      inc(Count);
+    end);
+  SetLength(Dst, Count);
+  Result := Dst;
+end;
+
+{ THashHelperFunctions }
+
+class function THashHelperFunctions.HashToCardinal(const AHash: TBytes): Cardinal;
+begin
+  Assert(Length(AHash)=4);
+  result :=
+    (Cardinal(AHash[0]) shl 24) or
+    (Cardinal(AHash[1]) shl 16) or
+    (Cardinal(AHash[2]) shl  8) or
+    (Cardinal(AHash[3]));
+end;
+
+class function THashHelperFunctions.HashToInteger(const AHash: TBytes): Integer;
+begin
+  result := Integer(HashToCardinal(AHash));
+end;
+
+class function THashHelperFunctions.HashToString(const AHash: TBytes): string;
+begin
+  Result := THex.Encode(AHash);
+end;
+
+class function THashHelperFunctions.Mix(const HashA, HashB, HashC: integer): integer;
+begin
+  result := Mix(Mix(HashA, HashB), HashC);
+end;
+
+class function THashHelperFunctions.Mix(const HashA, HashB: integer): integer;
+begin
+  result := (HashA*1103515245 + 12345) xor HashB;
+end;
+
+{ TCustomHash }
+
+class function TCustomHash.Encode(const S: TBytes): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := Encode(S[Low(S)], length(S));
+end;
+
+class function TCustomHash.Encode(const S: string): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := Encode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := Encode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
+begin
+
+end;
+
+class function TCustomHash.Encode<T>(const Value: T): TBytes;
+begin
+  Result := Encode(Value, SizeOf(Value));
+end;
+
+class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
+var
+  S: TFileStream;
+begin
+  S := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
+  try
+    Result := Encode(S);
+  finally
+    S.Free;
+  end;
+end;
+
+class function TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
+begin
+  SetLength(Result, 4);
+  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
+end;
+
+{ TMD5 }
+
+class function THashes.MD5.Encode(const Buf; ByteBufSize: integer): TBytes;
+var
+  h: THashMD5;
+begin
+  try
+    h := THashMD5.Create;
+    h.Update(@Buf, ByteBufSize);
+    Result := h.HashAsBytes;
+  finally
+    h.Reset;
+  end;
+end;
+
+class function THashes.MD5.Encode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Hash: THashMD5;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Hash := THashMD5.Create;
+  try
+    while Reader.ReadNext do
+      Hash.Update(Reader.Bytes, Reader.Count);
+    Result := Hash.HashAsBytes;
+  finally
+    Hash.Reset;
+  end;
+end;
+
+{ THashes.SHA1 }
+
+class function THashes.SHA1.Encode(const Buf; ByteBufSize: integer): TBytes;
+var
+  h: THashSHA1;
+begin
+  try
+    h := THashSHA1.Create;
+    h.Update(@Buf, ByteBufSize);
+    Result := h.HashAsBytes;
+  finally
+    h.Reset;
+  end;
+end;
+
+class function THashes.SHA1.Encode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Hash: THashSHA1;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Hash := THashSHA1.Create;
+  try
+    while Reader.ReadNext do
+      Hash.Update(Reader.Bytes, Reader.Count);
+    Result := Hash.HashAsBytes;
+  finally
+    Hash.Reset;
+  end;
+end;
+
+{ THashes.CRC32 }
+
+class function THashes.CRC32.Encode(const Buf; ByteBufSize: integer): TBytes;
+var
+  Crc: Cardinal;
+begin
+  Crc := System.ZLib.crc32(0, nil, 0);
+  Crc := System.ZLib.crc32(Crc, @Buf, ByteBufSize);
+  Result := Hash32ToBytes(Crc);
+end;
+
+class function THashes.CRC32.Encode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Crc: Cardinal;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Crc := System.ZLib.crc32(0, nil, 0);
+  while Reader.ReadNext do
+    Crc := System.ZLib.crc32(Crc, @Reader.Bytes[0], Reader.Count);
+  Result := Hash32ToBytes(Crc);
+end;
+
+{ THashes.Adler32 }
+
+class function THashes.Adler32.Encode(const Buf; ByteBufSize: integer): TBytes;
+var
+  Crc: Cardinal;
+begin
+  Crc := System.ZLib.adler32(0, nil, 0);
+  Crc := System.ZLib.adler32(Crc, @Buf, ByteBufSize);
+  Result := Hash32ToBytes(Crc);
+end;
+
+class function THashes.Adler32.Encode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Crc: Cardinal;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Crc := System.ZLib.adler32(0, nil, 0);
+  while Reader.ReadNext do
+    Crc := System.ZLib.adler32(Crc, @Reader.Bytes[0], Reader.Count);
+  Result := Hash32ToBytes(Crc);
+end;
+
+{ THashes.BobJenkins32 }
+
+class function THashes.BobJenkins32.Encode(const Buf; ByteBufSize: integer): TBytes;
+var
+  h: THashBobJenkins;
+begin
+  try
+    h := THashBobJenkins.Create;
+    h.Update(@Buf, ByteBufSize);
+    Result := h.HashAsBytes;
+  finally
+    h.Reset;
+  end;
+end;
+
+class function THashes.BobJenkins32.Encode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Hash: THashBobJenkins;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Hash := THashBobJenkins.Create;
+  try
+    while Reader.ReadNext do
+      Hash.Update(Reader.Bytes, Reader.Count);
+    Result := Hash.HashAsBytes;
+  finally
+    Hash.Reset;
+  end;
 end;
 
 end.

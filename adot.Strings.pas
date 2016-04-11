@@ -92,9 +92,15 @@ type
     { moves all digits to end: 'a5.7b2012c' -> 'a.bc572012' }
     class function MoveDigitsToEnd(const s: string): String; static;
 
+    { AH: System.SysUtils.TextPos doesn't work for international characters ("Å", ...), seems there is no good solution in Delphi (XE5 at least).
+      Case insensitive, indexed from zero. }
+    class function TextPosition(const ASubStr, AText: string; AOffset: integer = 0): Integer; static;
+
     { file operations }
     class function Load(Src: TStream): string; overload; static;
     class function Load(const FileName: string): string; overload; static;
+    class procedure Save(Dst: TStream; const S: string); overload; static;
+    class procedure Save(const FileName: string; const S: string); overload; static;
 
     { set-string }
     class function CharsCount(const AChars: TAnsiChars): integer;
@@ -332,6 +338,8 @@ type
   public
     constructor Create(AText: PChar; ATextLen: integer); override;
     constructor Create(const AText: string); override;
+
+    procedure Reset(const AText: string); overload;
   end;
 
   { Use custom function to extract specific tokens from the text }
@@ -1007,12 +1015,43 @@ begin
   end;
 end;
 
+class procedure TStr.Save(Dst: TStream; const S: string);
+var
+  L: TStringList;
+begin
+  L := TStringList.Create;
+  try
+    L.Text := S;;
+    L.SaveToStream(Dst);
+  finally
+    L.Free;
+  end;
+end;
+
+class procedure TStr.Save(const FileName: string; const S: string);
+var
+  L: TStringList;
+begin
+  L := TStringList.Create;
+  try
+    L.Text := S;
+    L.SaveToFile(FileName);
+  finally
+    L.Free;
+  end;
+end;
+
 class function TStr.TextDistance(const a, b: string; StrDistType: TTextDistance): integer;
 begin
   case StrDistType of
     tdLevenstein: result := LevensteinDistance(a,b);
     else raise Exception.Create('Error');
   end;
+end;
+
+class function TStr.TextPosition(const ASubStr, AText: string; AOffset: integer): Integer;
+begin
+  Result := AText.ToUpper.IndexOf(ASubStr.ToUpper, AOffset);
 end;
 
 class function TStr.RandomString(ALen: integer; AFrom, ATo: Char): string;
@@ -1959,6 +1998,11 @@ end;
 constructor TTokCustomText.Create(const AText: string);
 begin
   inherited;
+  Reset(AText);
+end;
+
+procedure TTokCustomText.Reset(const AText: string);
+begin
   FTextStorage := AText;
   FText        := PChar(FTextStorage);
   FTextLen     := Length(FTextStorage);

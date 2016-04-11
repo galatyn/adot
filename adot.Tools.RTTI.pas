@@ -26,6 +26,8 @@ type
         Create(AOwner: TComponent)
         Create(Owner: TComponent) }
     class function CreateInstance<T: class>: T; static;
+
+    class function FromVariant<T>(const Src: Variant): T; static;
   end;
 
   { Simple convertion EnumType->string->EnumType etc.
@@ -119,6 +121,11 @@ begin
 
   // Should never happend, because TObject has "Create()".
   raise Exception.Create('Default constructor is not found');
+end;
+
+class function TRttiUtils.FromVariant<T>(const Src: Variant): T;
+begin
+  result := TValue.FromVariant(Src).AsType<T>;
 end;
 
 class function TRttiUtils.IsInstance<T>: boolean;

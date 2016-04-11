@@ -1338,9 +1338,7 @@ end;
 
 function TCompoundEqualityComparer<TypeA, TypeB>.GetHashCode(const Value: TCompound<TypeA, TypeB>): Integer;
 begin
-  result :=
-    FComparerA.GetHashCode(Value.A) xor
-    FComparerB.GetHashCode(Value.B);
+  result := THashes.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
 end;
 
 { TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
@@ -1395,10 +1393,7 @@ end;
 function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.GetHashCode(
   const Value: TCompound<TypeA, TypeB, TYpeC>): Integer;
 begin
-  result :=
-    FComparerA.GetHashCode(Value.A) xor
-    FComparerB.GetHashCode(Value.B) xor
-    FComparerC.GetHashCode(Value.C);
+  result := THashes.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B), FComparerC.GetHashCode(Value.C));
 end;
 
 { TCompoundComparer<TypeA, TypeB> }
@@ -2292,7 +2287,7 @@ end;
 function TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
   const Value: TMultimapKey): Integer;
 begin
-  result := FKeyComparer.GetHashCode(Value.Key) xor Value.Number;
+  result := THashes.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
 end;
 
 { TMultimapClass<TKey, TValue>.TPairEnumerator }
