@@ -340,6 +340,8 @@ type
     constructor Create(const AText: string); override;
 
     procedure Reset(const AText: string); overload;
+    procedure Reset(const AText: string; AStart,ALen: integer); overload;
+    procedure Reset(const AText: PChar; ALen: integer); overload;
   end;
 
   { Use custom function to extract specific tokens from the text }
@@ -2006,6 +2008,22 @@ begin
   FTextStorage := AText;
   FText        := PChar(FTextStorage);
   FTextLen     := Length(FTextStorage);
+  Reset;
+end;
+
+procedure TTokCustomText.Reset(const AText: string; AStart, ALen: integer);
+begin
+  FTextStorage := AText;
+  FText        := @FTextStorage[AStart + Low(FTextStorage)];
+  FTextLen     := ALen;
+  Reset;
+end;
+
+procedure TTokCustomText.Reset(const AText: PChar; ALen: integer);
+begin
+  FTextStorage := '';
+  FText        := AText;
+  FTextLen     := ALen;
   Reset;
 end;
 
