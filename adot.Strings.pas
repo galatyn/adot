@@ -25,8 +25,9 @@ unit adot.Strings;
 interface
 
 uses
-  adot.Tools, { min3 etc }
   adot.Types,
+  adot.Tools, { min3 etc }
+  adot.Collections, { TVector etc }
   System.Character,
   System.Math,
   System.SysUtils,
@@ -531,29 +532,46 @@ type
     property Words[const APos: TWordPosRec]: string read GetSubStr; default;
   end;
 
-  TStringStorage = class
-  private
-    function GetDataString: string;
-    procedure SetDataString(const Value: string);
-    function GetAsInteger(AName: string): Integer;
-    procedure SetAsInteger(AName: string; const Value: Integer);
-    function GetAsBoolean(AName: string): Boolean;
-    procedure SetAsBoolean(AName: string; const Value: Boolean);
-    function GetValue(AName: string): string;
-    procedure SetValue(AName: string; const Value: string);
-  protected
-    FData: TStringList;
-    procedure SetDefaults; virtual;
+  { All edit operations are independent:
+    - any edit instruction doesn't affect following instructions
+    - any edit instruction is not affected by previous instructions }
+  TStringModifications = record
   public
-    constructor Create;
-    destructor Destroy; override;
-    procedure Assign(Source: TStringStorage);
-    procedure Clear; virtual;
-    property AsInteger[AName: string]: Integer read GetAsInteger write SetAsInteger;
-    property AsString[AName: string]: string read GetValue write SetValue;
-    property AsBoolean[AName: string]: Boolean read GetAsBoolean write SetAsBoolean;
-    property Values[AName: string]: string read GetValue write SetValue;
-    property DataString: string read GetDataString write SetDataString;
+    type
+      TInstrType = (itUnknown, itDelete, itInsert, itReplace);
+      TInstr = record
+        InstrType: TInstrType;
+        SrcText: string;
+        SrcPos: TTokenPos;
+        DstPos: TTokenPos;
+        Order: integer;
+
+        procedure Clear;
+      end;
+
+  private
+    procedure Add(const Instr: TInstr);
+
+  public
+    Instructions: TVector<TInstr>;
+
+    procedure Clear;
+    procedure Sort;
+
+    procedure Delete(Pos,Len: integer); overload;
+    procedure Delete(const Pos: TTokenPos); overload;
+    procedure Delete(Pos: integer); overload;
+
+    procedure Insert(Pos: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
+    procedure Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos); overload;
+    procedure Insert(Pos: integer; const Substr: string); overload;
+
+    procedure Replace(Pos,Len: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
+    procedure Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos); overload;
+    procedure Replace(Pos,Len: integer; const Substr: string); overload;
+    procedure Replace(const Pos: TTokenPos; const Substr: string); overload;
+
+    function Apply(const Src: string): string;
   end;
 
 implementation
@@ -1226,89 +1244,6 @@ var
 begin
   w := TTextWords.Create(AText, AIsAlphaPredicate);
   w.Get(ADst);
-end;
-
-{ TStringStorage }
-
-procedure TStringStorage.Assign(Source: TStringStorage);
-var
-  I: Integer;
-begin
-  if Assigned(Source) then
-  begin
-    FData.Clear;
-//    FData.Assign(Source.FData);
-
-    //Remove possible duplicates and data corruption
-    for I := 0 to Source.FData.Count-1 do
-      FData.Values[Source.FData.Names[I]] := Source.FData.ValueFromIndex[I];
-  end;
-
-  SetDefaults;
-
-  inherited;
-end;
-
-procedure TStringStorage.Clear;
-begin
-  DataString := '';
-end;
-
-constructor TStringStorage.Create;
-begin
-  inherited;
-  FData := TStringList.Create;
-end;
-
-destructor TStringStorage.Destroy;
-begin
-  FreeAndNil(FData);
-end;
-
-function TStringStorage.GetAsBoolean(AName: string): Boolean;
-begin
-  Result := TIfThen.Get(Values[AName] = '1', True, False);
-end;
-
-function TStringStorage.GetAsInteger(AName: string): Integer;
-begin
-  Result := StrToIntDef(Values[AName], 0);
-end;
-
-function TStringStorage.GetDataString: string;
-begin
-  Result := FData.Text;
-end;
-
-function TStringStorage.GetValue(AName: string): string;
-begin
-  Result := ReplaceStr(FData.Values[AName], #127, #13#10);
-end;
-
-procedure TStringStorage.SetAsBoolean(AName: string; const Value: Boolean);
-begin
-  Values[AName] := IfThen(Value, '1', '0');
-end;
-
-procedure TStringStorage.SetAsInteger(AName: string; const Value: Integer);
-begin
-  Values[AName] := IntToStr(Value);
-end;
-
-procedure TStringStorage.SetDataString(const Value: string);
-begin
-  FData.Text := Value;
-  SetDefaults;
-end;
-
-procedure TStringStorage.SetDefaults;
-begin
-  //
-end;
-
-procedure TStringStorage.SetValue(AName: string; const Value: string);
-begin
-  FData.Values[AName] := ReplaceStr(Value, #13#10, #127);
 end;
 
 { TTokenPos }
@@ -2700,6 +2635,191 @@ begin
 
   FTokenType := TPasTokenType.Unknown;
   Res.Len := 1;
+end;
+
+{ TStringModifications.TInstr }
+
+procedure TStringModifications.TInstr.Clear;
+begin
+  InstrType    := itUnknown;
+  SrcText      := '';
+  SrcPos.Start := 0;
+  SrcPos.Len   := 0;
+  DstPos.Start := 0;
+  DstPos.Len   := 0;
+end;
+
+{ TStringModifications }
+
+procedure TStringModifications.Clear;
+begin
+  Instructions.Clear;
+  Instructions.TrimExcess;
+end;
+
+procedure TStringModifications.Add(const Instr: TInstr);
+var
+  I: Integer;
+begin
+  I := Instructions.Add(Instr);
+  Instructions.Items[I].Order := I;
+end;
+
+procedure TStringModifications.Delete(const Pos: TTokenPos);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType := itDelete;
+  r.DstPos    := Pos;
+  Add(r);
+end;
+
+procedure TStringModifications.Delete(Pos, Len: integer);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType    := itDelete;
+  r.DstPos.Start := Pos;
+  r.DstPos.Len   := Len;
+  Add(r);
+end;
+
+procedure TStringModifications.Delete(Pos: integer);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType    := itDelete;
+  r.DstPos.Start := Pos;
+  r.DstPos.Len   := 1;
+  Add(r);
+end;
+
+procedure TStringModifications.Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType    := itInsert;
+  r.SrcText      := Substr;
+  r.SrcPos       := SubStrPos;
+  r.DstPos.Start := Pos;
+  Add(r);
+end;
+
+procedure TStringModifications.Insert(Pos: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType    := itInsert;
+  r.SrcText      := Substr;
+  r.SrcPos.Start := SubStrOffset;
+  r.SrcPos.Len   := SubStrLen;
+  r.DstPos.Start := Pos;
+  Add(r);
+end;
+
+procedure TStringModifications.Insert(Pos: integer; const Substr: string);
+var
+  r: TInstr;
+begin
+  r.Clear;
+  r.InstrType    := itInsert;
+  r.SrcText      := Substr;
+  r.SrcPos.Start := 0;
+  r.SrcPos.Len   := Length(Substr);
+  r.DstPos.Start := Pos;
+  Add(r);
+end;
+
+procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string);
+begin
+  Delete(Pos);
+  Insert(Pos.Start, Substr);
+end;
+
+procedure TStringModifications.Replace(Pos, Len: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+begin
+  Delete(Pos, Len);
+  Insert(Pos, Substr, SubStrOffset, SubStrLen);
+end;
+
+procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos);
+begin
+  Delete(Pos);
+  Insert(Pos.Start, Substr, SubStrPos);
+end;
+
+procedure TStringModifications.Replace(Pos, Len: integer; const Substr: string);
+begin
+  Delete(Pos, Len);
+  Insert(Pos, Substr);
+end;
+
+procedure TStringModifications.Sort;
+begin
+  TArray.Sort<TInstr>(Instructions.Items, TDelegatedComparer<TInstr>.Create(
+    function(const A,B: TInstr): integer
+    begin
+      result := A.DstPos.Start-B.DstPos.Start;
+      if result=0 then
+        result := A.Order-B.Order;
+    end));
+end;
+
+function TStringModifications.Apply(const Src: string): string;
+var
+  I,J,L,N: Integer;
+  Instr: TInstr;
+  Stream: TMemoryStream;
+begin
+  Stream := TMemoryStream.Create.Create;
+  try
+    Sort;
+    I := 0;
+    J := 0;
+    L := Length(Src);
+    while (I<=L) and (J<Instructions.Count) and (Instructions[J].DstPos.Start<=L) do
+    begin
+      Instr := Instructions.Items[J];
+      inc(J);
+      case Instr.InstrType of
+        itDelete:
+          begin
+            if Instr.DstPos.Start > I then
+            begin
+              N := Min(Instr.DstPos.Start, L);
+              if I<L then
+                Stream.WriteBuffer(Src[I+Low(Src)], (N-I)*SizeOf(Char));
+              I := Max(I, Instr.DstPos.Start + Instr.DstPos.Len);
+            end;
+
+            if I<L then
+              Stream.WriteBuffer(Src[I+Low(Src)], (Instr.DstPos.Start - I)*SizeOf(Char));
+            I := Max(I, Instr.DstPos.Start + Instr.DstPos.Len);
+          end;
+        itInsert:
+          begin
+            if I<L then
+              Stream.WriteBuffer(Src[I+Low(Src)], (Instr.DstPos.Start - I)*SizeOf(Char));
+            Stream.WriteBuffer(Instr.SrcText[Instr.SrcPos.Start+Low(Instr.SrcText)], Instr.SrcPos.Len*SizeOf(Char));
+            I := Max(I, Instr.DstPos.Start);
+          end;
+        else raise Exception.Create('Error');
+      end;
+    end;
+    if I<L then
+      Stream.WriteBuffer(Src[I+Low(Src)], (Length(Src)-I)*SizeOf(Char));
+    Assert(Stream.Size mod SizeOf(Char)=0);
+    SetLength(result, Stream.Size div SizeOf(Char));
+    if result<>'' then
+      System.Move(Stream.Memory^, result[Low(result)], Stream.Size);
+  finally
+    Stream.Free;
+  end;
 end;
 
 end.
