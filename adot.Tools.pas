@@ -1341,7 +1341,7 @@ begin
   if ValMaxLen <= 0 then
     ValMaxLen := 10;
   for i := 0 to High(Dst) do
-    Dst[i] := TStr.RandomString(Random(ValMaxLen), 'a','z');
+    Dst[i] := TStr.Random(System.Random(ValMaxLen), 'a','z');
 end;
 
 class procedure TArrayUtils.FillRandom(var Dst: TArray<double>; Count: integer; AValRangeFrom, AValRangeTo: double);

@@ -1,4 +1,4 @@
-unit adot.Strings;
+ï»¿unit adot.Strings;
 {
   TStr - set of functions for strings
   TTokAbstract - abstract class for tokenizers (set of methods to be implemented by descendants)
@@ -39,65 +39,66 @@ uses
 type
   TTextDistance = (tdLevenstein);
   TSimilarityOption = (
-    soStrictNumMatching, // [soStrictNumMatching] -> "Beløp 1200.40"<>"Beløp 7200.40" (1 char diff, but numbers are different)
-    soStrictIntMatching, // [soStrictIntMatching] -> "År 2014"<>"År 2013" (1 char diff, but int numbers are different)
-    soIgnoreNums,        // [soIgnoreNums]        -> "Beløp 999000.50"="Beløp 12" (9 chars diff, but all numbers ignored)
-    soIgnoreInts,        // [soIgnoreInts]        -> "År 1999"="År 2014" (4 chars diff, but all int numbers ignored)
+    soStrictNumMatching, // [soStrictNumMatching] -> "BelÑˆp 1200.40"<>"BelÑˆp 7200.40" (1 char diff, but numbers are different)
+    soStrictIntMatching, // [soStrictIntMatching] -> "Ð•r 2014"<>"Ð•r 2013" (1 char diff, but int numbers are different)
+    soIgnoreNums,        // [soIgnoreNums]        -> "BelÑˆp 999000.50"="BelÑˆp 12" (9 chars diff, but all numbers ignored)
+    soIgnoreInts,        // [soIgnoreInts]        -> "Ð•r 1999"="Ð•r 2014" (4 chars diff, but all int numbers ignored)
     soMatchSubst         // [soMatchSubst]        -> "hap"="New year happens every year" (big diff, but "hap" is substring)
   );
   TSimilarityOptions = set of TSimilarityOption;
   TAnsiChars = set of AnsiChar;
 
   TStr = class
+  public
+    type
+      TExtractType = (
+        etNumbers,     { keep numbers only   : 'a5.7b2012c 12,9' -> '5.7 2012 12,9' }
+        etNotNumbers,  { remove numbers      : 'a5.7b2012c' -> 'abc'                }
+        etDigits,      { keep digits only    : 'a5.7b2012c' -> '572012'             }
+        etNotDigits,   { remove digits       : 'a5.7b2012c' -> 'a.bc'               }
+        etDigitsToEnd  { group digits at end : 'a5.7b2012c' -> 'a.bc572012'         }
+      );
+
   private
     class function LevensteinDistance(s, t: string): integer; static;
     class function SubstringDistance(const a, b: String; var Dist: integer): Boolean; static;
+
+    class function GetNumbers(const s: string): String; static;
+    class function RemoveNumbers(const s: string): String; static;
+    class function GetDigits(const s: string): String; static;
+    class function RemoveDigits(const s: string): String; static;
+    class function MoveDigitsToEnd(const s: string): String; static;
 
   public
 
     { concatanate not empty values from Src }
     class function Concat(const Src: array of string; Delimeter: string = ' '): string; overload; static;
-
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
+    { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
     class function SameText(const A: string; const B: array of string): Boolean; overload;
 
+    { based on TTokLines }
     class procedure TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True); overload; static;
     class procedure TextToLines(const Text: string; out Dst: TArray<string>); overload; static;
     class procedure TextToLines(const Text: string; Delim: Char; out Dst: TArray<string>); overload; static;
 
+    { similarity }
     class function TextDistance(const a,b: string; StrDistType: TTextDistance = tdLevenstein): integer; static;
-
     class function SimilarStrings(A,B: String; var dist: integer; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean; overload; static;
     class function SimilarStrings(A,B: String; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean; overload; static;
-
     { unlike SimilarStrings this function will try to match AQuery with every word of AText (min dist selected) }
     class function SimilarWordInText(const AWord, AText: String; var dist: integer; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean; static;
 
-    { Numbers }
+    { extract numbers/digits etc }
+    class function Extract(InfoType: TExtractType; const s: string): String; static;
 
-    { remove everything except numbers: 'a5.7b2012c 12,9' -> '5.7 2012 12,9' }
-    class function GetNumbers(const s: string): String; static;
-
-    { remove all numbers: 'a5.7b2012c' -> 'abc' }
-    class function RemoveNumbers(const s: string): String; static;
-
-    { remove everything except digits: 'a5.7b2012c' -> '572012' }
-    class function GetDigits(const s: string): String; static;
-
-    { remove all digits: 'a5.7b2012c' -> 'a.bc' }
-    class function RemoveDigits(const s: string): String; static;
-
-    { moves all digits to end: 'a5.7b2012c' -> 'a.bc572012' }
-    class function MoveDigitsToEnd(const s: string): String; static;
-
-    { AH: System.SysUtils.TextPos doesn't work for international characters ("Å", ...), seems there is no good solution in Delphi (XE5 at least).
-      Case insensitive, indexed from zero. }
+    { System.SysUtils.TextPos doesn't work with international chars "Ã†","Ã…" etc (XE5 at least). }
     class function TextPosition(const ASubStr, AText: string; AOffset: integer = 0): Integer; static;
 
-    { file operations }
+    { file-string }
     class function Load(Src: TStream; Encoding: TEncoding = nil): string; overload; static;
     class function Load(const FileName: string; Encoding: TEncoding = nil): string; overload; static;
     class procedure Save(Dst: TStream; const S: string; Encoding: TEncoding = nil); overload; static;
@@ -109,10 +110,10 @@ type
     class function StringToSet(const s: string): TAnsiChars;
 
     { randomization }
-    class function RandomString(ALen: integer; const AChars: TAnsiChars): string; overload;
-    class function RandomString(ALen: integer; const AChars: string): string; overload;
-    class function RandomString(ALen: integer): string; overload;
-    class function RandomString(ALen: integer; AFrom,ATo: Char): string; overload;
+    class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
+    class function Random(ALen: integer; const AChars: string): string; overload;
+    class function Random(ALen: integer): string; overload;
+    class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
   end;
 
   { Position of token in the text. Starts from zero. }
@@ -120,8 +121,8 @@ type
   public
     Start, Len: Integer;
 
-    class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between }
-    class operator Add(const A,B: TTokenPos): TTokenPos; { "merge" into one token }
+    class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
+    class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
   end;
 
   { Internal structure to describe the token just found by tokenizer.
@@ -325,7 +326,7 @@ type
     procedure Reset(const AText: PChar; ALen: integer); overload;
   end;
 
-  { Use custom function to extract specific tokens from the text }
+  { custom function to extract specific tokens from the text }
   TTokDelegated = class(TTokCustomText)
   public
     type
@@ -532,33 +533,33 @@ type
     property Words[const APos: TWordPosRec]: string read GetSubStr; default;
   end;
 
-  { All edit operations are independent:
-    - any edit instruction doesn't affect following instructions
-    - any edit instruction is not affected by previous instructions }
+  { List of string edit commands (insert/delete/replace). Can be applied to any string.
+    Any operation is applied to initial text (without changes made by other commands). }
   TStringModifications = record
-  public
+  private
     type
-      TInstrType = (itUnknown, itDelete, itInsert, itReplace);
-      TInstr = record
-        InstrType: TInstrType;
-        SrcText: string;
-        SrcPos: TTokenPos;
-        DstPos: TTokenPos;
-        Order: integer;
+      { we translate all comands to sequence of "replace" }
+      TReplace = record
+        SrcText : string;
+        SrcPos  : TTokenPos;
+        DstPos  : TTokenPos;
+        Order   : integer;
 
         procedure Clear;
       end;
+      PReplace = ^TReplace;
 
-  private
-    procedure Add(const Instr: TInstr);
+    var
+      Instructions: TVector<TReplace>;
 
-  public
-    Instructions: TVector<TInstr>;
-
-    procedure Clear;
+    procedure Add(const Instr: TReplace);
     procedure Sort;
 
-    procedure Delete(Pos,Len: integer); overload;
+  public
+
+    procedure Clear;
+
+    procedure Delete(Start,Len: integer); overload;
     procedure Delete(const Pos: TTokenPos); overload;
     procedure Delete(Pos: integer); overload;
 
@@ -566,11 +567,12 @@ type
     procedure Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos); overload;
     procedure Insert(Pos: integer; const Substr: string); overload;
 
-    procedure Replace(Pos,Len: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
+    procedure Replace(Start,Len: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
     procedure Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos); overload;
-    procedure Replace(Pos,Len: integer; const Substr: string); overload;
+    procedure Replace(Start,Len: integer; const Substr: string); overload;
     procedure Replace(const Pos: TTokenPos; const Substr: string); overload;
 
+    { Apply all commands to string Src and get result }
     function Apply(const Src: string): string;
   end;
 
@@ -607,6 +609,18 @@ begin
       end
       else
         result := result + Delimeter + Src[i];
+end;
+
+class function TStr.Extract(InfoType: TExtractType; const s: string): String;
+begin
+  case InfoType of
+    etNumbers     : result := GetNumbers(s);
+    etNotNumbers  : result := RemoveNumbers(s);
+    etDigits      : result := GetDigits(s);
+    etNotDigits   : result := RemoveDigits(s);
+    etDigitsToEnd : result := MoveDigitsToEnd(s);
+    else raise Exception.Create('Error');
+  end;
 end;
 
 class function TStr.SameText(const A, B: string): Boolean;
@@ -646,24 +660,24 @@ begin
   end;
 end;
 
-class function TStr.RandomString(ALen: integer; const AChars: string): string;
+class function TStr.Random(ALen: integer; const AChars: string): string;
 var
   I,J: Integer;
 begin
   J := Length(AChars);
   setlength(result, ALen);
   for I := Low(result) to High(result) do
-    result[I] := AChars[Low(AChars)+Random(J)];
+    result[I] := AChars[Low(AChars)+System.Random(J)];
 end;
 
-class function TStr.RandomString(ALen: integer; const AChars: TAnsiChars): string;
+class function TStr.Random(ALen: integer; const AChars: TAnsiChars): string;
 begin
-  result := RandomString(ALen, SetToString(AChars));
+  result := Random(ALen, SetToString(AChars));
 end;
 
-class function TStr.RandomString(ALen: integer): string;
+class function TStr.Random(ALen: integer): string;
 begin
-  result := RandomString(ALen, ['a'..'z','0'..'9']);
+  result := Random(ALen, ['a'..'z','0'..'9']);
 end;
 
 class function TStr.RemoveDigits(const s: string): String;
@@ -841,7 +855,7 @@ begin
   then
     Exit;
 
-  { ignore numbers, so "Beløp 12.6 NOK" = "Beløp 5 NOK" }
+  { ignore numbers, so "BelÑˆp 12.6 NOK" = "BelÑˆp 5 NOK" }
   if soIgnoreNums in AOptions then
   begin
     a := RemoveNumbers(a);
@@ -1053,7 +1067,7 @@ begin
   Result := AText.ToUpper.IndexOf(ASubStr.ToUpper, AOffset);
 end;
 
-class function TStr.RandomString(ALen: integer; AFrom, ATo: Char): string;
+class function TStr.Random(ALen: integer; AFrom, ATo: Char): string;
 var
   i: Integer;
 begin
@@ -1061,7 +1075,7 @@ begin
   for i := Low(result) to High(result) do
     result[i] := Char(
       Integer(AFrom) +
-      Random(Integer(ATo)-Integer(AFrom)+1)
+      System.Random(Integer(ATo)-Integer(AFrom)+1)
     );
 end;
 
@@ -2639,9 +2653,8 @@ end;
 
 { TStringModifications.TInstr }
 
-procedure TStringModifications.TInstr.Clear;
+procedure TStringModifications.TReplace.Clear;
 begin
-  InstrType    := itUnknown;
   SrcText      := '';
   SrcPos.Start := 0;
   SrcPos.Len   := 0;
@@ -2657,7 +2670,7 @@ begin
   Instructions.TrimExcess;
 end;
 
-procedure TStringModifications.Add(const Instr: TInstr);
+procedure TStringModifications.Add(const Instr: TReplace);
 var
   I: Integer;
 begin
@@ -2667,31 +2680,28 @@ end;
 
 procedure TStringModifications.Delete(const Pos: TTokenPos);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType := itDelete;
-  r.DstPos    := Pos;
+  r.DstPos := Pos;
   Add(r);
 end;
 
-procedure TStringModifications.Delete(Pos, Len: integer);
+procedure TStringModifications.Delete(Start, Len: integer);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType    := itDelete;
-  r.DstPos.Start := Pos;
+  r.DstPos.Start := Start;
   r.DstPos.Len   := Len;
   Add(r);
 end;
 
 procedure TStringModifications.Delete(Pos: integer);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType    := itDelete;
   r.DstPos.Start := Pos;
   r.DstPos.Len   := 1;
   Add(r);
@@ -2699,10 +2709,9 @@ end;
 
 procedure TStringModifications.Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType    := itInsert;
   r.SrcText      := Substr;
   r.SrcPos       := SubStrPos;
   r.DstPos.Start := Pos;
@@ -2711,10 +2720,9 @@ end;
 
 procedure TStringModifications.Insert(Pos: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType    := itInsert;
   r.SrcText      := Substr;
   r.SrcPos.Start := SubStrOffset;
   r.SrcPos.Len   := SubStrLen;
@@ -2724,10 +2732,9 @@ end;
 
 procedure TStringModifications.Insert(Pos: integer; const Substr: string);
 var
-  r: TInstr;
+  r: TReplace;
 begin
   r.Clear;
-  r.InstrType    := itInsert;
   r.SrcText      := Substr;
   r.SrcPos.Start := 0;
   r.SrcPos.Len   := Length(Substr);
@@ -2736,33 +2743,58 @@ begin
 end;
 
 procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string);
+var
+  r: TReplace;
 begin
-  Delete(Pos);
-  Insert(Pos.Start, Substr);
+  r.Clear;
+  r.SrcText      := Substr;
+  r.SrcPos.Start := 0;
+  r.SrcPos.Len   := Length(Substr);
+  r.DstPos       := Pos;
+  Add(r);
 end;
 
-procedure TStringModifications.Replace(Pos, Len: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+procedure TStringModifications.Replace(Start, Len: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+var
+  r: TReplace;
 begin
-  Delete(Pos, Len);
-  Insert(Pos, Substr, SubStrOffset, SubStrLen);
+  r.Clear;
+  r.SrcText      := Substr;
+  r.SrcPos.Start := SubStrOffset;
+  r.SrcPos.Len   := SubStrLen;
+  r.DstPos.Start := Start;
+  r.DstPos.Len   := Len;
+  Add(r);
 end;
 
 procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos);
+var
+  r: TReplace;
 begin
-  Delete(Pos);
-  Insert(Pos.Start, Substr, SubStrPos);
+  r.Clear;
+  r.SrcText := Substr;
+  r.SrcPos  := SubStrPos;
+  r.DstPos  := Pos;
+  Add(r);
 end;
 
-procedure TStringModifications.Replace(Pos, Len: integer; const Substr: string);
+procedure TStringModifications.Replace(Start, Len: integer; const Substr: string);
+var
+  r: TReplace;
 begin
-  Delete(Pos, Len);
-  Insert(Pos, Substr);
+  r.Clear;
+  r.SrcText      := Substr;
+  r.SrcPos.Start := 0;
+  r.SrcPos.Len   := Length(Substr);
+  r.DstPos.Start := Start;
+  r.DstPos.Len   := Len;
+  Add(r);
 end;
 
 procedure TStringModifications.Sort;
 begin
-  TArray.Sort<TInstr>(Instructions.Items, TDelegatedComparer<TInstr>.Create(
-    function(const A,B: TInstr): integer
+  TArray.Sort<TReplace>(Instructions.Items, TDelegatedComparer<TReplace>.Create(
+    function(const A,B: TReplace): integer
     begin
       result := A.DstPos.Start-B.DstPos.Start;
       if result=0 then
@@ -2772,47 +2804,28 @@ end;
 
 function TStringModifications.Apply(const Src: string): string;
 var
-  I,J,L,N: Integer;
-  Instr: TInstr;
+  L,I,SrcPos: Integer;
+  P: PReplace;
   Stream: TMemoryStream;
 begin
   Stream := TMemoryStream.Create.Create;
   try
     Sort;
-    I := 0;
-    J := 0;
+    SrcPos := 0;
     L := Length(Src);
-    while (I<=L) and (J<Instructions.Count) and (Instructions[J].DstPos.Start<=L) do
+    for I := 0 to Instructions.Count-1 do
     begin
-      Instr := Instructions.Items[J];
-      inc(J);
-      case Instr.InstrType of
-        itDelete:
-          begin
-            if Instr.DstPos.Start > I then
-            begin
-              N := Min(Instr.DstPos.Start, L);
-              if I<L then
-                Stream.WriteBuffer(Src[I+Low(Src)], (N-I)*SizeOf(Char));
-              I := Max(I, Instr.DstPos.Start + Instr.DstPos.Len);
-            end;
-
-            if I<L then
-              Stream.WriteBuffer(Src[I+Low(Src)], (Instr.DstPos.Start - I)*SizeOf(Char));
-            I := Max(I, Instr.DstPos.Start + Instr.DstPos.Len);
-          end;
-        itInsert:
-          begin
-            if I<L then
-              Stream.WriteBuffer(Src[I+Low(Src)], (Instr.DstPos.Start - I)*SizeOf(Char));
-            Stream.WriteBuffer(Instr.SrcText[Instr.SrcPos.Start+Low(Instr.SrcText)], Instr.SrcPos.Len*SizeOf(Char));
-            I := Max(I, Instr.DstPos.Start);
-          end;
-        else raise Exception.Create('Error');
-      end;
+      P := @Instructions.Items[I];
+      if P.DstPos.Start > L then
+        Break;
+      if P.DstPos.Start > SrcPos then
+        Stream.WriteBuffer(Src[SrcPos+Low(Src)], (P.DstPos.Start-SrcPos)*SizeOf(Char));
+      if P.SrcPos.Len > 0 then
+        Stream.WriteBuffer(P.SrcText[P.SrcPos.Start+Low(P.SrcText)], P.SrcPos.Len*SizeOf(Char));
+      SrcPos := Min(Max(P.DstPos.Start + P.DstPos.Len, SrcPos), L);
     end;
-    if I<L then
-      Stream.WriteBuffer(Src[I+Low(Src)], (Length(Src)-I)*SizeOf(Char));
+    if SrcPos < L then
+      Stream.WriteBuffer(Src[SrcPos+Low(Src)], (L-SrcPos)*SizeOf(Char));
     Assert(Stream.Size mod SizeOf(Char)=0);
     SetLength(result, Stream.Size div SizeOf(Char));
     if result<>'' then
