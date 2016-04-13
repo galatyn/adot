@@ -39,7 +39,7 @@ uses
 type
   TTextDistance = (tdLevenstein);
   TSimilarityOption = (
-    soStrictNumMatching, // [soStrictNumMatching] -> "Belшp 1200.40"<>"Belшp 7200.40" (1 char diff, but numbers are different)
+    soStrictNumMatching, // [soStrictNumMatching] -> "Belшp 1200.40"<>"Beløp 7200.40" (1 char diff, but numbers are different)
     soStrictIntMatching, // [soStrictIntMatching] -> "Еr 2014"<>"Еr 2013" (1 char diff, but int numbers are different)
     soIgnoreNums,        // [soIgnoreNums]        -> "Belшp 999000.50"="Belшp 12" (9 chars diff, but all numbers ignored)
     soIgnoreInts,        // [soIgnoreInts]        -> "Еr 1999"="Еr 2014" (4 chars diff, but all int numbers ignored)
