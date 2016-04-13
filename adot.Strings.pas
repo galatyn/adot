@@ -65,7 +65,7 @@ type
 
     class procedure TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True); overload; static;
     class procedure TextToLines(const Text: string; out Dst: TArray<string>); overload; static;
-    class function TextToLines(const Text: string; Delim: Char): TArray<string>; overload; static;
+    class procedure TextToLines(const Text: string; Delim: Char; out Dst: TArray<string>); overload; static;
 
     class function TextDistance(const a,b: string; StrDistType: TTextDistance = tdLevenstein): integer; static;
 
@@ -97,10 +97,10 @@ type
     class function TextPosition(const ASubStr, AText: string; AOffset: integer = 0): Integer; static;
 
     { file operations }
-    class function Load(Src: TStream): string; overload; static;
-    class function Load(const FileName: string): string; overload; static;
-    class procedure Save(Dst: TStream; const S: string); overload; static;
-    class procedure Save(const FileName: string; const S: string); overload; static;
+    class function Load(Src: TStream; Encoding: TEncoding = nil): string; overload; static;
+    class function Load(const FileName: string; Encoding: TEncoding = nil): string; overload; static;
+    class procedure Save(Dst: TStream; const S: string; Encoding: TEncoding = nil); overload; static;
+    class procedure Save(const FileName: string; const S: string; Encoding: TEncoding = nil); overload; static;
 
     { set-string }
     class function CharsCount(const AChars: TAnsiChars): integer;
@@ -113,26 +113,6 @@ type
     class function RandomString(ALen: integer): string; overload;
     class function RandomString(ALen: integer; AFrom,ATo: Char): string; overload;
   end;
-
-  { If we parse the following text with TTokenizerClass (assigned to tok.numbers):
-
-    "constant pi = 3.1415926535. Pi is an irrational number."
-     [delimeters  ][token     ][delimeters                 ]
-
-      call 1
-         in: Text="const...", Len=55, Ctx.TokFound=0, Ctx.InitialText="const..."
-        out: Result=True, ctx.DelimLen=14 ("constant pi = "), ctx.TokenLen=12 ("3.1415926535").
-             Tokenizer will consume (shift) ctx.DelimLen+ctx.TokenLen=26 chars.
-      call 2
-         in: Text=". Pi is", Len=29, Ctx.TokFound=1, Ctx.InitialText="const..."
-        out: Result=False, ctx.DelimLen=29, ctx.TokenLen=0.
-             Tokenizer will consume (shift) ctx.DelimLen+ctx.TokenLen=29 chars.
-
-    Only one token "3.1415926535" will be found.
-
-    Parsing same text with tok.LettersOrDigits will extract another sequence of tokens:
-    "constant", "pi", "3", "1415926535", "Pi", "is", "an", "irrational", "number".
-  }
 
   { Position of token in the text. Starts from zero. }
   TTokenPos = record
@@ -596,12 +576,17 @@ end;
 class function TStr.Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string;
 var
   i: Integer;
+  empty: Boolean;
 begin
   result := '';
+  empty := True;
   for i := Low(Src) to High(Src) do
     if InUse[i] then
-      if result='' then
-        result := Src[i]
+      if Empty then
+      begin
+        result := Src[i];
+        Empty := False;
+      end
       else
         result := result + Delimeter + Src[i];
 end;
@@ -927,13 +912,13 @@ begin
   TTokLines.Parse(Text, Dst);
 end;
 
-class function TStr.TextToLines(const Text: string; Delim: Char): TArray<string>;
+class procedure TStr.TextToLines(const Text: string; Delim: Char; out Dst: TArray<string>);
 var
   T: TTokCharDelimitedLines;
 begin
   T := TTokCharDelimitedLines.Create(Text, Delim);
   try
-    T.GetTokens(result);
+    T.GetTokens(Dst);
   finally
     T.Free;
   end;
@@ -991,55 +976,49 @@ begin
   end;
 end;
 
-class function TStr.Load(Src: TStream): string;
+class function TStr.Load(Src: TStream; Encoding: TEncoding): string;
 var
-  L: TStringList;
+  B: TArray<System.Byte>;
 begin
-  L := TStringList.Create;
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  Src.Position := 0;
+  SetLength(B, Src.Size);
+  Src.ReadBuffer(B, Length(B));
+  Result := Encoding.GetString(B);
+end;
+
+class function TStr.Load(const FileName: string; Encoding: TEncoding): string;
+var
+  F: TFileStream;
+begin
+  F := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
   try
-    L.LoadFromStream(Src);
-    result := L.Text;
+    result := Load(F, Encoding);
   finally
-    L.Free;
+    F.Free;
   end;
 end;
 
-class function TStr.Load(const FileName: string): string;
+class procedure TStr.Save(Dst: TStream; const S: string; Encoding: TEncoding);
 var
-  L: TStringList;
+  B: TArray<System.Byte>;
 begin
-  L := TStringList.Create;
-  try
-    L.LoadFromFile(FileName);
-    result := L.Text;
-  finally
-    L.Free;
-  end;
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  B := Encoding.GetBytes(S);
+  Dst.Write(B, Length(B));
 end;
 
-class procedure TStr.Save(Dst: TStream; const S: string);
+class procedure TStr.Save(const FileName: string; const S: string; Encoding: TEncoding);
 var
-  L: TStringList;
+  F: TFileStream;
 begin
-  L := TStringList.Create;
+  F := TFileStream.Create(FileName, fmCreate);
   try
-    L.Text := S;;
-    L.SaveToStream(Dst);
+    Save(F, S, Encoding);
   finally
-    L.Free;
-  end;
-end;
-
-class procedure TStr.Save(const FileName: string; const S: string);
-var
-  L: TStringList;
-begin
-  L := TStringList.Create;
-  try
-    L.Text := S;
-    L.SaveToFile(FileName);
-  finally
-    L.Free;
+    F.Free;
   end;
 end;
 
