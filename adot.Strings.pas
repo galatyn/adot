@@ -39,9 +39,9 @@ uses
 type
   TTextDistance = (tdLevenstein);
   TSimilarityOption = (
-    soStrictNumMatching, // [soStrictNumMatching] -> "Belшp 1200.40"<>"Beløp 7200.40" (1 char diff, but numbers are different)
+    soStrictNumMatching, // [soStrictNumMatching] -> "Beløp 1200.40"<>"Beløp 7200.40" (1 char diff, but numbers are different)
     soStrictIntMatching, // [soStrictIntMatching] -> "Еr 2014"<>"Еr 2013" (1 char diff, but int numbers are different)
-    soIgnoreNums,        // [soIgnoreNums]        -> "Belшp 999000.50"="Belшp 12" (9 chars diff, but all numbers ignored)
+    soIgnoreNums,        // [soIgnoreNums]        -> "Beløp 999000.50"="Beløp 12" (9 chars diff, but all numbers ignored)
     soIgnoreInts,        // [soIgnoreInts]        -> "Еr 1999"="Еr 2014" (4 chars diff, but all int numbers ignored)
     soMatchSubst         // [soMatchSubst]        -> "hap"="New year happens every year" (big diff, but "hap" is substring)
   );
@@ -535,7 +535,7 @@ type
 
   { List of string edit commands (insert/delete/replace). Can be applied to any string.
     Any operation is applied to initial text (without changes made by other commands). }
-  TStringModifications = record
+  TStringEditor = record
   private
     type
       { we translate all comands to sequence of "replace" }
@@ -552,25 +552,25 @@ type
     var
       Instructions: TVector<TReplace>;
 
-    procedure Add(const Instr: TReplace);
+    procedure Add(const Instr: TReplace); {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Sort;
 
   public
 
     procedure Clear;
 
-    procedure Delete(Start,Len: integer); overload;
+    procedure Delete(const Start,Len: integer); overload;
     procedure Delete(const Pos: TTokenPos); overload;
-    procedure Delete(Pos: integer); overload;
+    procedure Delete(const Pos: integer); overload;
 
-    procedure Insert(Pos: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
+    procedure Insert(Pos: integer; const Substr: string; const SubStrOffset,SubStrLen: integer); overload;
     procedure Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos); overload;
     procedure Insert(Pos: integer; const Substr: string); overload;
 
-    procedure Replace(Start,Len: integer; const Substr: string; SubStrOffset,SubStrLen: integer); overload;
-    procedure Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos); overload;
-    procedure Replace(Start,Len: integer; const Substr: string); overload;
-    procedure Replace(const Pos: TTokenPos; const Substr: string); overload;
+    procedure Replace(const Start,Len : integer;   const Substr: string; const SubStrOffset,SubStrLen : integer); overload;
+    procedure Replace(const Pos       : TTokenPos; const Substr: string; const SubStrPos : TTokenPos); overload;
+    procedure Replace(const Start,Len : integer;   const Substr: string); overload;
+    procedure Replace(const Pos       : TTokenPos; const Substr: string); overload;
 
     { Apply all commands to string Src and get result }
     function Apply(const Src: string): string;
@@ -855,7 +855,7 @@ begin
   then
     Exit;
 
-  { ignore numbers, so "Belшp 12.6 NOK" = "Belшp 5 NOK" }
+  { ignore numbers, so "Beløp 12.6 NOK" = "Beløp 5 NOK" }
   if soIgnoreNums in AOptions then
   begin
     a := RemoveNumbers(a);
@@ -2651,9 +2651,9 @@ begin
   Res.Len := 1;
 end;
 
-{ TStringModifications.TInstr }
+{ TStringEditor.TInstr }
 
-procedure TStringModifications.TReplace.Clear;
+procedure TStringEditor.TReplace.Clear;
 begin
   SrcText      := '';
   SrcPos.Start := 0;
@@ -2662,15 +2662,15 @@ begin
   DstPos.Len   := 0;
 end;
 
-{ TStringModifications }
+{ TStringEditor }
 
-procedure TStringModifications.Clear;
+procedure TStringEditor.Clear;
 begin
   Instructions.Clear;
   Instructions.TrimExcess;
 end;
 
-procedure TStringModifications.Add(const Instr: TReplace);
+procedure TStringEditor.Add(const Instr: TReplace);
 var
   I: Integer;
 begin
@@ -2678,7 +2678,7 @@ begin
   Instructions.Items[I].Order := I;
 end;
 
-procedure TStringModifications.Delete(const Pos: TTokenPos);
+procedure TStringEditor.Delete(const Pos: TTokenPos);
 var
   r: TReplace;
 begin
@@ -2687,7 +2687,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Delete(Start, Len: integer);
+procedure TStringEditor.Delete(const Start, Len: integer);
 var
   r: TReplace;
 begin
@@ -2697,7 +2697,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Delete(Pos: integer);
+procedure TStringEditor.Delete(const Pos: integer);
 var
   r: TReplace;
 begin
@@ -2707,7 +2707,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos);
+procedure TStringEditor.Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos);
 var
   r: TReplace;
 begin
@@ -2718,7 +2718,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Insert(Pos: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+procedure TStringEditor.Insert(Pos: integer; const Substr: string; const SubStrOffset, SubStrLen: integer);
 var
   r: TReplace;
 begin
@@ -2730,7 +2730,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Insert(Pos: integer; const Substr: string);
+procedure TStringEditor.Insert(Pos: integer; const Substr: string);
 var
   r: TReplace;
 begin
@@ -2742,7 +2742,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string);
+procedure TStringEditor.Replace(const Pos: TTokenPos; const Substr: string);
 var
   r: TReplace;
 begin
@@ -2754,7 +2754,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Replace(Start, Len: integer; const Substr: string; SubStrOffset, SubStrLen: integer);
+procedure TStringEditor.Replace(const Start, Len: integer; const Substr: string; const SubStrOffset, SubStrLen: integer);
 var
   r: TReplace;
 begin
@@ -2767,7 +2767,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos);
+procedure TStringEditor.Replace(const Pos: TTokenPos; const Substr: string; const SubStrPos: TTokenPos);
 var
   r: TReplace;
 begin
@@ -2778,7 +2778,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Replace(Start, Len: integer; const Substr: string);
+procedure TStringEditor.Replace(const Start, Len: integer; const Substr: string);
 var
   r: TReplace;
 begin
@@ -2791,7 +2791,7 @@ begin
   Add(r);
 end;
 
-procedure TStringModifications.Sort;
+procedure TStringEditor.Sort;
 begin
   TArray.Sort<TReplace>(Instructions.Items, TDelegatedComparer<TReplace>.Create(
     function(const A,B: TReplace): integer
@@ -2802,37 +2802,30 @@ begin
     end));
 end;
 
-function TStringModifications.Apply(const Src: string): string;
+function TStringEditor.Apply(const Src: string): string;
 var
   L,I,SrcPos: Integer;
   P: PReplace;
-  Stream: TMemoryStream;
+  Buffer: TBuffer;
 begin
-  Stream := TMemoryStream.Create.Create;
-  try
-    Sort;
-    SrcPos := 0;
-    L := Length(Src);
-    for I := 0 to Instructions.Count-1 do
-    begin
-      P := @Instructions.Items[I];
-      if P.DstPos.Start > L then
-        Break;
-      if P.DstPos.Start > SrcPos then
-        Stream.WriteBuffer(Src[SrcPos+Low(Src)], (P.DstPos.Start-SrcPos)*SizeOf(Char));
-      if P.SrcPos.Len > 0 then
-        Stream.WriteBuffer(P.SrcText[P.SrcPos.Start+Low(P.SrcText)], P.SrcPos.Len*SizeOf(Char));
-      SrcPos := Min(Max(P.DstPos.Start + P.DstPos.Len, SrcPos), L);
-    end;
-    if SrcPos < L then
-      Stream.WriteBuffer(Src[SrcPos+Low(Src)], (L-SrcPos)*SizeOf(Char));
-    Assert(Stream.Size mod SizeOf(Char)=0);
-    SetLength(result, Stream.Size div SizeOf(Char));
-    if result<>'' then
-      System.Move(Stream.Memory^, result[Low(result)], Stream.Size);
-  finally
-    Stream.Free;
+  Buffer.Clear;
+  Sort;
+  SrcPos := 0;
+  L := Length(Src);
+  for I := 0 to Instructions.Count-1 do
+  begin
+    P := @Instructions.Items[I];
+    if P.DstPos.Start > L then
+      Break;
+    if P.DstPos.Start > SrcPos then
+      Buffer.Write(Src, SrcPos, P.DstPos.Start-SrcPos);
+    if P.SrcPos.Len > 0 then
+      Buffer.Write(P.SrcText, P.SrcPos.Start, P.SrcPos.Len);
+    SrcPos := Min(Max(P.DstPos.Start + P.DstPos.Len, SrcPos), L);
   end;
+  if SrcPos < L then
+    Buffer.Write(Src[SrcPos+Low(Src)], (L-SrcPos)*SizeOf(Char));
+  Buffer.ReadAllData(result);
 end;
 
 end.

@@ -293,42 +293,6 @@ type
     class procedure StableSort<T>(var Dst: TArray<T>; StartIndex,Count: integer; Comparer: IComparer<T>); static;
   end;
 
-  { All values must be unique (except NIL). Main purpose: very fast IndexOf
-   (but other operations slightly slower than in TList, because of index maintanance). }
-  TListIndexed = class
-  private
-    FList: TList;
-    FValueToIndex: TDictionary<pointer, integer>;
-
-    function GetItem(idx: integer): pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetItem(idx: integer; const Value: pointer);
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCount(const Value: integer);
-    procedure UpdateIndex(StartIdx: integer);
-    function GetFirst: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLast: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
-
-  public
-    constructor Create;
-    destructor Destroy; override;
-
-    function Add(Value: pointer): integer;
-    procedure Insert(Idx: integer; Value: pointer);
-    procedure Delete(Idx: integer);
-    procedure Remove(Value: pointer);
-    procedure Move(Src,Dst: integer);
-    procedure Exchange(Src,Dst: integer);
-    procedure Pack;
-    procedure Sort(Comparer: TListSortCompare);
-    procedure SortList(Comparer: TListSortCompareFunc);
-    function IndexOf(Value: pointer): integer;
-
-    property Items[idx: integer]: pointer read GetItem write SetItem; default;
-    property Count: integer read GetCount write SetCount;
-    property First: pointer read GetFirst;
-    property Last: pointer read GetLast;
-  end;
-
   TDateTimeUtils = class
   public
     const
@@ -713,6 +677,39 @@ type
     class function ForEach(AStart: TComponent; ACallback: TComponentBrkProc): Boolean; overload; static;
     class procedure ForEach(AStart: TComponent; ACallback: TComponentProc); overload; static;
     class function GetAll(AStart: TComponent): TArray<TComponent>; static;
+  end;
+
+  { Simple and fast managed analog of TMemoryStream }
+  TBuffer = record
+  public
+    Data: TArray<Byte>;
+  private
+    FSize: integer;
+    FPosition: integer;
+
+    procedure SetSize(Value: integer);
+    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+  public
+
+    procedure Write(const Src; ByteCount: integer); overload;
+    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
+    procedure Write(const Src: string); overload;
+
+    procedure Read(var Dst; ByteCount: integer); overload;
+    procedure Read(var Dst: string; CharOffset,CharCount: integer); overload;
+    procedure Read(var Dst: string; CharCount: integer); overload;
+
+    procedure ReadAllData(var Dst); overload;
+    procedure ReadAllData(var Dst: string); overload;
+
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    property Size: integer read FSize write SetSize;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Position: integer read FPosition write FPosition;
   end;
 
 function Min3(const A,B,C: integer): integer; overload;
@@ -1448,173 +1445,6 @@ begin
     Tmp[I] := Dst[Idx[I]];
   for I := 0 to High(Tmp) do
     Dst[I+StartIndex] := Tmp[I];
-end;
-
-{ TListIndexed }
-
-constructor TListIndexed.Create;
-begin
-  inherited;
-  FList := TList.Create;
-  FValueToIndex := TDictionary<pointer, integer>.Create;
-end;
-
-destructor TListIndexed.Destroy;
-begin
-  FreeAndNil(FList);
-  FreeAndNil(FValueToIndex);
-  inherited;
-end;
-
-procedure TListIndexed.UpdateIndex(StartIdx: integer);
-var
-  i: Integer;
-begin
-  for i := StartIdx to FList.Count-1 do
-    if FList.List[i]<>nil then
-      FValueToIndex.AddOrSetValue(FList.List[i], i);
-end;
-
-function TListIndexed.Add(Value: pointer): integer;
-begin
-  result := FList.Add(Value);
-  if FValueToIndex.ContainsKey(Value) then
-    raise Exception.Create('Error');
-  if Value<>nil then
-    FValueToIndex.AddOrSetValue(Value, result);
-end;
-
-procedure TListIndexed.SetItem(idx: integer; const Value: pointer);
-begin
-  if FList[idx]=Value then
-    Exit;
-  { In some cases, for example TEnheter.SlettFiltrerte, we copy items inside and then trim the list }
-{  if FValueToIndex.ContainsKey(Value) then
-    raise Exception.Create('Error'); }
-  FValueToIndex.Remove(FList.List[idx]);
-  FList.List[idx] := Value;
-  if Value<>nil then
-    FValueToIndex.AddOrSetValue(Value, idx);
-end;
-
-procedure TListIndexed.Delete(Idx: integer);
-begin
-  FValueToIndex.Remove(FList.List[Idx]);
-  FList.Delete(Idx);
-  UpdateIndex(Idx);
-end;
-
-procedure TListIndexed.Exchange(Src, Dst: integer);
-begin
-  FList.Exchange(Src, Dst);
-  if FList.List[Src]<>nil then
-    FValueToIndex.AddOrSetValue(FList.List[Src], Src);
-  if FList.List[Dst]<>nil then
-    FValueToIndex.AddOrSetValue(FList.List[Dst], Dst);
-end;
-
-function TListIndexed.GetCount: integer;
-begin
-  result := FList.Count;
-end;
-
-function TListIndexed.GetFirst: pointer;
-begin
-  result := FList.First;
-end;
-
-function TListIndexed.GetItem(idx: integer): pointer;
-begin
-  result := FList[idx];
-end;
-
-function TListIndexed.GetLast: pointer;
-begin
-  result := FList.Last;
-end;
-
-function TListIndexed.IndexOf(Value: pointer): integer;
-begin
-  if Value=nil then
-    result := FList.IndexOf(nil)
-  else
-    if not FValueToIndex.TryGetValue(Value, result) then
-      result := -1;
-end;
-
-procedure TListIndexed.Insert(Idx: integer; Value: pointer);
-begin
-  if FValueToIndex.ContainsKey(Value) then
-    raise Exception.Create('Error');
-  FList.Insert(idx, Value);
-  UpdateIndex(idx);
-end;
-
-procedure TListIndexed.Move(Src, Dst: integer);
-begin
-  FList.Move(Src, Dst);
-  if Src<>Dst then
-    UpdateIndex(Min(Src, Dst));
-end;
-
-procedure TListIndexed.Pack;
-var
-  i: integer;
-begin
-  i := FList.Count;
-  FList.Pack;
-  if i<>FList.Count then
-    UpdateIndex(0);
-end;
-
-procedure TListIndexed.Remove(Value: pointer);
-var
-  Idx: Integer;
-begin
-  if Value=nil then
-    FList.Remove(nil)
-  else
-  begin
-    Idx := IndexOf(Value);
-    if Idx>=0 then
-      Delete(Idx);
-  end;
-end;
-
-procedure TListIndexed.SetCount(const Value: integer);
-var
-  i: Integer;
-begin
-  if FValueToIndex.Count>0 then
-    for i := Value to FList.Count-1 do
-      FValueToIndex.Remove(FList.List[i]);
-  FList.Count := Value;
-end;
-
-procedure TListIndexed.Sort(Comparer: TListSortCompare);
-var
-  i: Integer;
-begin
-  for i := 0 to Count-2 do
-    if Comparer(FList.List[i], FList.List[i+1])>0 then
-    begin
-      FList.Sort(Comparer);
-      UpdateIndex(0);
-      Exit;
-    end;
-end;
-
-procedure TListIndexed.SortList(Comparer: TListSortCompareFunc);
-var
-  i: Integer;
-begin
-  for i := 0 to Count-2 do
-    if Comparer(FList.List[i], FList.List[i+1])>0 then
-    begin
-      FList.SortList(Comparer);
-      UpdateIndex(0);
-      Exit;
-    end;
 end;
 
 { TDateTimeUtils }
@@ -3231,6 +3061,98 @@ begin
   finally
     Hash.Reset;
   end;
+end;
+
+{ TBuffer }
+
+procedure TBuffer.Clear;
+begin
+  Size := 0;
+  Capacity := Size;
+end;
+
+function TBuffer.GetCapacity: integer;
+begin
+  result := Length(Data);
+end;
+
+procedure TBuffer.SetCapacity(Value: integer);
+begin
+  Assert(Value >= Size);
+  SetLength(Data, Value);
+end;
+
+procedure TBuffer.CheckCapacity(MinCapacity: integer);
+begin
+  if Capacity < MinCapacity then
+    Capacity := Max(MinCapacity, Capacity shl 1);
+end;
+
+procedure TBuffer.SetSize(Value: integer);
+begin
+  CheckCapacity(Value);
+  FSize := Value;
+  FPosition := Min(FPosition, FSize);
+end;
+
+procedure TBuffer.TrimExcess;
+begin
+  Capacity := Size;
+end;
+
+procedure TBuffer.Read(var Dst; ByteCount: integer);
+begin
+  Assert(Position + ByteCount <= Size);
+  System.Move(Data[Position], Dst, ByteCount);
+  inc(FPosition, ByteCount);
+end;
+
+procedure TBuffer.ReadAllData(var Dst);
+begin
+  if Size > 0 then
+    System.Move(Data[0], Dst, Size);
+  Position := Size;
+end;
+
+procedure TBuffer.Read(var Dst: string; CharOffset, CharCount: integer);
+begin
+  Read(Dst[CharOffset+Low(Dst)], CharCount*SizeOf(Char));
+end;
+
+procedure TBuffer.Read(var Dst: string; CharCount: integer);
+begin
+  SetLength(Dst, CharCount);
+  Read(Dst[Low(Dst)], CharCount*SizeOf(Char));
+end;
+
+procedure TBuffer.ReadAllData(var Dst: string);
+begin
+  Assert(Size mod SizeOf(Char)=0);
+  SetLength(Dst, Size div SizeOf(Char));
+  if Size > 0 then
+    System.Move(Data[0], Dst[Low(Dst)], Size);
+  Position := Size;
+end;
+
+procedure TBuffer.Write(const Src; ByteCount: integer);
+begin
+  CheckCapacity(Position + ByteCount);
+  System.Move(Src, Data[Position], ByteCount);
+  inc(FPosition, ByteCount);
+  if FPosition > FSize then
+    FSize := FPosition;
+end;
+
+procedure TBuffer.Write(const Src: string; CharOffset,CharCount: integer);
+begin
+  if CharCount<>0 then
+    Write(Src[CharOffset+Low(Src)], CharCount*SizeOf(Char));
+end;
+
+procedure TBuffer.Write(const Src: string);
+begin
+  if Src<>'' then
+    Write(Src[Low(Src)], Length(Src)*SizeOf(Char));
 end;
 
 end.
