@@ -722,7 +722,7 @@ implementation
 Uses
   adot.Strings
 {$IFDEF LogExceptions}
-  ,msLog,
+  ,msLog
 {$ENDIF}
   ;
 

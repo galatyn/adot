@@ -40,9 +40,9 @@ type
   TTextDistance = (tdLevenstein);
   TSimilarityOption = (
     soStrictNumMatching, // [soStrictNumMatching] -> "Beløp 1200.40"<>"Beløp 7200.40" (1 char diff, but numbers are different)
-    soStrictIntMatching, // [soStrictIntMatching] -> "Еr 2014"<>"Еr 2013" (1 char diff, but int numbers are different)
+    soStrictIntMatching, // [soStrictIntMatching] -> "År 2014"<>"År 2013" (1 char diff, but int numbers are different)
     soIgnoreNums,        // [soIgnoreNums]        -> "Beløp 999000.50"="Beløp 12" (9 chars diff, but all numbers ignored)
-    soIgnoreInts,        // [soIgnoreInts]        -> "Еr 1999"="Еr 2014" (4 chars diff, but all int numbers ignored)
+    soIgnoreInts,        // [soIgnoreInts]        -> "År 1999"="År 2014" (4 chars diff, but all int numbers ignored)
     soMatchSubst         // [soMatchSubst]        -> "hap"="New year happens every year" (big diff, but "hap" is substring)
   );
   TSimilarityOptions = set of TSimilarityOption;
