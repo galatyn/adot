@@ -48,6 +48,7 @@ type
   TSimilarityOptions = set of TSimilarityOption;
   TAnsiChars = set of AnsiChar;
 
+  { string utils }
   TStr = class
   public
     type
@@ -125,7 +126,7 @@ type
     class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
   end;
 
-  { Internal structure to describe the token just found by tokenizer.
+  {# Internal structure to describe the token just found by tokenizer.
     Any or even all fields can be zero. }
   TTokenInfo = record
     Start            : integer; { start position in the text             }
@@ -136,7 +137,7 @@ type
     procedure Clear;
   end;
 
-  { Used to save/restore state of TCustomTokenizer class and descendants. }
+  {# Used to save/restore state of TCustomTokenizer class and descendants. }
   TTokenizerState = record
   private
     State: IInterfacedObject<TMemoryStream>;
@@ -163,7 +164,7 @@ type
     property AsString: string read GetAsString;
   end;
 
-  { Extend abstract with basic functionality. All desdendants should be inherited
+  { Extends abstract class with basic functionality. All desdendants should be inherited
     from TTokCustom, not from TTokAbstract }
   TTokCustom = class abstract (TTokAbstract)
   protected
@@ -221,11 +222,12 @@ type
     property Bookmark: TTokenizerState read GetState write SetState;
   end;
 
-  { Chain tokenizers (organize several tokenizers to work as sequence). Example:
+  { Example:
     - First tokenizer removes comments (extracts parts of text excluding comments).
     - Second tokenizer extracting identifiers (Delphi-style ids).
     Such TTokenizerCompound can be used to lookup identifiers with correct
     processing of comments and string literals. }
+  { Organize several tokenizers to chain }
   TTokCompound = class(TTokCustom)
   protected
     FTokenizers: TObjectList<TTokCustom>;
@@ -289,8 +291,8 @@ type
     destructor Destroy; override;
   end;
 
-  { Basic class for simple string tokenizers. Implements all required methods of TCustomTokenizer.
-    Inherited classes must implement one function for processing of custom token types }
+  { Basic class for simple string tokenizers. Implements all required methods of TTokCustom.
+    Inherited classes must implement one function for processing of custom tokenizers. }
   TTokCustomText = class abstract (TTokCustom)
   protected
     FTextStorage : String;         { to keep text if provided as string }
@@ -326,7 +328,7 @@ type
     procedure Reset(const AText: PChar; ALen: integer); overload;
   end;
 
-  { custom function to extract specific tokens from the text }
+  { Custom function to extract specific tokens from the text }
   TTokDelegated = class(TTokCustomText)
   public
     type
@@ -342,16 +344,19 @@ type
     constructor Create(const AText: string; AProc: TDelegatedTokenizer); reintroduce; overload;
   end;
 
+  { Extract words of non-space chars. }
   TTokNonSpace = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   end;
 
+  { Extract words of letters. }
   TTokLetters= class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   end;
 
+  { Extract words of digits. }
   TTokDigits = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -360,11 +365,13 @@ type
     class function NextDigits(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
   end;
 
+  { Extract words of letters/digits. }
   TTokLettersOrDigits = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   end;
 
+  { Extract numbers ("12", "+2", "-1.3" etc). }
   TTokNumbers = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -380,6 +387,7 @@ type
     With such algorithm conversion array->text and text->array is simmetric, TStringList.Load works same way.
     Text editors usually use another logic. If we open empty file in NotePad++, it will show 1 line
     (editors never show zero lines). Such aproach doesn't provide simmetric conversion array-text. }
+  { Extract lines. }
   TTokLines = class(TTokCustomText)
   protected
     procedure TokenizerCreated; override;
@@ -389,6 +397,7 @@ type
     class function GetLineLength(const Text: PChar; Len: integer; IncludeEOL: boolean): Integer; static;
   end;
 
+  { Extract words separated by specific char. }
   TTokCharDelimitedLines = class(TTokCustomText)
   protected
     FDelimiter: Char;
@@ -400,6 +409,7 @@ type
     constructor Create(const AText: string; ADelimiter: Char; ACaseSensitive: Boolean = False); overload;
   end;
 
+  { Extract identifiers as Delphi defines them. }
   TTokIdentifier = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -411,6 +421,7 @@ type
   { Search for literals starting/ending by "'". Doesn't support #n style, for example:
     - #13#10 will not be recognized as literal
     - 'a'#13#10 will be racognized as literal 'a' }
+  { Extract string literanl as Delphi defines them ('a', 'test literal' etc). }
   TTokLiterals = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -420,6 +431,7 @@ type
     class function GetLiteralLen(Text: PChar; Len: integer): integer;
   end;
 
+  { Extract whitespaces. }
   TTokWhitespaces = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -428,6 +440,7 @@ type
     class function NextWhitespace(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
   end;
 
+  { Extract comments in Delphi style (line starting from "//", chars between "(*" and "*)" etc. }
   TTokComments = class(TTokCustomText)
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
@@ -442,6 +455,7 @@ const
   PasAllTokenTypes = [Low(TPasTokenType)..High(TPasTokenType)];
 
 type
+  { Lexical analyzer for Pascal code (check TPasTokenType for list of supported lexems). }
   TTokPascal = class(TTokCustomText)
   protected
     FTokenType: TPasTokenType;
@@ -2507,7 +2521,7 @@ var
   I,J: Integer;
 begin
 
-  { find first char of identifier }
+  { find first char }
   J := Len;
   for I := 0 to Len-1 do
     if IsStartOfWhitespace(Text[I]) then
@@ -2519,7 +2533,7 @@ begin
   dec(Len, J);
   Res.DelimitersPrefix := J;
 
-  { find all other chars of identifier }
+  { find all other chars }
   J := Len;
   for I := 1 to Len-1 do
     if not Char(Text[I]).IsWhitespace then
