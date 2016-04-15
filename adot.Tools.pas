@@ -1,4 +1,4 @@
-unit adot.Tools;
+﻿unit adot.Tools;
 
 interface
 {
@@ -284,6 +284,7 @@ type
     class procedure Append<T>(var Dst: TArray<T>; const Src: T); overload; static;
     class procedure Append<T>(var Dst: TArray<T>; const Src: TArray<T>); overload; static;
     class procedure Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>); overload; static;
+    class procedure FillRandom(var Dst: TArray<byte>; Count: integer; AValRangeFrom,AValRangeTo: byte); overload; static;
     class procedure FillRandom(var Dst: TArray<integer>; Count: integer; AValRangeFrom,AValRangeTo: integer); overload; static;
     class procedure FillRandom(var Dst: TArray<double>; Count: integer; AValRangeFrom,AValRangeTo: double); overload; static;
     class procedure FillRandom(var Dst: TArray<string>; Count,ValMaxLen: integer); overload; static;
@@ -1319,6 +1320,16 @@ begin
     Dst[I] := AValueStart;
     AValueStart := AValueStart + AValueInc;
   end;
+end;
+
+class procedure TArrayUtils.FillRandom(var Dst: TArray<byte>; Count: integer; AValRangeFrom, AValRangeTo: byte);
+var
+  I: Integer;
+begin
+  if Count >= 0 then
+    SetLength(Dst, Count);
+  for I := 0 to High(Dst) do
+    Dst[I] := AValRangeFrom + Random(integer(AValRangeTo)-integer(AValRangeFrom)+1);
 end;
 
 class procedure TArrayUtils.FillRandom(var Dst: TArray<integer>; Count, AValRangeFrom, AValRangeTo: integer);

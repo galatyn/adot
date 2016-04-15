@@ -1,4 +1,4 @@
-unit adot.VCL.Tools;
+ï»¿unit adot.VCL.Tools;
 
 interface
 
@@ -385,7 +385,7 @@ begin
   //Tekstlengde:= Length(Soeketekst);
   Tekst:= StripHotKey(Caption);
 
-  // Sørger for at vi ikke får like elementer
+  // SÃ¸rger for at vi ikke fÃ¥r like elementer
   if AddedItems.TryGetValue(AnsiLowerCase(Tekst), b) then
   //if ListBox.Items.IndexOf(Tekst) <> -1 then
   begin

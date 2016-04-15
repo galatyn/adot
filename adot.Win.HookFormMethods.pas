@@ -1,4 +1,4 @@
-unit Win.HookFormMethods;
+﻿unit Win.HookFormMethods;
 
 interface
 

@@ -1,4 +1,4 @@
-unit adot.Tools.RTTI;
+﻿unit adot.Tools.RTTI;
 
 interface
 

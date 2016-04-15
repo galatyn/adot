@@ -1,4 +1,4 @@
-unit Win.Log;
+﻿unit Win.Log;
 
 interface
 

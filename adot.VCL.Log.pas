@@ -1,4 +1,4 @@
-unit adot.VCL.Log;
+﻿unit adot.VCL.Log;
 
 interface
 

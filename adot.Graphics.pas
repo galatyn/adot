@@ -1,4 +1,4 @@
-unit adot.Graphics;
+﻿unit adot.Graphics;
 
 interface
 

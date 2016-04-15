@@ -1,4 +1,4 @@
-unit VCL.MouseWheelRedirector;
+﻿unit VCL.MouseWheelRedirector;
 (*******************************************************************************
 Info    : Enhanced processing of mouse wheel messages (app-wide).
 Author  : Andrei Galatyn

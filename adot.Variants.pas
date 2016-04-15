@@ -1,4 +1,4 @@
-unit adot.Variants;
+﻿unit adot.Variants;
 (*******************************************************************************
 KortInfo    :
 Forfatter   : AH

@@ -1,4 +1,4 @@
-unit adot.Log;
+﻿unit adot.Log;
 (*
   Logging classes. Example:
 

@@ -1,4 +1,4 @@
-unit adot.Collections;
+ï»¿unit adot.Collections;
 {
   TAutoFreeCollection
   TSetClass<T>
@@ -346,11 +346,11 @@ type
         s: string;
       begin
         a := ['Mandag', 'Tirsdag', 'Fredag'];
-        b := ['Fredag', 'Lørdag'];
+        b := ['Fredag', 'LÃ¸rdag'];
         c := a and b;                           // ['Fredag']
-        c := a or b;                            // ['Mandag', 'Tirsdag', 'Fredag', 'Lørdag']
-        c := a + b - ['Mandag', 'Tirsdag'];     // ['Fredag', 'Lørdag']
-        if a xor b = TSet<string>.Create(['Mandag', 'Tirsdag', 'Lørdag']) then
+        c := a or b;                            // ['Mandag', 'Tirsdag', 'Fredag', 'LÃ¸rdag']
+        c := a + b - ['Mandag', 'Tirsdag'];     // ['Fredag', 'LÃ¸rdag']
+        if a xor b = TSet<string>.Create(['Mandag', 'Tirsdag', 'LÃ¸rdag']) then
           [...]
         if (b in a) or ('Fredag' in a) then
           [...]
@@ -1031,11 +1031,14 @@ type
   { Based on TDictionary, but automatically deletes data if it take more space than allowed. }
   TCache<TKey,TValue> = class
   protected
-    Cache: TDictionary<TKey,TValue>;
-    Size, MaxSize: longint;
+    const
+      DefaultSize = 1024*1024;
+    var
+      Cache: TDictionary<TKey,TValue>;
+      Size, MaxSize: longint;
   public
     constructor Create; overload;
-    constructor Create(AMaxSize: longint = 1024*1024); overload;
+    constructor Create(AMaxSize: longint); overload;
     destructor Destroy; override;
     procedure Add(K: TKey; V: TValue; ASize: longint);
     function TryGetValue(K: TKey; var V: TValue):boolean;

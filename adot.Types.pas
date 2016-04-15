@@ -1,4 +1,4 @@
-unit adot.Types;
+﻿unit adot.Types;
 
 interface
 
