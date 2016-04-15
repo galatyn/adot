@@ -38,6 +38,10 @@ type
     class function CreateInstance<T: class>: T; static;
 
     class function FromVariant<T>(const Src: Variant): T; static;
+
+    { can be used for access to private fields }
+    class function GetFieldValue<T>(Obj: TObject; const AFieldName: string): T; static;
+    class procedure SetFieldValue<T>(Obj: TObject; const AFieldName: string; const Value: T); static;
   end;
 
   { Simple convertion EnumType->string->EnumType etc.
@@ -137,6 +141,44 @@ end;
 class function TRttiUtils.FromVariant<T>(const Src: Variant): T;
 begin
   result := TValue.FromVariant(Src).AsType<T>;
+end;
+
+class function TRttiUtils.GetFieldValue<T>(Obj: TObject; const AFieldName: string): T;
+var
+  RttiType    : TRttiType;
+  RttiContext : TRttiContext;
+  RttiField   : TRttiField;
+  Ptr         : ^T;
+begin
+  RttiType := RttiContext.GetType(Obj.ClassType);
+  Assert(Assigned(RttiType));
+  for RttiField in RttiType.GetFields do
+    if AnsiLowerCase(AFieldName)=AnsiLowerCase(RttiField.Name) then
+    begin
+      Ptr := Pointer(PByte(Obj) + RttiField.Offset);
+      result := Ptr^;
+      Exit;
+    end;
+  raise Exception.Create(format('Field "%s" is not found (%s)', [AFieldName, Obj.ClassName]));
+end;
+
+class procedure TRttiUtils.SetFieldValue<T>(Obj: TObject; const AFieldName: string; const Value: T);
+var
+  RttiType    : TRttiType;
+  RttiContext : TRttiContext;
+  RttiField   : TRttiField;
+  Ptr         : ^T;
+begin
+  RttiType := RttiContext.GetType(Obj.ClassType);
+  Assert(Assigned(RttiType));
+  for RttiField in RttiType.GetFields do
+    if AnsiLowerCase(AFieldName)=AnsiLowerCase(RttiField.Name) then
+    begin
+      Ptr := Pointer(PByte(Obj) + RttiField.Offset);
+      Ptr^ := Value;
+      Exit;
+    end;
+  raise Exception.Create(format('Field "%s" is not found (%s)', [AFieldName, Obj.ClassName]));
 end;
 
 class function TRttiUtils.IsInstance<T>: boolean;
