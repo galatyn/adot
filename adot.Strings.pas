@@ -571,7 +571,7 @@ type
 
   public
 
-    procedure Clear;
+    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     procedure Delete(const Start,Len: integer); overload;
     procedure Delete(const Pos: TTokenPos); overload;
@@ -2681,7 +2681,6 @@ end;
 procedure TStringEditor.Clear;
 begin
   Instructions.Clear;
-  Instructions.TrimExcess;
 end;
 
 procedure TStringEditor.Add(const Instr: TReplace);

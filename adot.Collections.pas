@@ -3308,7 +3308,7 @@ end;
 
 constructor TCache<TKey, TValue>.Create;
 begin
-  Create(0);
+  Create(DefaultSize);
 end;
 
 constructor TCache<TKey, TValue>.Create(AMaxSize: Integer);
@@ -4381,7 +4381,8 @@ end;
 
 procedure TVector<T>.Clear;
 begin
-  Count := 0;
+  SetLength(Items, 0);
+  FCount := 0;
 end;
 
 procedure TVector<T>.Delete(ItemIndex: integer);
