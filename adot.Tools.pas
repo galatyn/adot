@@ -1,35 +1,95 @@
 ﻿unit adot.Tools;
 
-interface
-{
-  THex                              HEX convertion routines.
-  THash                             Non-crypto hashing (THash.MD5/THash.SHA1 for crypto hashing).
-  TSummDouble<TKey>                 Dictionary to accumulate summ of values for every Key.
-  TMin<TKeyType,TValueType>         Dictionary to keep/maintain pairs Key->MinValue.
-  TMax<TKeyType,TValueType>         Dictionary to keep/maintain pairs Key->MaxValue.
-  TInvertedComparer<TValueType>     Inversion of items order in comparer.
-  TDateTimeRec                      Type to define dates as constants: "const D: TDateTimeRec = (Year:2009; Month:05; Day:11);".
-  TDelegatedMemoryStream            Readonly stream on block of memory.
-  TArrayStream<T: record>           Stream with underlying array as storage.
-  TArrayUtils                       Tools for arrays (Copy/Equal/Delete/Append etc).
-  TListIndexed                      Analog of TList but with unique values and fast IndexOf.
-  TCache                            Dictionary of fixed size (deletes "old" recrods automatically).
-  TDateTimeUtils                    IsCorrectDate/ToStr etc.
-  TInterfacedObject<T: class>       Implements IInterfacedObject (class as interface) for any class.
-  TIndex                            Random/RandomSelection/According to comparer etc.
-  TGUIDUtils                        IsValid/TryStringToGUID etc.
-  TStreamUtils                      StringToStream etc.
-  TKeyUtils                         StringToKey etc.
-  TFileUtils                        IsLocked/GetLockedFiles
-  TIfThen                           Generic implementation of IfThen.
-  TIndexBackEnumerator              Enumerator for collections.
-  TTiming                           Time measuring routines (Start/Stop/StopAndGetCaption etc).
-  TTimeOut                          Timeout control routines (Start/TimedOut etc).
-  TCachable                         Basic class with implementation of ICachable.
-  TCurrencyUtils                    ToString etc.
-  Min3/Max3                         Analogs of Min/Max.
-  TPIWriter/TPIReader               100% platform independent stream reader/writer.
+{ Definition of classes/record types:
+
+  TArrayStream<T: record> = class
+    Makes any array of ordinal type to be accessable as stream of bytes.
+
+  TArrayUtils = record
+    Fill/fillRandom/Randomize and other tools for arrays.
+
+  TBuffer = record
+    Simple and fast managed analog of TMemoryStream.
+
+  TCachable = class
+    Basic class for objects with data caching/other read optimizations.
+
+  TComponentUtils = class
+    Enumeration and other component-specific tools.
+
+  TCurrencyUtils = class
+    Currency type utils.
+
+  TCustomHash = class
+    Abstract class for hashes.
+
+  TCustomStreamExt = class
+    Extensions of TStream.
+
+  TDateTimeRec = record
+    Record type to define TDateTime compatible constants in readable way.
+
+  TDateTimeUtils = class
+    Check TDateTime correctness, convert to string etc.
+
+  TDelegatedMemoryStream = class
+    Readonly stream for specified memory block.
+
+  TFileUtils = class
+    File manipulation utils.
+
+  TGUIDUtils = class
+    IsValid and other utils.
+
+  THashHelperFunctions = class
+    Conversion routines etc. to be available in THashes and internal classes (THashes.DataHash etc)
+
+  THashes = class
+    Simple API for hashing functions (including CRC32/Adler32)
+
+  THex = class
+    Set of functions for HEX conversion.
+
+  TIfThen = class
+    Generic implementation of IfThen (to accept virtually any type). Example:
+     A := TIfThen.Get(Visible, fsMDIChild, fsNormal);
+
+  TIndex = class
+    Utils for index arrays (RandomSelection, Direct, Inverse etc)
+
+  TIndexBackEnumerator = record
+    Index enumerator "from last to first".
+
+  TInterfacedObject<T: class> = class
+    Wrapper class to make any class type available through interface (that means that
+    lifetime of the class will be controlled by reference counter)
+
+  TNullable<T> = record
+    Extends any type by IsNull property.
+
+  TPIReader = class
+    Platform independent stream reader.
+
+  TPIWriter = class
+    Platform independent stream writer.
+
+  TRLE = class
+    PDF-compatible RLE codec.
+
+  TReader = record
+    Stream block reader (ReadNext to get next block of data from stream as array of byte)
+
+  TStreamUtils = class
+    Block reader and other utils.
+
+  TTimeOut = record
+    Allows to avoid of some operations to be executed too often.
+
+  TTiming = class
+    Time measuring functions (recursive Start/Stop etc)
+
 }
+interface
 
 uses
   adot.Types,
@@ -157,6 +217,7 @@ type
     - Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
     - In object model it is much easier to introduce new function (like hash file/stream etc)
     - If other issues will be doscovered in Delphi hash, we can fix it witghout changes in other code }
+  { Simple API for hashing functions (including CRC32/Adler32) }	
   THashes = class(THashHelperFunctions)
   public
     const
@@ -215,6 +276,7 @@ type
       const
         Date1 : TDateTimeRec = (Year:2009; Month:05; Day:11);
         Date2 : TDateTimeRec = (Year:2009; Month:05; Day:11; Hour:05); }
+  { Record type to define TDateTime compatible constants in readable way }		
   TDateTimeRec = record
     Year, Month, Day, Hour, Minute, Second, Millisecond : Word;
 
@@ -270,6 +332,7 @@ type
   TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
   TFuncConst<T1,T2,TResult> = reference to function (const Arg1: T1; const Arg2: T2): TResult;
   TFuncConst<T1,T2,T3,TResult> = reference to function (const Arg1: T1; const Arg2: T2; const Arg3: T3): TResult;
+  { Fill/fillRandom/Randomize and other tools for arrays }
   TArrayUtils = record
   public
     class function Get<T>(const Arr: array of T):TArray<T>; static;
@@ -294,6 +357,7 @@ type
     class procedure StableSort<T>(var Dst: TArray<T>; StartIndex,Count: integer; Comparer: IComparer<T>); static;
   end;
 
+  { Check TDateTime correctness, convert to string etc }
   TDateTimeUtils = class
   public
     const
@@ -327,6 +391,7 @@ type
         begin
           result := integer(List[Left].Period) - integer(List[Right].Period);
         end);  }
+  { Utils for index arrays (RandomSelection, Direct, Inverse etc) }		
   TIndex = class
   public
     class function Get(Count,StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>; static;
@@ -430,6 +495,7 @@ type
      begin
        result := TIndexBackEnumerator.Create(LastIndex, StartIndex);
      end; }
+  { Index enumerator "from last to first". }	 
   TIndexBackEnumerator = record
   private
     FCurrentIndex, FToIndex: integer;
@@ -449,6 +515,7 @@ type
        or
      OpTime := TTiming.Stop('TMyForm.LoadData', TotalTime);
      Caption := Format('Execution time: %.2f seconds (total: %.2f), [OpTime.TotalSeconds, TotalTime.TotalSeconds]); }
+  { Time measuring functions (recursive Start/Stop etc) }	 
   TTiming = class
   protected
     type
@@ -491,6 +558,7 @@ type
            Application.ProcessMessages;
        end;
      end; }
+  { Allows to avoid of some operations to be executed too often }	 
   TTimeOut = record
   private
     FOpTimedOut: Boolean;
@@ -562,10 +630,10 @@ type
     class function ToString(const Value: Currency; FractionalPart: boolean = False): string; reintroduce; static;
   end;
 
-  { Platform independent stream writer.
-    Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
+  { Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
     But TWriter class has set of platform independent functions WriteVar. We write wrapper around TWriter
     in order to expose only platform independent functionality (and extend it for other basic types). }
+  { Platform independent stream writer }	
   TPIWriter = class
   protected
     Writer: TWriter;

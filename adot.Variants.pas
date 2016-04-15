@@ -1,19 +1,27 @@
 ﻿unit adot.Variants;
-(*******************************************************************************
-KortInfo    :
-Forfatter   : AH
-Laget dato  : 08.02.2016
-Eier        :
-Beskrivelse :
-Endringer   :
-08.02.16/AH : TVarUtils/TVarArray/TVarArrayTypified<ElementType>.
-*******************************************************************************)
 
+{ Definition of classes/record types:
+
+  TUnifiedVarAccess = record
+    Unified access to content of variable of any type:
+    - array of byte/integer/extended/... type can be accessed as array of "double".
+    - operations on variant array of any type can be done in unified style.
+
+  TVar = class
+    Utils/helpers for variant type (set of functions ToType/ToTypeDef/TryToType etc)
+
+  TVarArray = record
+    Helper for variant array (unified access to numeric values as "double" etc).
+
+  TVarArrayTypified<ElementType> = record
+    Typed access to elements of variant array (should be instantiated with correct type).
+
+}
 interface
 
 type
 
-  { Utils/helpers for variant type }
+  { Utils/helpers for variant type (set of functions ToType/ToTypeDef/TryToType etc) }
   TVar = class
   private
     class function VarTypeIsBoolean(const AVarType: TVarType): Boolean; static;
@@ -59,7 +67,7 @@ type
 
   TEnumFloatProc = reference to procedure(var AValue: Double; const ADim: TArray<integer>);
 
-  { Helper for variant array. }
+  { Helper for variant array (unified access to numeric values as "double" etc). }
   TVarArray = record
   public
     type
@@ -105,7 +113,7 @@ type
     property VArray: variant read FVArray;
   end;
 
-  { Typed access to elements of variant array (should be instanciated with correct type). }
+  { Typed access to elements of variant array (should be instantiated with correct type). }
   TVarArrayTypified<ElementType> = record
   private
     type
@@ -181,7 +189,7 @@ uses
 type
   { Unified access to content of variable of any type:
     - array of byte/integer/extended/... type can be accessed as array of "double".
-    - operations on variant array of any type can be done in unuified style. }
+    - operations on variant array of any type can be done in unified style. }
   TUnifiedVarAccess = record
   private
     type

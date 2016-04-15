@@ -1,5 +1,27 @@
 ﻿unit adot.VCL.Tools;
 
+{ Definition of classes/record types:
+
+  TAppActions = class
+    Get all "executable" components of form (TMenu/TAction/...).
+    Used by automated testing framework & quick search window (available by F11).
+
+  TCanvasUtils = class
+    MaxFitLength / BlendRectangle and other graphic functions specific to VCL.
+
+  TControlUtils = class
+    ForEach, FindForm, GetShortCaption and other.
+
+  TMDIHelper<T: class> = class
+    FindMDIChild etc.
+
+  TVCLFileUtils = class
+    CopyFile without locking UI etc.
+
+  TVCLStreamUtils = class
+    Copy streams without locking UI etc.
+
+}
 interface
 
 uses
@@ -28,6 +50,7 @@ type
      begin
        MVA := TMDIHelper<TMVAAvstemmingForm>.FindMDIChild;
      end; }
+  { FindMDIChild etc }	 
   TMDIHelper<T: class> = class
   public
     class function FindMDIChild(ParentForm:TForm; BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
@@ -35,7 +58,7 @@ type
     //class function MdiParentClientArea(AParent: TForm = nil): TRect; static;
   end;
 
-  { Search for all "executable" components of (main) form (TMenu/TAction/...).
+  { Get all "executable" components of form (TMenu/TAction/...).
     Used by automated testing framework & quick search window (available by F11). }
   TAppActions = class
   public
@@ -98,7 +121,7 @@ type
 
   end;
 
-  { MaxFitLength and other functions }
+  { MaxFitLength / BlendRectangle and other graphic functions specific to VCL }
   TCanvasUtils = class
   public
     class procedure BlendRectangle(Dst: TCanvas; const R: TRect; C: TColor; MixPercent: Byte); static;

@@ -3,6 +3,27 @@
 {$MINENUMSIZE 4}
 {$WARN SYMBOL_PLATFORM OFF}
 
+{ Definition of classes/record types:
+
+  TDiskLetters = class
+    DiskPathToLetter etc.
+
+  TMessenger = class
+    Allows to send / receive messages by any component (even if component is not inherited from TWinControl)
+
+  TProcess = class
+    EnumerateProcesses, GetIntegrityLevel etc.
+
+  TSecurity = class
+    AddDbgPrivileges / AddPrivilege / NullDACL etc.
+
+  TSharedMem = class
+    Shared memory class.
+
+  TWinFileUtils = class
+    CopyFile using WinAPI with callback etc.
+
+}
 interface
 
 uses
@@ -23,6 +44,7 @@ uses
 
 type
 
+  { EnumerateProcesses, GetIntegrityLevel etc }
   TProcess = class
   public
     type
@@ -56,8 +78,8 @@ type
 
   public
 
-    // Usually you need to call TSecurity.AddDbgPrivileges to read info about
-    // system processes, otherwise QueryImagePath may return "" for example.
+    { Usually you need to call TSecurity.AddDbgPrivileges to read info about
+      system processes, otherwise QueryImagePath may return "" for example. }
     class function EnumerateProcesses(ASkipCurrProcess: boolean;
       AOnProcess: TOnProcess):Boolean; static;
     class function EnumerateThreads(pid: DWORD; AOnThread: TOnThread):Boolean; overload; static;
@@ -72,6 +94,7 @@ type
     class function GetIntegrityLevel: String; overload; static;
   end;
 
+  { AddDbgPrivileges / AddPrivilege / NullDACL etc }
   TSecurity = class
   public
     type
@@ -125,6 +148,7 @@ type
     class function NullDACL(var s: TDescrAttr): Boolean; static;
   end;
 
+  { Shared memory class }
   TSharedMem = class(THandleObject)
   protected
     FName: string;
@@ -141,6 +165,7 @@ type
     property Created: Boolean read FCreated;
   end;
 
+  { DiskPathToLetter etc }
   TDiskLetters = class
   private
     FLetters: TDictionary<string, char>;
@@ -155,6 +180,7 @@ type
     function ResolvePath(const APath: string): String;
   end;
 
+  { CopyFile using WinAPI with callback etc }
   TWinFileUtils = class
   public
 
@@ -174,6 +200,7 @@ type
 
   { To receive/process messages in component when it is not inherited from TWinControl.
     For every message (call of WndProc) will call handler twice - before and after standard processing. }
+  { Allows to send / receive messages by any component (even if component is not inherited from TWinControl) }	
   TMessenger = class
   public
     type

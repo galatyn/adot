@@ -1,5 +1,11 @@
 ﻿unit adot.Graphics;
 
+{ Definition of classes/record types:
+
+  TColorUtils = class
+    Find similar standard color, change brightness etc.
+
+}
 interface
 
 uses
@@ -7,6 +13,7 @@ uses
   System.Math;
 
 type
+  { Find similar standard color, change brightness etc }
   TColorUtils = class
   public
     type

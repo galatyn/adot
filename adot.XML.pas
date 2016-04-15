@@ -1,5 +1,11 @@
 ﻿unit adot.XML;
 
+{ Definition of classes/record types:
+
+  TXMLUtils = class
+    IsWellFormedXML, MakeXMLFileReadable etc.
+
+}
 interface
 
 uses
@@ -13,6 +19,7 @@ uses
   Xml.XMLIntf;
 
 type
+  { IsWellFormedXML, MakeXMLFileReadable etc }
   TXMLUtils = class
     class function IsWellFormedXML(const XML: string): boolean; overload; static;
     class function IsWellFormedXML(const XML: TStream): boolean; overload; static;

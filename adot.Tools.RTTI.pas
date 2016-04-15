@@ -1,5 +1,14 @@
 ﻿unit adot.Tools.RTTI;
 
+{ Definition of classes/record types:
+
+  TEnumeration<T: record> = record
+    Conversion between enumeration type, ordinal value and string value.
+
+  TRttiUtils = class
+    IsInstance<T>, ValueAsString<T>, CreateInstance<T: class> etc.
+
+}
 interface
 
 uses
@@ -10,6 +19,7 @@ uses
   System.SysUtils;
 
 type
+  { IsInstance<T>, ValueAsString<T>, CreateInstance<T: class> etc }
   TRttiUtils = class
   public
 
@@ -32,6 +42,7 @@ type
 
   { Simple convertion EnumType->string->EnumType etc.
     http://stackoverflow.com/questions/31601707/generic-functions-for-converting-an-enumeration-to-string-and-back#31604647 }
+  { Conversion between enumeration type, ordinal value and string value }	
   TEnumeration<T: record> = record
   strict private
     class function TypeInfo: PTypeInfo; {$IFNDEF DEBUG}inline;{$ENDIF} static;

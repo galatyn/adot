@@ -1,18 +1,77 @@
 ﻿unit adot.Collections;
-{
-  TAutoFreeCollection
-  TSetClass<T>
-  TSet<T>
-  TMapClass<TKey,TValue>
-  TMap<TKey,TValue>
-  TMultimapClass<TKeyType,TValueType>
-  THeap<T>
-  TRing<T>
-  TCompound<TypeA,TypeB[,TypeC]>
-  TCompoundEqualityComparer<TypeA,TypeB[,TypeC]>
-  TCompoundComparer<TypeA,TypeB[,TypeC]>
-}
 
+{ Definition of classes/record types:
+
+  TAuto<T: class> = record
+    Class wrapper. Inner object created automaticaly "on demand" and destroyed when wrapper goes out of scope.
+
+  TAutoFree<T: class> = record
+    Class wrapper. Inner object will be destroyed automatically when wrapper goes out of scope.
+
+  TAutoFreeCollection = record
+    Collection of objects to be destroyed automaticaly when collection goes out of scope.
+
+  TBHeap<TKey, TValue> = record
+    Low level heap operations on array.
+
+  TBinaryHeapClass<TKey,TValue> = class
+    Binary heap of pairs [Key;Value].
+
+  TBinaryHeapClass<TKey> = class
+    Binary heap with key only.
+
+  TBinarySearchTree<TKey,TValue> = Class
+    Binary search tree.
+
+  TCache<TKey,TValue> = class
+    Based on TDictionary, but automatically deletes data if it take more space than allowed.
+
+  TComparerUtils = class
+    Default comparer/equality comparer etc.
+
+  TCompound<TypeA,TypeB,TypeC> = record
+    Compound record with three fields. Provides constructor and comparers for use in collections.
+
+  TCompound<TypeA,TypeB> = record
+    Compound record with two fields. Provides constructor and comparers for use in collections.
+
+  TCompoundComparer<TypeA,TypeB,TypeC> = class
+    Comparer for compound of three fields.
+
+  TCompoundComparer<TypeA,TypeB> = class
+    Comparer for compound of two fields.
+
+  TCompoundEqualityComparer<TypeA,TypeB,TypeC> = class
+    Equality comparer for compound of three fields.
+
+  TCompoundEqualityComparer<TypeA,TypeB> = class
+    Equality comparer for compound of two fields.
+
+  TMap<TKey,TValue> = record
+    Class for map. Based on TDictionary and extends it with some features.
+
+  TMapClass<TKey,TValue> = class
+    Class for map. Based on TDictionary and extends it with some features.
+
+  TMultimapClass<TKey,TValue> = class
+    Multimap class. Supports multiple items sharing same key. Keeps items in efficient way.
+
+  TOrderedMapClass<TKey,TValue> = Class
+    Ordered map.
+
+  TRingClass<T> = class
+    Cyclic/circular buffer based on array. Add/delete items to head/tail.
+
+  TSet<T> = record
+    Record type for set. Support operators for all set operations and copy-on-write.
+
+  TSetClass<TValue> = class
+    Generic class for set.
+
+  TVector<T> = record
+    Wrapper for TArray<T> (array with Add/Delete functionality).
+
+}
 interface
 
 uses
@@ -605,7 +664,7 @@ type
         Number: integer;
       end;
 
-      { TKey can be String for example, so we can't use default comparer for
+      {# TKey can be String for example, so we can't use default comparer for
         TMultimapKey record type, we have to implement specific one. }
       TMultimapKeyEqualityComparer = class(TEqualityComparer<TMultimapKey>)
       private

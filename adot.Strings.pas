@@ -1,27 +1,79 @@
 ﻿unit adot.Strings;
-{
-  TStr - set of functions for strings
-  TTokAbstract - abstract class for tokenizers (set of methods to be implemented by descendants)
-    TTokCustom   - abstract class for tokenizers (tokenizer can extract from text/string specific parts - lines,word,numbers etc)
-      TTokCompound - chain of tokenizers (next tokenizer in chain performs on results from previous tokenizer)
-      TTokNot      - can be used to "skip" of the text extracted by inner tokenizer (for example if we have tokenizer
-                     extracting comments from the text, then TTokNot will extract all text except comments).
-      TTokCustomText - abstract class for simple tokenizers
-        TTokDelegated           - tokenizer with custom function to search tokens
-        TTokWhitespaces         - token is sequence of whitespaces
-        TTokNonSpace            - token is sequence of any chars except spaces
-        TTokLetters             - token is sequence of any chars except spaces
-        TTokDigits              - token is sequence of digits
-        TTokLettersOrDigits     - token is sequence of letters and digits
-        TTokNumbers             - token is number in general format ("1", "+1", "10.2" etc)
-        TTokLines               - token is line separated by "end of line" marker (supports most of possible markers)
-        TTokCharDelimitedLines  - token is sequence of any chars delimited by specified char (delimiter)
-        TTokIdentifier          - token is identifier in Delphi style (starts from letter or "_", contains letters and digits)
-        TTokLiterals            - token is string literal in Delphi style
-        TTokComments            - token is comment in Delphi style (chars inside of literals are ignored)
-        TTokPascal              - token is Pascal language token (literal/comment/identifier/delimiter etc)
-}
 
+{ Definition of classes/record types:
+
+  TReplace = record
+    we translate all comands to sequence of "replace"
+
+  TStr = class
+    string utils.
+
+  TStringEditor = record
+    List of string edit commands (insert/delete/replace). Can be applied to any string.
+    Any operation is applied to initial text (without changes made by other commands).
+
+  TTokAbstract = class
+    Abstract class for tokenizer (parsing text and extraction some parts called tokens).
+    Methods should be implemented by descendants of TTokCustom.
+
+  TTokCharDelimitedLines = class
+    Extract words separated by specific char.
+
+  TTokComments = class
+    Extract comments in Delphi style (line starting from "//", chars between "(*" and "*)" etc.
+
+  TTokCompound = class
+    Organize several tokenizers to chain.
+
+  TTokCustom = class
+    Extends abstract class with basic functionality. All desdendants should be inherited
+    from TTokCustom, not from TTokAbstract.
+
+  TTokCustomText = class
+    Basic class for simple string tokenizers. Implements all required methods of TTokCustom.
+    Inherited classes must implement one function for processing of custom tokenizers.
+
+  TTokDelegated = class
+    Custom function to extract specific tokens from the text.
+
+  TTokDigits = class
+    Extract words of digits.
+
+  TTokIdentifier = class
+    Extract identifiers as Delphi defines them.
+
+  TTokLetters= class
+    Extract words of letters.
+
+  TTokLettersOrDigits = class
+    Extract words of letters/digits.
+
+  TTokLines = class
+    Extract lines.
+
+  TTokLiterals = class
+    Extract string literanl as Delphi defines them ('a', 'test literal' etc).
+
+  TTokNonSpace = class
+    Extract words of non-space chars.
+
+  TTokNot = class
+    Reverses result of inner tokenizer. For example in pair with TTokNumbers will extract all text except numbers.
+    Important: TTokNot will skip all empty results, only non-empty tokens are extracted.
+
+  TTokNumbers = class
+    Extract numbers ("12", "+2", "-1.3" etc).
+
+  TTokPascal = class
+    Lexical analyzer for Pascal code (check TPasTokenType for list of supported lexems).
+
+  TTokWhitespaces = class
+    Extract whitespaces.
+
+  TTokenPos = record
+    Position of token in the text. Starts from zero.
+
+}
 interface
 
 uses
@@ -143,7 +195,7 @@ type
     State: IInterfacedObject<TMemoryStream>;
   end;
 
-  { Abstract class for tokenizer (parsing texzt and extraction some parts called tokens).
+  { Abstract class for tokenizer (parsing text and extraction some parts called tokens).
     Methods should be implemented by descendants of TTokCustom }
   TTokAbstract = class abstract
   protected

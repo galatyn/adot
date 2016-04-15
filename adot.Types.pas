@@ -1,5 +1,14 @@
 ﻿unit adot.Types;
 
+{ Definition of classes/record types:
+
+  TCustomCachable = class
+    Basic class with support ICachable interface.
+
+  TEmptyRec = record
+    types.
+
+}
 interface
 
 uses
@@ -53,6 +62,7 @@ type
   { A non-reference-counted IInterface implementation. }
   TNRCInterfacedObject = TSingletonImplementation;
 
+  { Basic class with support ICachable interface }
   TCustomCachable = class(TNRCInterfacedObject, ICachable)
   protected
     function GetKalkulasjonErAktiv: Boolean; virtual; abstract;
