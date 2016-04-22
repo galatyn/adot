@@ -738,14 +738,19 @@ type
   { Enumeration and other component-specific tools }
   TComponentUtils = class
   public
-    type
-      TComponentBrkProc = reference to procedure(AComponent: TComponent; var ABreak: boolean);
-      TComponentProc = reference to procedure(AComponent: TComponent);
 
-    { returns True if enumeration complete, False if canceled }
-    class function ForEach(AStart: TComponent; ACallback: TComponentBrkProc): Boolean; overload; static;
-    class procedure ForEach(AStart: TComponent; ACallback: TComponentProc); overload; static;
-    class function GetAll(AStart: TComponent): TArray<TComponent>; static;
+    { Enumerates all child components recursively. Returns True if canceled (ACancel is set True by ACallback) }
+    class function ForEach(AStart: TComponent; ACallback: TProcVar1<TComponent, Boolean>): Boolean; overload; static;
+    { Enumerates child components of type T recursively. Returns True if canceled (ACancel is set True by ACallback) }
+    class function ForEach<T: class>(AStart: TComponent; ACallback: TProcVar1<T, Boolean>): Boolean; overload; static;
+    { Enumerates all child components recursively }
+    class procedure ForEach(AStart: TComponent; ACallback: TProc<TComponent>); overload; static;
+    { Enumerates all child components of type T recursively }
+    class procedure ForEach<T: class>(AStart: TComponent; ACallback: TProc<T>); overload; static;
+    { Get all child components recursively }
+    class function GetAll(AStart: TComponent): TArray<TComponent>; overload; static;
+    { Get all child components of type T recursively }
+    class function GetAll<T: class>(AStart: TComponent): TArray<T>; overload; static;
   end;
 
   { Simple and fast managed analog of TMemoryStream }
@@ -779,6 +784,33 @@ type
     property Size: integer read FSize write SetSize;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Position: integer read FPosition write FPosition;
+  end;
+
+  { Executes custom action (procedure/method) when last instance of the action goes out of scope (automatic finalization etc). }
+  TOutOfScopeAction = record
+  private
+    FProc: IInterfacedObject<TObject>;
+  public
+    constructor Create(AProc: TProc);
+  end;
+
+  TOutOfScopeAction<T> = record
+  private
+    type
+      TRunOnDestroy = class
+      private
+        FProc: TProc<T>;
+        FValue: T;
+
+      public
+        constructor Create(AProc: TProc<T>; AValue: T);
+        destructor Destroy; override;
+      end;
+
+    var
+      FProc: IInterfacedObject<TRunOnDestroy>;
+  public
+    constructor Create(AProc: TProc<T>; AValue: T);
   end;
 
 function Min3(const A,B,C: integer): integer; overload;
@@ -2866,7 +2898,7 @@ end;
 
 { TComponentUtils }
 
-class function TComponentUtils.ForEach(AStart: TComponent; ACallback: TComponentBrkProc): Boolean;
+class function TComponentUtils.ForEach(AStart: TComponent; ACallback: TProcVar1<TComponent, Boolean>): Boolean;
 var
   i: Integer;
 begin
@@ -2887,7 +2919,7 @@ begin
   result := True;
 end;
 
-class procedure TComponentUtils.ForEach(AStart: TComponent; ACallback: TComponentProc);
+class procedure TComponentUtils.ForEach(AStart: TComponent; ACallback: TProc<TComponent>);
 var
   i: Integer;
 begin
@@ -2898,23 +2930,55 @@ begin
     ForEach(AStart.Components[i], ACallback);
 end;
 
-class function TComponentUtils.GetAll(AStart: TComponent): TArray<TComponent>;
-var
-  Dst: TArray<TComponent>;
-  Count: integer;
+class function TComponentUtils.ForEach<T>(AStart: TComponent; ACallback: TProcVar1<T, Boolean>): Boolean;
 begin
-  Count := 0;
-  SetLength(Dst, 1000);
+  result := ForEach(AStart,
+    procedure(C: TComponent; var Break: boolean)
+    begin
+      if C is T then
+        ACallback(T(C), Break);
+    end);
+end;
+
+class procedure TComponentUtils.ForEach<T>(AStart: TComponent; ACallback: TProc<T>);
+begin
   ForEach(AStart,
     procedure(C: TComponent)
     begin
-      if Count>=Length(Dst) then
-        SetLength(Dst, Length(Dst)*2);
-      Dst[Count] := C;
-      inc(Count);
+      if C is T then
+        ACallback(T(C));
     end);
-  SetLength(Dst, Count);
-  Result := Dst;
+end;
+
+class function TComponentUtils.GetAll(AStart: TComponent): TArray<TComponent>;
+var
+  V: TVector<TComponent>;
+begin
+  V.Clear;
+  V.Capacity := AStart.ComponentCount;
+  ForEach(AStart,
+    procedure(C: TComponent)
+    begin
+      V.Add(C);
+    end);
+  V.TrimExcess;
+  Result := V.Items;
+end;
+
+class function TComponentUtils.GetAll<T>(AStart: TComponent): TArray<T>;
+var
+  V: TVector<T>;
+begin
+  V.Clear;
+  V.Capacity := AStart.ComponentCount;
+  ForEach(AStart,
+    procedure(C: TComponent)
+    begin
+      if C is T then
+        V.Add(T(C));
+    end);
+  V.TrimExcess;
+  result := V.Items;
 end;
 
 { THashHelperFunctions }
@@ -3232,6 +3296,57 @@ procedure TBuffer.Write(const Src: string);
 begin
   if Src<>'' then
     Write(Src[Low(Src)], Length(Src)*SizeOf(Char));
+end;
+
+{ TOutOfScopeAction.TOnDestroyRunner }
+
+type
+  TOnDestroyRunner = class
+  private
+    FProc: TProc;
+
+    constructor Create(AProc: TProc);
+    destructor Destroy; override;
+  end;
+
+constructor TOnDestroyRunner.Create(AProc: TProc);
+begin
+  FProc := AProc;
+end;
+
+destructor TOnDestroyRunner.Destroy;
+begin
+  if Assigned(FProc) then
+    FProc;
+  inherited;
+end;
+
+{ TOutOfScopeAction }
+
+constructor TOutOfScopeAction.Create(AProc: TProc);
+begin
+  FProc := TInterfacedObject<TObject>.Create(TOnDestroyRunner.Create(AProc));
+end;
+
+{ TOutOfScopeAction<T> }
+
+constructor TOutOfScopeAction<T>.Create(AProc: TProc<T>; AValue: T);
+begin
+  FProc := TInterfacedObject<TRunOnDestroy>.Create(TRunOnDestroy.Create(AProc, AValue));
+end;
+
+{ TOutOfScopeAction<T>.TRunOnDestroy }
+
+constructor TOutOfScopeAction<T>.TRunOnDestroy.Create(AProc: TProc<T>; AValue: T);
+begin
+  FProc := AProc;
+  FValue := AValue;
+end;
+
+destructor TOutOfScopeAction<T>.TRunOnDestroy.Destroy;
+begin
+  FProc(FValue);
+  inherited;
 end;
 
 end.

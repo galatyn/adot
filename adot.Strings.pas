@@ -132,6 +132,9 @@ type
     { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
     class function SameText(const A: string; const B: array of string): Boolean; overload;
+    class function SameTrimText(const A,B: string): Boolean; overload;
+    class function CompareText(const A,B: string): integer; overload;
+    class function CompareTrimText(const A,B: string): integer; overload;
 
     { based on TTokLines }
     class procedure TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True); overload; static;
@@ -176,6 +179,7 @@ type
 
     class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
     class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
+    class operator In(const A: integer; const B: TTokenPos): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   {# Internal structure to describe the token just found by tokenizer.
@@ -659,6 +663,16 @@ begin
         result := result + Delimeter + Src[i];
 end;
 
+class function TStr.CompareText(const A, B: string): integer;
+begin
+  result := AnsiCompareText(A, B);
+end;
+
+class function TStr.CompareTrimText(const A, B: string): integer;
+begin
+  result := CompareText(Trim(A), Trim(B));
+end;
+
 class function TStr.Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string;
 var
   i: Integer;
@@ -969,6 +983,11 @@ begin
     if SameText(B[I], A) then
       Exit(True);
   result := False;
+end;
+
+class function TStr.SameTrimText(const A, B: string): Boolean;
+begin
+  result := SameText(Trim(A), Trim(B));
 end;
 
 class function TStr.SimilarStrings(A,B: String; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean;
@@ -1332,6 +1351,11 @@ class operator TTokenPos.Add(const A, B: TTokenPos): TTokenPos;
 begin
   result.Start := Min(A.Start, B.Start);
   result.Len   := Max(A.Start+A.Len, B.Start+B.Len) - result.Start;
+end;
+
+class operator TTokenPos.In(const A: integer; const B: TTokenPos): Boolean;
+begin
+  result := (A >= B.Start) and (A < B.Start + B.Len);
 end;
 
 class operator TTokenPos.Subtract(const A, B: TTokenPos): TTokenPos;

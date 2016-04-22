@@ -54,19 +54,37 @@ type
         ccBlue,  ccYellow, ccBlack,
         ccWhite, ccGray,   ccSilver
       );
+    const
+      { luminance = (R*kRed + G*kGreen + B*kBlue) / 3000 }
+      kRed   = 299;
+      kGreen = 587;
+      kBlue  = 114;
   private
 
   public
+    { distance between colors }
     class function Distance(A,B: TColor; ADistType: TDistanceType = TDefDist):Integer; static;
+
+    { recognition of colors according to distance  }
     class function RecognizeColor(ASample: TColor; const AColors: array of TColor; ADistType: TDistanceType = TDefDist): Integer; overload; static;
     class function RecognizeColor(ASample: TColor; ADistType: TDistanceType = TDefDist): TColorClass; overload; static;
     class function RecognizeBaseColor(ASample: TColor; ADistType: TDistanceType = TDefDist): TColorClass; static;
     class function GetName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
     class function GetBasicColorName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
-    class function AdjustComponentBrightness(c: byte; BrightnessPercent: byte): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function AdjustBrightness(c: TColor; BrightnessPercent: byte): TColor; static;
-    class function AdjustBrightnessBin(c: TColor; BrightnessPercent: byte): TColor; static; { no ColorToRGB transformation }
+
+    { find brightness of the color 0..255 }
+    class function GetBrightness(c: TColor): byte; static;
+    { result has brightness = N% from brightness of C }
+    class function AdjustComponentBrightness(c: byte; BrightnessPercent: cardinal): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function AdjustBrightness(c: TColor; BrightnessPercent: cardinal): TColor; static;
+    class function AdjustBrightnessBin(c: TColor; BrightnessPercent: cardinal): TColor; static; { no ColorToRGB transformation }
+    { result has brightness = N% from max }
+    class function SetBrightness(c: TColor; BrightnessPercent: byte): TColor; static;
+
+    { broduces mix of several colors }
     class function MixColors(const Colors: array of TColor): TColor; static;
+
+    { color <-> components }
     class function ColorToRGB(c: TColor): TColor; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function RGBToColor(R,G,B: byte): TColor; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function GetR(C: TColor): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
@@ -80,12 +98,12 @@ implementation
 
 { TColorUtils }
 
-class function TColorUtils.AdjustBrightness(c: TColor; BrightnessPercent: byte): TColor;
+class function TColorUtils.AdjustBrightness(c: TColor; BrightnessPercent: cardinal): TColor;
 begin
   result := AdjustBrightnessBin(TColorRec.ColorToRGB(c), BrightnessPercent);
 end;
 
-class function TColorUtils.AdjustBrightnessBin(c: TColor; BrightnessPercent: byte): TColor;
+class function TColorUtils.AdjustBrightnessBin(c: TColor; BrightnessPercent: cardinal): TColor;
 begin
   result :=
     (c and $FF000000) or
@@ -94,9 +112,9 @@ begin
     (AdjustComponentBrightness((c shr  0) and $FF, BrightnessPercent) shl  0);
 end;
 
-class function TColorUtils.AdjustComponentBrightness(c, BrightnessPercent: byte): byte;
+class function TColorUtils.AdjustComponentBrightness(c: byte; BrightnessPercent: cardinal): byte;
 begin
-  result := Min(255, longword(c)*BrightnessPercent div 100);
+  result := Min(255, c*BrightnessPercent div 100);
 end;
 
 class function TColorUtils.ColorToRGB(c: TColor): TColor;
@@ -162,6 +180,25 @@ end;
 class function TColorUtils.RGBToColor(R, G, B: byte): TColor;
 begin
   Result := (TColor(B) shl 16) or (TColor(G) shl 8) or R;
+end;
+
+class function TColorUtils.GetBrightness(c: TColor): byte;
+begin
+  C := ColorToRGB(C);
+  result := (cardinal(GetR(C))*kRed + cardinal(GetG(C))*kGreen + cardinal(GetB(C))*kBlue) div 1000;
+end;
+
+class function TColorUtils.SetBrightness(c: TColor; BrightnessPercent: byte): TColor;
+var
+  BrCur,BrNew: byte;
+begin
+  BrCur := GetBrightness(C);
+  BrNew := 255*BrightnessPercent div 100;
+  if BrCur=0 then
+    result := RGBToColor(BrNew, BrNew, BrNew)
+  else
+    result := AdjustBrightness(C, BrNew*100 div BrCur);
+  BrCur := GetBrightness(Result);
 end;
 
 class function TColorUtils.GetR(C: TColor): byte;
