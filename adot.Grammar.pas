@@ -12,16 +12,18 @@ uses
 type
   TByteSet = set of byte;
 
+  TGrammarType = (gtUnknow, gtContainer, gtString, gtSequence, gtRepeat);
+
   TGrammarClass = class abstract
   protected
+    FGrammarType: TGrammarType;
   end;
 
-  TGrammarLink = class(TGrammarClass)
+  { used as container for rule in case when link to the rule is initialized before the rule is defined }
+  TGrammarContainer = class(TGrammarClass)
   private
-    { doesn't own subgrammar, it's just a link }
-    FLink: TGrammarClass;
+    FInner: TGrammarClass;
   public
-    constructor Create(ALink: TGrammarClass);
   end;
 
   TGrammarString = class(TGrammarClass)
@@ -35,6 +37,14 @@ type
   TGrammarSequence = class(TGrammarClass)
   public
 
+  end;
+
+  TGrammarRepeater = class(TGrammarClass)
+  private
+    FOp: TGrammarClass;
+    FMinCount,FMaxCount: integer;
+  public
+    constructor Create(AOp: TGrammarClass; AMinCount,AMaxCount: integer);
   end;
 
   TGrammar = record
@@ -69,44 +79,47 @@ type
   end;
 
 { all possible expressions for TGrammar (used in right side of rule definition) }
-function Expr(var AGrammar: TGrammar): TGrammar.TMedia; overload;
-function Expr(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Expr(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Expr(Value: TArray<Byte>): TGrammar.TMedia; overload;
-function Expr(const ByteSet: TByteSet): TGrammar.TMedia; overload;
-function Expr(CharSet: TSet<Char>): TGrammar.TMedia; overload;
+function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload;
+function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
+function Ex(const ByteSet: TByteSet): TGrammar.TMedia; overload;
+function Ex(CharSet: TSet<Char>): TGrammar.TMedia; overload;
 
 { all possible repeaters for TGrammar (used as multiplyer of expression in right side of rule definiton) }
 function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange; overload;
 function Rep(AExactCount: integer): TGrammar.TRange; overload;
 function Rep: TGrammar.TRange; overload;
+function Opt: TGrammar.TRange; overload;
 
 implementation
 
-function Expr(var AGrammar: TGrammar): TGrammar.TMedia;
+function Ex(var AGrammar: TGrammar): TGrammar.TMedia;
 begin
+  if AGrammar.FGrm=nil then
+    AGrammar.FGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarContainer.Create);
   result.MediaGrm := AGrammar.FGrm;
 end;
 
-function Expr(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
+function Ex(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
 begin
   result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarString.Create(Value, CaseSensitive));
 end;
 
-function Expr(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean): TGrammar.TMedia;
+function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean): TGrammar.TMedia;
 begin
 end;
 
-function Expr(Value: TArray<Byte>): TGrammar.TMedia;
+function Ex(Value: TArray<Byte>): TGrammar.TMedia;
 begin
 end;
 
-function Expr(const ByteSet: TByteSet): TGrammar.TMedia;
+function Ex(const ByteSet: TByteSet): TGrammar.TMedia;
 begin
 
 end;
 
-function Expr(CharSet: TSet<Char>): TGrammar.TMedia;
+function Ex(CharSet: TSet<Char>): TGrammar.TMedia;
 begin
 
 end;
@@ -127,6 +140,12 @@ function Rep: TGrammar.TRange;
 begin
   result.MinCount := 0;
   result.MaxCount := High(result.MaxCount);
+end;
+
+function Opt: TGrammar.TRange;
+begin
+  result.MinCount := 0;
+  result.MaxCount := 1;
 end;
 
 { TGrammar }
@@ -158,19 +177,21 @@ begin
 
 end;
 
-{ TGrammarLink }
-
-constructor TGrammarLink.Create(ALink: TGrammarClass);
-begin
-  FLink := ALink;
-end;
-
 { TGrammarString }
 
 constructor TGrammarString.Create(Value: String; CaseSensitive: boolean);
 begin
   FValue := Value;
   FCaseSensitive := CaseSensitive;
+end;
+
+{ TGrammarRepeater }
+
+constructor TGrammarRepeater.Create(AOp: TGrammarClass; AMinCount, AMaxCount: integer);
+begin
+  FOp := AOp;
+  FMinCount := AMinCount;
+  FMaxCount := AMaxCount;
 end;
 
 end.
