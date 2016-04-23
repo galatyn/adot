@@ -753,7 +753,7 @@ type
     class function GetAll<T: class>(AStart: TComponent): TArray<T>; overload; static;
   end;
 
-  { Simple and fast managed analog of TMemoryStream }
+  { Lightweight and managed analog of TMemoryStream }
   TBuffer = record
   public
     Data: TArray<Byte>;
@@ -765,6 +765,10 @@ type
     function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCurrentData: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
   public
 
     procedure Write(const Src; ByteCount: integer); overload;
@@ -784,9 +788,12 @@ type
     property Size: integer read FSize write SetSize;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Position: integer read FPosition write FPosition;
+    property Left: integer read GetLeft write SetLeft;
+    property CurrentData: pointer read GetCurrentData;
+    property EOF: boolean read GetEOF;
   end;
 
-  { Executes custom action (procedure/method) when last instance of the action goes out of scope (automatic finalization etc). }
+  { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
   TOutOfScopeAction = record
   private
     FProc: IInterfacedObject<TObject>;
@@ -794,6 +801,7 @@ type
     constructor Create(AProc: TProc);
   end;
 
+  { Executes custom action (procedure/method) with specific parameter when last instance goes out of scope. }
   TOutOfScopeAction<T> = record
   private
     type
@@ -3217,6 +3225,26 @@ end;
 function TBuffer.GetCapacity: integer;
 begin
   result := Length(Data);
+end;
+
+function TBuffer.GetCurrentData: pointer;
+begin
+  result := @Data[Position];
+end;
+
+function TBuffer.GetEOF: boolean;
+begin
+  result := Position >= Size;
+end;
+
+function TBuffer.GetLeft: integer;
+begin
+  result := Size-Position;
+end;
+
+procedure TBuffer.SetLeft(Value: integer);
+begin
+  Size := Position + Value;
 end;
 
 procedure TBuffer.SetCapacity(Value: integer);

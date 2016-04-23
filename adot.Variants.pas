@@ -213,14 +213,14 @@ type
     class function GetIntegerAsFloat(var Value): Double; static;
     class function GetInt64AsFloat(var Value): Double; static;
     class function GetUInt64AsFloat(var Value): Double; static;
-    class function GetNativeIntAsFloat(var Value): Double; static;
-    class function GetNativeUIntAsFloat(var Value): Double; static;
+//    class function GetNativeIntAsFloat(var Value): Double; static;
+//    class function GetNativeUIntAsFloat(var Value): Double; static;
     class function GetSingleAsFloat(var Value): Double; static;
     class function GetDoubleAsFloat(var Value): Double; static;
-    class function GetExtendedAsFloat(var Value): Double; static;
+//    class function GetExtendedAsFloat(var Value): Double; static;
     class function GetCurrencyAsFloat(var Value): Double; static;
     class function GetStringAsFloat(var Value): Double; static;
-    class function GetUnicodeStringAsFloat(var Value): Double; static;
+//    class function GetUnicodeStringAsFloat(var Value): Double; static;
     class function GetWideStringAsFloat(var Value): Double; static;
     class function GetVariantAsFloat(var Value): Double; static;
 
@@ -232,14 +232,14 @@ type
     class procedure SetIntegerAsFloat(const Src: Double; var Value); static;
     class procedure SetInt64AsFloat(const Src: Double; var Value); static;
     class procedure SetUInt64AsFloat(const Src: Double; var Value); static;
-    class procedure SetNativeIntAsFloat(const Src: Double; var Value); static;
-    class procedure SetNativeUIntAsFloat(const Src: Double; var Value); static;
+//    class procedure SetNativeIntAsFloat(const Src: Double; var Value); static;
+//    class procedure SetNativeUIntAsFloat(const Src: Double; var Value); static;
     class procedure SetSingleAsFloat(const Src: Double; var Value); static;
     class procedure SetDoubleAsFloat(const Src: Double; var Value); static;
-    class procedure SetExtendedAsFloat(const Src: Double; var Value); static;
+//    class procedure SetExtendedAsFloat(const Src: Double; var Value); static;
     class procedure SetCurrencyAsFloat(const Src: Double; var Value); static;
     class procedure SetStringAsFloat(const Src: Double; var Value); static;
-    class procedure SetUnicodeStringAsFloat(const Src: Double; var Value); static;
+//    class procedure SetUnicodeStringAsFloat(const Src: Double; var Value); static;
     class procedure SetWideStringAsFloat(const Src: Double; var Value); static;
     class procedure SetVariantAsFloat(const Src: Double; var Value); static;
 
@@ -287,7 +287,7 @@ begin
 //    varStrArg   = $0048; { vt_clsid        72 }
 //    varObject   = $0049; {                 73 }
 //    varUStrArg  = $004A; {                 74 }
-    //varString   : AHelper.SetAccessProc(GetStringAsFloat, SetStringAsFloat, SizeOf(String));
+    varString   : AHelper.SetAccessProc(GetStringAsFloat, SetStringAsFloat, SizeOf(String));
 //    varAny      = $0101; { Corba any      257 } {not OLE compatible }
     //varUString  : AHelper.SetAccessProc(GetUnicodeStringAsFloat, SetUnicodeStringAsFloat, SizeOf(UnicodeString));
   end;
@@ -327,10 +327,10 @@ begin
   result := Double(Value);
 end;
 
-class function TUnifiedVarAccess.GetExtendedAsFloat(var Value): Double;
-begin
-  result := Extended(Value);
-end;
+//class function TUnifiedVarAccess.GetExtendedAsFloat(var Value): Double;
+//begin
+//  result := Extended(Value);
+//end;
 
 class function TUnifiedVarAccess.GetInt64AsFloat(var Value): Double;
 begin
@@ -347,10 +347,10 @@ begin
   result := Longword(Value);
 end;
 
-class function TUnifiedVarAccess.GetNativeIntAsFloat(var Value): Double;
-begin
-  result := NativeInt(Value);
-end;
+//class function TUnifiedVarAccess.GetNativeIntAsFloat(var Value): Double;
+//begin
+//  result := NativeInt(Value);
+//end;
 
 class function TUnifiedVarAccess.GetShortIntAsFloat(var Value): Double;
 begin
@@ -378,16 +378,16 @@ begin
   result := UInt64(Value);
 end;
 
-class function TUnifiedVarAccess.GetNativeUIntAsFloat(var Value): Double;
-begin
-  result := NativeUInt(Value);
-end;
+//class function TUnifiedVarAccess.GetNativeUIntAsFloat(var Value): Double;
+//begin
+//  result := NativeUInt(Value);
+//end;
 
-class function TUnifiedVarAccess.GetUnicodeStringAsFloat(var Value): Double;
-begin
-  if not TryStrToFloat(UnicodeString(Value), result) then
-    result := 0;
-end;
+//class function TUnifiedVarAccess.GetUnicodeStringAsFloat(var Value): Double;
+//begin
+//  if not TryStrToFloat(UnicodeString(Value), result) then
+//    result := 0;
+//end;
 
 class function TUnifiedVarAccess.GetVariantAsFloat(var Value): Double;
 begin
@@ -420,10 +420,10 @@ begin
   Double(Value) := Src;
 end;
 
-class procedure TUnifiedVarAccess.SetExtendedAsFloat(const Src: Double; var Value);
-begin
-  Extended(Value) := Src;
-end;
+//class procedure TUnifiedVarAccess.SetExtendedAsFloat(const Src: Double; var Value);
+//begin
+//  Extended(Value) := Src;
+//end;
 
 class procedure TUnifiedVarAccess.SetInt64AsFloat(const Src: Double; var Value);
 begin
@@ -440,10 +440,10 @@ begin
   LongWord(Value) := Round(Src);
 end;
 
-class procedure TUnifiedVarAccess.SetNativeIntAsFloat(const Src: Double; var Value);
-begin
-  NativeInt(Value) := Round(Src);
-end;
+//class procedure TUnifiedVarAccess.SetNativeIntAsFloat(const Src: Double; var Value);
+//begin
+//  NativeInt(Value) := Round(Src);
+//end;
 
 class procedure TUnifiedVarAccess.SetShortIntAsFloat(const Src: Double; var Value);
 begin
@@ -470,15 +470,15 @@ begin
   UInt64(Value) := Round(Src);
 end;
 
-class procedure TUnifiedVarAccess.SetNativeUIntAsFloat(const Src: Double; var Value);
-begin
-  NativeUInt(Value) := Round(Src);
-end;
-
-class procedure TUnifiedVarAccess.SetUnicodeStringAsFloat(const Src: Double; var Value);
-begin
-  UnicodeString(Value) := FloatToStr(Src);
-end;
+//class procedure TUnifiedVarAccess.SetNativeUIntAsFloat(const Src: Double; var Value);
+//begin
+//  NativeUInt(Value) := Round(Src);
+//end;
+//
+//class procedure TUnifiedVarAccess.SetUnicodeStringAsFloat(const Src: Double; var Value);
+//begin
+//  UnicodeString(Value) := FloatToStr(Src);
+//end;
 
 class procedure TUnifiedVarAccess.SetVariantAsFloat(const Src: Double; var Value);
 begin

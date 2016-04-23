@@ -113,6 +113,11 @@ type
       );
 
   private
+    {$IFNDEF NoLoCaseMap}
+    class var
+      FLowerCaseMap: array[Char] of Char;
+    {$ENDIF}
+
     class function LevensteinDistance(s, t: string): integer; static;
     class function SubstringDistance(const a, b: String; var Dist: integer): Boolean; static;
 
@@ -121,6 +126,9 @@ type
     class function GetDigits(const s: string): String; static;
     class function RemoveDigits(const s: string): String; static;
     class function MoveDigitsToEnd(const s: string): String; static;
+
+    class procedure InitializeVars; static;
+    class procedure FinalizeVars; static;
 
   public
 
@@ -135,6 +143,9 @@ type
     class function SameTrimText(const A,B: string): Boolean; overload;
     class function CompareText(const A,B: string): integer; overload;
     class function CompareTrimText(const A,B: string): integer; overload;
+    class function SameText(A,B: PChar; Len: integer): Boolean; overload;
+
+    class function LowerCaseChar(C: Char): Char; static;
 
     { based on TTokLines }
     class procedure TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True); overload; static;
@@ -861,6 +872,22 @@ begin
         State := stSpace; { space is required before next number }
 end;
 
+class procedure TStr.InitializeVars;
+{$IFNDEF NoLoCaseMap}
+var
+  C: Char;
+{$ENDIF}
+begin
+  {$IFNDEF NoLoCaseMap}
+  for C := Low(C) to High(C) do
+    FLowerCaseMap[C] := C.ToLower;
+  {$ENDIF}
+end;
+
+class procedure TStr.FinalizeVars;
+begin
+end;
+
 class function TStr.MoveDigitsToEnd(const s: string): String;
 var
   i,j: Integer;
@@ -983,6 +1010,31 @@ begin
     if SameText(B[I], A) then
       Exit(True);
   result := False;
+end;
+
+class function TStr.SameText(A, B: PChar; Len: integer): Boolean;
+var
+  I: integer;
+begin
+  {$IFNDEF NoLoCaseMap}
+  for I := 0 to Len-1 do
+    if FLowerCaseMap[A[I]] <> FLowerCaseMap[B[I]] then
+      Exit(False);
+  {$ELSE}
+  for I := 0 to Len-1 do
+    if Char(A[I]).ToLower <> Char(B[I]).ToLower then
+      Exit(False);
+  {$ENDIF}
+  result := True;
+end;
+
+class function TStr.LowerCaseChar(C: Char): Char;
+begin
+  {$IFNDEF NoLoCaseMap}
+  result := FLowerCaseMap[C];
+  {$ELSE}
+  result := C.ToLower;
+  {$ENDIF}
 end;
 
 class function TStr.SameTrimText(const A, B: string): Boolean;
@@ -2916,5 +2968,11 @@ begin
     Buffer.Write(Src[SrcPos+Low(Src)], (L-SrcPos)*SizeOf(Char));
   Buffer.ReadAllData(result);
 end;
+
+initialization
+  TStr.InitializeVars;
+
+finalization
+  TStr.FinalizeVars;
 
 end.
