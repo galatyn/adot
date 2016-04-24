@@ -478,8 +478,10 @@ type
     class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean; overload;
     class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string): boolean; overload;
 
-    class function Load(const FileName: string; var Dst: TArray<byte>; var ErrMsg: string): boolean; overload;
-    class function Load(const FileName: string; var Dst: TArray<byte>): boolean; overload;
+    class function Load<T: record>(const FileName: string; var Dst: TArray<T>; var ErrMsg: string): boolean; overload;
+    class procedure Load<T: record>(const FileName: string; var Dst: TArray<T>); overload;
+    class function Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer; var ErrMsg: string): boolean; overload;
+    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer); overload;
   end;
 
   { Generic implementation of IfThen (to accept virtually any type). Example:
@@ -769,6 +771,8 @@ type
     procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetCurrentData: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetText: string;
+    procedure SetText(const Value: string);
   public
 
     procedure Write(const Src; ByteCount: integer); overload;
@@ -785,12 +789,16 @@ type
     procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
 
+    procedure LoadFromFile(const FileName: string);
+    procedure SaveToFile(const FileName: string);
+
     property Size: integer read FSize write SetSize;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Position: integer read FPosition write FPosition;
     property Left: integer read GetLeft write SetLeft;
     property CurrentData: pointer read GetCurrentData;
     property EOF: boolean read GetEOF;
+    property Text: string read GetText write SetText;
   end;
 
   { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
@@ -1991,20 +1999,11 @@ begin
   end;
 end;
 
-class function TFileUtils.Load(const FileName: string; var Dst: TArray<byte>; var ErrMsg: string): boolean;
-var
-  s: TFileStream;
+class function TFileUtils.Load<T>(const FileName: string; var Dst: TArray<T>; var ErrMsg: string): boolean;
 begin
   try
-    result := FileExists(FileName);
-    s := TFileStream.Create(FileName, fmOpenRead);
-    try
-      SetLength(Dst, s.Size);
-      if Length(Dst)>0 then
-        s.ReadBuffer(Dst[0], Length(Dst));
-    finally
-      s.Free;
-    end;
+    Load<T>(FileName, Dst);
+    result := True;
   except
     on e: Exception do
     begin
@@ -2015,11 +2014,43 @@ begin
   end;
 end;
 
-class function TFileUtils.Load(const FileName: string; var Dst: TArray<byte>): boolean;
+class procedure TFileUtils.Load<T>(const FileName: string; var Dst: TArray<T>);
 var
-  Msg: string;
+  s: TFileStream;
 begin
-  result := Load(FileName, Dst, Msg);
+  s := TFileStream.Create(FileName, fmOpenRead);
+  try
+    SetLength(Dst, s.Size div SizeOf(T));
+    if Length(Dst)>0 then
+      s.ReadBuffer(Dst[0], Length(Dst)*SizeOf(T));
+  finally
+    s.Free;
+  end;
+end;
+
+class function TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; ItemCount: integer; var ErrMsg: string): boolean;
+begin
+  try
+    Save<T>(FileName, Src, ItemCount);
+  except
+    on e: exception do
+    begin
+      result := False;
+      ErrMsg := e.Message;
+    end;
+  end;
+end;
+
+class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; ItemCount: integer);
+var
+  s: TFileStream;
+begin
+  s := TFileStream.Create(FileName, fmCreate);
+  try
+    s.WriteBuffer(Src[0], ItemCount*SizeOf(T));
+  finally
+    s.Free;
+  end;
 end;
 
 procedure FindOpenFiles(
@@ -3240,6 +3271,35 @@ end;
 function TBuffer.GetLeft: integer;
 begin
   result := Size-Position;
+end;
+
+procedure TBuffer.SetText(const Value: string);
+begin
+  Clear;
+  Write(Value);
+  Position := 0;
+end;
+
+function TBuffer.GetText: string;
+var
+  P: Integer;
+begin
+  P := Position;
+  Position := 0;
+  Read(Result, Size div SizeOf(Char));
+  Position := P;
+end;
+
+procedure TBuffer.LoadFromFile(const FileName: string);
+begin
+  TFileUtils.Load<Byte>(FileName, Data);
+  FSize := Length(Data);
+  FPosition := 0;
+end;
+
+procedure TBuffer.SaveToFile(const FileName: string);
+begin
+  TFileUtils.Save<Byte>(FileName, Data, Size);
 end;
 
 procedure TBuffer.SetLeft(Value: integer);

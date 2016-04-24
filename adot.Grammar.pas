@@ -18,7 +18,7 @@ uses
 type
   TByteSet = set of byte;
 
-  TGrammarType = (gtUnknown, gtContainer, gtString, gtChar, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
+  TGrammarType = (gtUnknown, gtLink, gtString, gtChar, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
 
   TCustomGrammar = class abstract(TGrammarClass)
   protected
@@ -31,8 +31,52 @@ type
     function GetId: int64; override;
   public
     constructor Create(AGrammarType: TGrammarType);
+    procedure SetupMainRule; override;
 
     property GrammarType: TGrammarType read FGrammarType;
+  end;
+
+  { Record type for grammar definition. Construct grammar rules with help of Ex/Rep functions:
+    var
+      Number,Digit: TGrammar;
+    begin
+      Number := Ex(Digit) + Ex(Digit)*Rep;
+      Digit  := Ex('1') or Ex('2');
+    end; }
+  PGrammar = ^TGrammar;
+  TGrammar = record
+  public
+    type
+      {# repeater range (range of allowed repetitions for expression) }
+      TRange = record
+        MinCount, MaxCount: integer;
+      end;
+
+      {# Delphi doesn't provide any way to catch copy operator, we introduce separate
+        type for all expression operations (right side of assigment) and Implicit operator
+        to proceed assigment to TGrammar correctly. }
+      TMedia = record
+      private
+        MediaGrm: IInterfacedObject<TGrammarClass>;
+
+      public
+        { Repeater: B*, A+, A[2;5] }
+        class operator Multiply(A: TMedia; const R: TRange): TMedia;
+
+        { Sequence: A "abc" B}
+        class operator Add(A,B: TMedia): TMedia;
+
+        { Selection:  A | "abc" }
+        class operator LogicalOr(A,B: TMedia): TMedia;
+
+        { Logical not: A + not "abc"}
+        class operator LogicalNot(A: TMedia): TMedia;
+      end;
+
+    var
+      Grm: IInterfacedObject<TGrammarClass>;
+  public
+    class operator Implicit(A : TMedia) : TGrammar;
   end;
 
   { abstract class for expression with no operands }
@@ -71,12 +115,15 @@ type
     property Op2: IInterfacedObject<TGrammarClass> read FOp2;
   end;
 
-  { Used as container for rules in case when link to the rule is initialized before the rule is defined
-    (actual grammar rule will be store as inner) }
-  TGrammarContainer = class(TGrammarClassOp1)
+  { When rule used link, we create TGrammarLink and initialize pointer FLink,
+    but Op=nil, because it can be not initialized yet. Later, when all rules
+    are initialized, SetMainRule will set Op. }
+  TGrammarLink = class(TGrammarClassOp1)
+  protected
+    FLink: PGrammar;
   public
-    constructor Create;
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    constructor Create(var ALink: TGrammar);
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarString = class(TGrammarClassOp0)
@@ -85,7 +132,7 @@ type
     FCaseSensitive: boolean;
   public
     constructor Create(Value: String; CaseSensitive: boolean);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
     property Value: string read FValue write FValue;
@@ -97,7 +144,7 @@ type
     FCaseSensitive: boolean;
   public
     constructor Create(ValueFrom,ValueTo: Char; CaseSensitive: boolean);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
     property ValueFrom: char read FValueFrom write FValueFrom;
@@ -108,14 +155,14 @@ type
   protected
   public
     constructor Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarSelection = class(TGrammarClassOp2)
   protected
   public
     constructor Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarGreedyRepeater = class(TGrammarClassOp1)
@@ -123,7 +170,7 @@ type
     FMinCount, FMaxCount: integer;
   public
     constructor Create(AOp: IInterfacedObject<TGrammarClass>; AMinCount,AMaxCount: integer);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     property MinCount: integer read FMinCount;
     property MaxCount: integer read FMaxCount;
@@ -133,56 +180,14 @@ type
   protected
   public
     constructor Create(AOp: IInterfacedObject<TGrammarClass>);
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarEOF = class(TGrammarClassOp0)
   protected
   public
     constructor Create;
-    function Accepted(var Input: TBuffer; var P: TPos): Boolean; override;
-  end;
-
-  { Record type for grammar definition. Construct grammar rules with help of Ex/Rep functions:
-    var
-      Number,Digit: TGrammar;
-    begin
-      Number := Ex(Digit) + Ex(Digit)*Rep;
-      Digit  := Ex('1') or Ex('2');
-    end; }
-  TGrammar = record
-  public
-    type
-      {# repeater range (range of allowed repetitions for expression) }
-      TRange = record
-        MinCount, MaxCount: integer;
-      end;
-
-      {# Delphi doesn't provide any way to catch copy operator, we introduce separate
-        type for all expression operations (right side of assigment) and Implicit operator
-        to proceed assigment to TGrammar correctly. }
-      TMedia = record
-      private
-        MediaGrm: IInterfacedObject<TGrammarClass>;
-
-      public
-        { Repeater: B*, A+, A[2;5] }
-        class operator Multiply(A: TMedia; const R: TRange): TMedia;
-
-        { Sequence: A "abc" B}
-        class operator Add(A,B: TMedia): TMedia;
-
-        { Selection:  A | "abc" }
-        class operator LogicalOr(A,B: TMedia): TMedia;
-
-        { Logical not: A + not "abc"}
-        class operator LogicalNot(A: TMedia): TMedia;
-      end;
-
-    var
-      FGrm: IInterfacedObject<TGrammarClass>;
-  public
-    class operator Implicit(A : TMedia) : TGrammar;
+    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
 { all possible expressions for TGrammar (used in right side of rule definition) }
@@ -207,15 +212,54 @@ function Rep(AExactCount: integer): TGrammar.TRange; overload;
 function Rep: TGrammar.TRange; overload;
 function Opt: TGrammar.TRange; overload;
 
+{ Should be called after initialization of all rules, but before main rule will be used.
+  Fixes internal links etc. }
+procedure SetMainRule(var Rule: TGrammar);
+
 implementation
+
+procedure SetMainRule(var Rule: TGrammar);
+var
+  Queue: TVector<TGrammarClass>;
+  QueuedIds: TSet<int64>;
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
+  Item: TGrammarClass;
+  I: integer;
+begin
+  Assert(Rule.Grm<>nil, 'rule is not initialized');
+  Queue.Clear;
+  Queue.Add(Rule.Grm.Data);
+  QueuedIds.Clear;
+  QueuedIds.Add(Rule.Grm.Data.Id);
+  repeat
+
+    { process next rule }
+    Item := Queue.ExtractLast;
+    if Item is TGrammarLink then
+    begin
+      Assert(TGrammarLink(Item).FLink.Grm<>nil, 'link is not initialized');
+      if TGrammarLink(Item).Op=nil then
+        TGrammarLink(Item).FOp := TGrammarLink(Item).FLink.Grm;
+    end;
+
+    { process operands of the rule }
+    Operands.Clear;
+    Item.GetOperands(Operands);
+    for I := 0 to Operands.Count-1 do
+    begin
+      Assert(Operands[I]<>nil, 'Operand is not initialized');
+      Item := Operands[I].Data;
+      if Item.Id in QueuedIds then
+        Continue;
+      QueuedIds.Add(Item.Id);
+      Queue.Add(Item);
+    end;
+  until Queue.Count=0;
+end;
 
 function Ex(var AGrammar: TGrammar): TGrammar.TMedia;
 begin
-  { If we use link to undefined (yet) rule, we create proxy
-    container which must be set up later. }
-  if AGrammar.FGrm=nil then
-    AGrammar.FGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarContainer.Create);
-  result.MediaGrm := AGrammar.FGrm;
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarLink.Create(AGrammar));
 end;
 
 function Ex(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
@@ -275,12 +319,7 @@ end;
 
 class operator TGrammar.Implicit(A: TMedia): TGrammar;
 begin
-  { Sometime TGrammar is touched before we assign it (by link from definition of another rule),
-    in this case there will be TGrammarContainer and we should replace content of container. }
-  if (Result.FGrm=nil) or not (Result.FGrm.Data is TGrammarContainer) then
-    Result.FGrm := A.MediaGrm
-  else
-    TGrammarContainer(Result.FGrm.Data).FOp := A.MediaGrm;
+  Result.Grm := A.MediaGrm;
 end;
 
 { TMedia }
@@ -317,6 +356,45 @@ end;
 function TCustomGrammar.GetId: int64;
 begin
   result := FId;
+end;
+
+procedure TCustomGrammar.SetupMainRule;
+var
+  Queue: TVector<TGrammarClass>;
+  QueuedIds: TSet<int64>;
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
+  Item: TGrammarClass;
+  I: integer;
+begin
+  inherited;
+  Queue.Clear;
+  Queue.Add(Self);
+  QueuedIds.Clear;
+  QueuedIds.Add(Id);
+  repeat
+
+    { process next rule }
+    Item := Queue.ExtractLast;
+    if Item is TGrammarLink then
+    begin
+      Assert(TGrammarLink(Item).FLink.Grm<>nil, 'link is not initialized');
+      if TGrammarLink(Item).Op=nil then
+        TGrammarLink(Item).FOp := TGrammarLink(Item).FLink.Grm;
+    end;
+
+    { process operands of the rule }
+    Operands.Clear;
+    Item.GetOperands(Operands);
+    for I := 0 to Operands.Count-1 do
+    begin
+      Assert(Operands[I]<>nil, 'Operand is not initialized');
+      Item := Operands[I].Data;
+      if Item.Id in QueuedIds then
+        Continue;
+      QueuedIds.Add(Item.Id);
+      Queue.Add(Item);
+    end;
+  until Queue.Count=0;
 end;
 
 { TGrammarClassOp0 }
@@ -360,16 +438,17 @@ begin
   FOp2 := nil;
 end;
 
-{ TGrammarContainer }
+{ TGrammarLink }
 
-function TGrammarContainer.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+constructor TGrammarLink.Create(var ALink: TGrammar);
 begin
-  result := Op.Data.Accepted(Input, P);
+  inherited Create(gtLink);
+  FLink := @ALink;
 end;
 
-constructor TGrammarContainer.Create;
+function TGrammarLink.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 begin
-  inherited Create(gtContainer);
+  result := Op.Data.Accepted(Parser, P);
 end;
 
 { TGrammarString }
@@ -381,7 +460,7 @@ begin
   FCaseSensitive := CaseSensitive;
 end;
 
-function TGrammarString.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarString.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var
   LenBytes: integer;
 begin
@@ -389,22 +468,22 @@ begin
   { empty string is always matched }
   if Value='' then
   begin
-    P.SetPos(Input.Position, 0);
+    P.SetPos(Parser.Data.Position, 0);
     Exit(True);
   end;
 
   { not enough of data to match }
   LenBytes := Length(Value)*SizeOf(Char);
-  if Input.Left < LenBytes then
+  if Parser.Data.Left < LenBytes then
     Exit(False);
 
   { we have enough of data, it is safe to compare }
   if CaseSensitive then
-    result := CompareMem(@Value[Low(Value)], Input.CurrentData, LenBytes)
+    result := CompareMem(@Value[Low(Value)], Parser.Data.CurrentData, LenBytes)
   else
-    result := TStr.SameText(@Value[Low(Value)], Input.CurrentData, Length(Value));
+    result := TStr.SameText(@Value[Low(Value)], Parser.Data.CurrentData, Length(Value));
   if result then
-    P.SetPos(Input.Position, LenBytes);
+    P.SetPos(Parser.Data.Position, LenBytes);
 end;
 
 { TGrammarChar }
@@ -417,27 +496,27 @@ begin
   FCaseSensitive := CaseSensitive;
 end;
 
-function TGrammarChar.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarChar.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var
   C: Char;
 begin
 
   { not enough of data to match }
-  if Input.Left < SizeOf(Char) then
+  if Parser.Data.Left < SizeOf(Char) then
     Exit(False);
 
   if CaseSensitive then
   begin
-    C := Char(Input.CurrentData^);
+    C := Char(Parser.Data.CurrentData^);
     result := (C >= FValueFrom) and (C <= FValueTo);
   end
   else
   begin
-    C := TStr.LowerCaseChar(Char(Input.CurrentData^));
+    C := TStr.LowerCaseChar(Char(Parser.Data.CurrentData^));
     result := (C >= TStr.LowerCaseChar(FValueFrom)) and (C <= TStr.LowerCaseChar(FValueTo));
   end;
   if result then
-    P.SetPos(Input.Position, SizeOf(Char));
+    P.SetPos(Parser.Data.Position, SizeOf(Char));
 
 end;
 
@@ -450,18 +529,18 @@ begin
   FOp2 := AOp2;
 end;
 
-function TGrammarSequence.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarSequence.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var
   P1, P2: TPos;
   Position: integer;
 begin
-  result := Op1.Data.Accepted(Input, P1);
+  result := Op1.Data.Accepted(Parser, P1);
   if not result then
     Exit;
-  Position := Input.Position;
-  Input.Position := Input.Position + P1.Len;
-  result := Op2.Data.Accepted(Input, P2);
-  Input.Position := Position;
+  Position := Parser.Data.Position;
+  Parser.Data.Position := Parser.Data.Position + P1.Len;
+  result := Op2.Data.Accepted(Parser, P2);
+  Parser.Data.Position := Position;
   if result then
     P.SetPos(P1.Start, P1.Len + P2.Len);
 end;
@@ -475,34 +554,34 @@ begin
   FOp2 := AOp2;
 end;
 
-function TGrammarSelection.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarSelection.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 begin
-  result := Op1.Data.Accepted(Input, P) or Op2.Data.Accepted(Input, P);
+  result := Op1.Data.Accepted(Parser, P) or Op2.Data.Accepted(Parser, P);
 end;
 
 { TGrammarGreedyRepeater }
 
-function TGrammarGreedyRepeater.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarGreedyRepeater.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var
   I,J,Position: Integer;
   CurPos: TPos;
 begin
-  Position := Input.Position;
+  Position := Parser.Data.Position;
   CurPos.SetPos(Position, 0);
   J := 0;
   for I := 0 to MaxCount-1 do
-    if not Op.Data.Accepted(Input, CurPos) then
+    if not Op.Data.Accepted(Parser, CurPos) then
       Break
     else
     begin
       inc(J);
-      Input.Position := CurPos.Start + CurPos.Len;
+      Parser.Data.Position := CurPos.Start + CurPos.Len;
     end;
-  Input.Position := Position;
+  Parser.Data.Position := Position;
   result := (J >= MinCount) and (J <= MaxCount);
   { CurPos keeps last matched position or [Position;0] if there is no matches }
   if result then
-    P.SetPos(Position, CurPos.Start + CurPos.Len - P.Start);
+    P.SetPos(Position, CurPos.Start + CurPos.Len - Position);
 end;
 
 constructor TGrammarGreedyRepeater.Create(AOp: IInterfacedObject<TGrammarClass>; AMinCount, AMaxCount: integer);
@@ -521,12 +600,12 @@ begin
   FOp := AOp;
 end;
 
-function TGrammarNot.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarNot.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var CurPos: TPos;
 begin
-  result := not Op.Data.Accepted(Input, CurPos);
+  result := not Op.Data.Accepted(Parser, CurPos);
   if result then
-    P.SetPos(Input.Position, 0);
+    P.SetPos(Parser.Data.Position, 0);
 end;
 
 { TGrammarEOF }
@@ -536,11 +615,11 @@ begin
   inherited Create(gtEOF);
 end;
 
-function TGrammarEOF.Accepted(var Input: TBuffer; var P: TPos): Boolean;
+function TGrammarEOF.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 begin
-  result := Input.EOF;
+  result := Parser.Data.EOF;
   if result then
-    P.SetPos(Input.Position, 0);
+    P.SetPos(Parser.Data.Position, 0);
 end;
 
 end.
