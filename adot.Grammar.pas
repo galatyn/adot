@@ -16,26 +16,6 @@ uses
   System.Character;
 
 type
-  TByteSet = set of byte;
-
-  TGrammarType = (gtUnknown, gtLink, gtString, gtChar, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
-
-  TCustomGrammar = class abstract(TGrammarClass)
-  protected
-    class var
-      FIdCnt: int64;
-    var
-      FGrammarType: TGrammarType;
-      FId: int64;
-
-    function GetId: int64; override;
-  public
-    constructor Create(AGrammarType: TGrammarType);
-    procedure SetupMainRule; override;
-
-    property GrammarType: TGrammarType read FGrammarType;
-  end;
-
   { Record type for grammar definition. Construct grammar rules with help of Ex/Rep functions:
     var
       Number,Digit: TGrammar;
@@ -80,7 +60,7 @@ type
   end;
 
   { abstract class for expression with no operands }
-  TGrammarClassOp0 = class abstract(TCustomGrammar)
+  TGrammarClassOp0 = class abstract(TGrammarClass)
   protected
     FOp: IInterfacedObject<TGrammarClass>;
 
@@ -90,7 +70,7 @@ type
   end;
 
   { abstract class for expression with one operand }
-  TGrammarClassOp1 = class abstract(TCustomGrammar)
+  TGrammarClassOp1 = class abstract(TGrammarClass)
   protected
     FOp: IInterfacedObject<TGrammarClass>;
 
@@ -102,7 +82,7 @@ type
   end;
 
   { abstract class for expression with two operand }
-  TGrammarClassOp2 = class abstract(TCustomGrammar)
+  TGrammarClassOp2 = class abstract(TGrammarClass)
   protected
     FOp1: IInterfacedObject<TGrammarClass>;
     FOp2: IInterfacedObject<TGrammarClass>;
@@ -124,6 +104,7 @@ type
   public
     constructor Create(var ALink: TGrammar);
     function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
+    procedure SetupRule; override;
   end;
 
   TGrammarString = class(TGrammarClassOp0)
@@ -346,57 +327,6 @@ end;
 
 { TGrammarClass }
 
-constructor TCustomGrammar.Create(AGrammarType: TGrammarType);
-begin
-  FGrammarType := AGrammarType;
-  inc(FIdCnt);
-  FId := FIdCnt;
-end;
-
-function TCustomGrammar.GetId: int64;
-begin
-  result := FId;
-end;
-
-procedure TCustomGrammar.SetupMainRule;
-var
-  Queue: TVector<TGrammarClass>;
-  QueuedIds: TSet<int64>;
-  Operands: TVector<IInterfacedObject<TGrammarClass>>;
-  Item: TGrammarClass;
-  I: integer;
-begin
-  inherited;
-  Queue.Clear;
-  Queue.Add(Self);
-  QueuedIds.Clear;
-  QueuedIds.Add(Id);
-  repeat
-
-    { process next rule }
-    Item := Queue.ExtractLast;
-    if Item is TGrammarLink then
-    begin
-      Assert(TGrammarLink(Item).FLink.Grm<>nil, 'link is not initialized');
-      if TGrammarLink(Item).Op=nil then
-        TGrammarLink(Item).FOp := TGrammarLink(Item).FLink.Grm;
-    end;
-
-    { process operands of the rule }
-    Operands.Clear;
-    Item.GetOperands(Operands);
-    for I := 0 to Operands.Count-1 do
-    begin
-      Assert(Operands[I]<>nil, 'Operand is not initialized');
-      Item := Operands[I].Data;
-      if Item.Id in QueuedIds then
-        Continue;
-      QueuedIds.Add(Item.Id);
-      Queue.Add(Item);
-    end;
-  until Queue.Count=0;
-end;
-
 { TGrammarClassOp0 }
 
 procedure TGrammarClassOp0.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
@@ -444,6 +374,14 @@ constructor TGrammarLink.Create(var ALink: TGrammar);
 begin
   inherited Create(gtLink);
   FLink := @ALink;
+end;
+
+procedure TGrammarLink.SetupRule;
+begin
+  inherited;
+  Assert(FLink.Grm<>nil, 'link is not initialized');
+  if Op=nil then
+    FOp := FLink.Grm;
 end;
 
 function TGrammarLink.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;

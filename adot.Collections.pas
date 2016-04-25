@@ -816,6 +816,10 @@ type
     function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetItem(ItemIndex: integer): T; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetItem(ItemIndex: integer; const Value: T);
+    function GetFirst: T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetFirst(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetLast(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
 
   public
     type
@@ -842,8 +846,8 @@ type
     procedure Delete(ItemIndex: integer); overload;
     procedure Delete(StartIndex,FinishIndex: integer); overload;
 
-    function First: T; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Last: T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    property First: T read GetFirst write SetFirst;
+    property Last: T read GetLast write SetLast;
     procedure DeleteLast; {$IFNDEF DEBUG}inline;{$ENDIF}
     function ExtractLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
 
@@ -4482,16 +4486,6 @@ begin
   FCount := 0;
 end;
 
-function TVector<T>.First: T;
-begin
-  result := Items[0];
-end;
-
-function TVector<T>.Last: T;
-begin
-  result := Items[Count-1];
-end;
-
 procedure TVector<T>.DeleteLast;
 begin
   Dec(FCount);
@@ -4530,6 +4524,26 @@ end;
 function TVector<T>.GetEnumerator: TEnumerator;
 begin
   result := TEnumerator.Create(Items, Count);
+end;
+
+function TVector<T>.GetFirst: T;
+begin
+  Result := Items[0];
+end;
+
+procedure TVector<T>.SetFirst(const Value: T);
+begin
+  Items[0] := Value;
+end;
+
+function TVector<T>.GetLast: T;
+begin
+  Result := Items[Count-1];
+end;
+
+procedure TVector<T>.SetLast(const Value: T);
+begin
+  Items[Count-1] := Value;
 end;
 
 function TVector<T>.GetItem(ItemIndex: integer): T;

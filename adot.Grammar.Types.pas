@@ -45,6 +45,8 @@ type
     function Accepted(const AData: string): Boolean; overload;
   end;
 
+  TGrammarType = (gtUnknown, gtLink, gtString, gtChar, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
+
   { basic class for grammar definition }
   TGrammarClass = class abstract(TEnumerable<IInterfacedObject<TGrammarClass>>)
   protected
@@ -61,12 +63,18 @@ type
         constructor Create(AGrammar: TGrammarClass);
       end;
 
+    class var
+      FIdCnt: int64;
+    var
+      FGrammarType: TGrammarType;
+      FId: int64;
+
     { implements TEnumerate using GetOperands method }
     function DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>; override;
-    { global uniqueue ID for object instance based on FIdCnt counter }
-    function GetId: int64; virtual; abstract;
 
   public
+    constructor Create(AGrammarType: TGrammarType);
+
     { release all internal links (IInterfacedObject<TGrammarClass> etc)}
     procedure Release; virtual; abstract;
     { add operands to the collections }
@@ -74,12 +82,15 @@ type
     { if input is accepted by rule, then consumes (or not) input data }
     function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; virtual; abstract;
     { called once only for main rule by parser (PEG for example) }
-    procedure SetupMainRule; virtual; abstract;
+    procedure SetupMainRule; virtual;
+    { called by SetupMainRule for every rule in the tree (one time when parser is to be initialized) }
+    procedure SetupRule; virtual;
     { any grammar rule may ask parser to execute subexpression and parser
       will deliver result back to the rule }
-    procedure SubExprResult(Accepted: boolean; const P: TPos; Tag: integer); virtual; abstract;
+    procedure SubExprResult(Accepted: boolean; const P: TPos; Tag: integer); virtual;
 
-    property Id: int64 read GetId;
+    property GrammarType: TGrammarType read FGrammarType;
+    property Id: int64 read FId;
   end;
 
 implementation
@@ -115,9 +126,59 @@ end;
 
 { TGrammarClass }
 
+constructor TGrammarClass.Create(AGrammarType: TGrammarType);
+begin
+  inc(FIdCnt);
+  FId := FIdCnt;
+  FGrammarType := AGrammarType;
+end;
+
 function TGrammarClass.DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>;
 begin
   result := TCustomGrammarEnumerator.Create(Self);
+end;
+
+procedure TGrammarClass.SetupMainRule;
+var
+  Queue: TVector<TGrammarClass>;
+  QueuedIds: TSet<int64>;
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
+  Item: TGrammarClass;
+  I: integer;
+begin
+  inherited;
+  Queue.Clear;
+  Queue.Add(Self);
+  QueuedIds.Clear;
+  QueuedIds.Add(Id);
+  repeat
+
+    { process next rule }
+    Item := Queue.ExtractLast;
+    Item.SetupRule;
+
+    { process operands of the rule }
+    Operands.Clear;
+    Item.GetOperands(Operands);
+    for I := 0 to Operands.Count-1 do
+    begin
+      Assert(Operands[I]<>nil, 'Operand is not initialized');
+      Item := Operands[I].Data;
+      if Item.Id in QueuedIds then
+        Continue;
+      QueuedIds.Add(Item.Id);
+      Queue.Add(Item);
+    end;
+  until Queue.Count=0;
+end;
+
+procedure TGrammarClass.SetupRule;
+begin
+end;
+
+procedure TGrammarClass.SubExprResult(Accepted: boolean; const P: TPos; Tag: integer);
+begin
+  { nothing to do here }
 end;
 
 { TGrammarParser }
