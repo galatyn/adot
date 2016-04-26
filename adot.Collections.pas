@@ -839,6 +839,7 @@ type
     constructor Create(ACapacity: integer); overload;
     constructor Create(ADst: TArray<T>); overload;
 
+    function Add: integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     function Add(const Value: T): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Add(const Value: TArray<T>); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
@@ -4414,12 +4415,17 @@ begin
   Items := ADst;
 end;
 
-function TVector<T>.Add(const Value: T): integer;
+function TVector<T>.Add: integer;
 begin
   if Count>=Capacity then
     Grow;
   result := FCount;
   inc(FCount);
+end;
+
+function TVector<T>.Add(const Value: T): integer;
+begin
+  result := Add;
   Items[result] := Value;
 end;
 

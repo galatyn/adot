@@ -115,6 +115,10 @@ type
     constructor Create(Value: String; CaseSensitive: boolean);
     function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
+    { input accepted: return length of accepted block
+      input rejected: -1}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer;
+
     property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
     property Value: string read FValue write FValue;
   end;
@@ -126,6 +130,10 @@ type
   public
     constructor Create(ValueFrom,ValueTo: Char; CaseSensitive: boolean);
     function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
+
+    { input accepted: return length of accepted block
+      input rejected: -1}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer;
 
     property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
     property ValueFrom: char read FValueFrom write FValueFrom;
@@ -398,6 +406,28 @@ begin
   FCaseSensitive := CaseSensitive;
 end;
 
+function TGrammarString.GetAcceptedBlock(var Buffer: TBuffer): integer;
+begin
+
+  { empty string is always matched }
+  if Value='' then
+    Exit(0);
+
+  { not enough of data to match }
+  Result := Length(Value)*SizeOf(Char);
+  if Buffer.Left < Result then
+    Exit(-1);
+
+  { we have enough of data, it is safe to compare }
+  if CaseSensitive then
+    if not CompareMem(@Value[Low(Value)], Buffer.CurrentData, result) then
+      result := -1
+    else
+  else
+    if not TStr.SameText(@Value[Low(Value)], Buffer.CurrentData, Length(Value)) then
+      result := -1;
+end;
+
 function TGrammarString.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
 var
   LenBytes: integer;
@@ -432,6 +462,30 @@ begin
   FValueFrom := ValueFrom;
   FValueTo := ValueTo;
   FCaseSensitive := CaseSensitive;
+end;
+
+function TGrammarChar.GetAcceptedBlock(var Buffer: TBuffer): integer;
+var
+  C: Char;
+begin
+
+  { not enough of data to match }
+  if Buffer.Left < SizeOf(Char) then
+    Exit(-1);
+
+  if CaseSensitive then
+  begin
+    C := Char(Buffer.CurrentData^);
+    if (C >= FValueFrom) and (C <= FValueTo) then result := SizeOF(Char)
+      else result := -1;
+  end
+  else
+  begin
+    C := TStr.LowerCaseChar(Char(Buffer.CurrentData^));
+    if (C >= TStr.LowerCaseChar(FValueFrom)) and (C <= TStr.LowerCaseChar(FValueTo)) then result := SizeOF(Char)
+      else result := -1;
+  end;
+
 end;
 
 function TGrammarChar.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
