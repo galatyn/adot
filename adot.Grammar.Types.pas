@@ -16,6 +16,17 @@ type
     procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
+  PMatchingResult = ^TMatchingResult;
+  TMatchingResult = record
+    RuleId: int64;
+    Position: TPos;
+    FirstChild: integer;
+    NextSibling: integer;
+
+    procedure SetUp(const ARuleId: int64; AStart,ALen: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetUp(const ARuleId: int64; AStart,ALen,AFirstChild: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
   TParserCache = class abstract
   public
     procedure Clear; virtual; abstract;
@@ -101,6 +112,24 @@ procedure TPos.SetPos(AStart, ALen: integer);
 begin
   Start := AStart;
   Len := ALen;
+end;
+
+{ TMatchingResult }
+
+procedure TMatchingResult.SetUp(const ARuleId: int64; AStart,ALen: integer);
+begin
+  RuleId := ARuleId;
+  Position.SetPos(AStart, ALen);
+  FirstChild := -1;
+  NextSibling := -1;
+end;
+
+procedure TMatchingResult.SetUp(const ARuleId: int64; AStart, ALen, AFirstChild: integer);
+begin
+  RuleId := ARuleId;
+  Position.SetPos(AStart, ALen);
+  FirstChild := AFirstChild;
+  NextSibling := -1;
 end;
 
 { TGrammarClass.TCustomGrammarEnumerator }
