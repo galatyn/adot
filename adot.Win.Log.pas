@@ -1,11 +1,19 @@
-﻿unit Win.Log;
+﻿unit adot.Win.Log;
 
 interface
 
 uses
-  Winapi.Windows, CrossPlatform.Log, CrossPlatform.Tools, Win.Tools,
-  System.SysUtils, System.SyncObjs, System.Math, System.Classes,
-  System.Generics.Collections, System.Generics.Defaults;
+  Winapi.Windows,
+  adot.Win.Tools,
+  adot.Tools,
+  adot.Log,
+  adot.Strings,
+  System.SysUtils,
+  System.SyncObjs,
+  System.Math,
+  System.Classes,
+  System.Generics.Collections,
+  System.Generics.Defaults;
 
 type
   // buffered + asynchronous, thread-safe.
@@ -155,7 +163,7 @@ end;
 
 function LogLineExtraPrefix: string;
 begin
-  result := ' ' + TNumbers.IntToStr(GetCurrentThreadId, 9);
+  result := ' ' + TStr.IntToString(GetCurrentThreadId, 9);
 end;
 
 procedure LogExtraSysInfo(ADst: TCustomLog);

@@ -171,10 +171,11 @@ type
     class procedure Save(Dst: TStream; const S: string; Encoding: TEncoding = nil); overload; static;
     class procedure Save(const FileName: string; const S: string; Encoding: TEncoding = nil); overload; static;
 
-    { set-string }
+    { set-string, number-string etc }
     class function CharsCount(const AChars: TAnsiChars): integer;
     class function SetToString(const AChars: TAnsiChars): string;
     class function StringToSet(const s: string): TAnsiChars;
+    class function IntToString(const N: int64; MinResLen: integer = -1): string; static;
 
     { randomization }
     class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
@@ -726,6 +727,20 @@ begin
   result := 0;
   for C in AChars do
     inc(result);
+end;
+
+class function TStr.IntToString(const N: int64; MinResLen: integer): string;
+begin
+  if MinResLen <= 0 then
+    result := IntToStr(N)
+  else
+    if N<0 then
+      result := '-' + IntToString(-N, MinResLen-1)
+    else
+    begin
+      result := IntToStr(N);
+      result := StringOfChar('0', MinResLen-Length(result)) + result;
+    end;
 end;
 
 class function TStr.StringToSet(const s: string): TAnsiChars;

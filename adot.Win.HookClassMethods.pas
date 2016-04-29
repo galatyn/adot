@@ -1,4 +1,4 @@
-﻿unit Win.HookClassMethods;
+﻿unit adot.Win.HookClassMethods;
 
 // AH: Simple API to hook some method calls of some classes.
 // Based on the code from SQLite3i18n.pas (Synopse SQLite3 database framework).
