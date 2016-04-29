@@ -731,16 +731,12 @@ end;
 
 class function TStr.IntToString(const N: int64; MinResLen: integer): string;
 begin
-  if MinResLen <= 0 then
-    result := IntToStr(N)
-  else
-    if N<0 then
-      result := '-' + IntToString(-N, MinResLen-1)
+  result := IntToStr(N);
+  if Length(result) < MinResLen then
+    if N < 0 then
+      result := result.Substring(0, 1) + StringOfChar('0', MinResLen-Length(result)) + result.Substring(1)
     else
-    begin
-      result := IntToStr(N);
       result := StringOfChar('0', MinResLen-Length(result)) + result;
-    end;
 end;
 
 class function TStr.StringToSet(const s: string): TAnsiChars;
