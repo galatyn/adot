@@ -16,7 +16,7 @@ type
     procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
-  PMatchingResult = ^TMatchingResult;
+  //PMatchingResult = ^TMatchingResult;
   TMatchingResult = record
     RuleId: int64;
     Position: TPos;

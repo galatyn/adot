@@ -25,8 +25,8 @@ type
         Step: integer;
         Start: integer;
         Len: integer;
-        ResIndex: integer;     { position of matching result in tree-like structure organized as array of TMatchingResult)}
-        ResStep: integer;      { used for some rules as internal variable }
+        ResIndex: integer;      { position of matching result in tree-like structure organized as array of TMatchingResult)}
+        ResLastChild: integer;
 
         procedure SetUp(ARule: TGrammarClass); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
         procedure SetUp(ARule: TGrammarClass; AStart: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
@@ -36,7 +36,6 @@ type
       Tree: TVector<TMatchingResult>;
 
   public
-    ParseTree: PMatchingResult;
 
     procedure RunSubexpression(Expr,SubExpr: TGrammarClass; Tag: integer); override;
     function Accepted: Boolean; override;
@@ -86,18 +85,13 @@ var
 
   { pointer to current/new item on the stack (invalid after any modification of the stack) }
   Item: PCallStackItem;
-
-  { next rule to be executed/matched against current position in data stream }
-  G: TGrammarClass;
 begin
-  Accept := False;
+  Stack.Clear;
   Tree.Clear;
-  ParseTree := nil;
+  Accept := False;
   Len := 0;
   ResIndex := -1;
-  Stack.Clear;
-  Item := @Stack.Items[Stack.Add];
-  Item.SetUp(Grammar);
+  Stack.Items[Stack.Add].SetUp(Grammar);
   repeat
     Item := @Stack.Items[Stack.Count-1];
     case Item.Rule.GrammarType of
@@ -136,34 +130,26 @@ begin
         case Item.Step of
           0: begin
                Inc(Item.Step);
-               Item.Start := Data.Position;
-               Item.ResIndex := Tree.Add;
-               G := TGrammarSequence(Item.Rule).Op1.Data;
-               Item := @Stack.Items[Stack.Add];
-               Item.SetUp(G);
+               Stack.Items[Stack.Add].SetUp(TGrammarSequence(Item.Rule).Op1.Data);
              end;
-          1: if not Accept then begin
-               Tree.Count := Item.ResIndex;
-               Stack.DeleteLast;
-             end else begin
+          1: if not Accept then
+               Stack.DeleteLast
+             else begin
                Inc(Item.Step);
                Item.Len := Len;
                Data.Position := Data.Position + Len;
-               Tree.Items[Item.ResIndex].SetUp(Item.Rule.Id, Item.Start, Item.Len, ResIndex);
-               G := TGrammarSequence(Item.Rule).Op2.Data;
-               Item := @Stack.Items[Stack.Add];
-               Item.SetUp(G);
+               Item.ResIndex := ResIndex;
+               Stack.Items[Stack.Add].SetUp(TGrammarSequence(Item.Rule).Op2.Data);
              end;
           2: begin
-               Data.Position := Item.Start;
+               Data.Position := Data.Position - Item.Len;
                if Accept then
                begin
                  Inc(Len, Item.Len);
-                 Tree.Items[Tree.Items[Item.ResIndex].FirstChild].NextSibling := ResIndex;
-                 ResIndex := Item.ResIndex;
-               end
-               else
-                 Tree.Count := Item.ResIndex;
+                 Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, Item.ResIndex);
+                 Tree.Items[Item.ResIndex].NextSibling := ResIndex;
+                 ResIndex := Tree.Count-1;
+               end;
                Stack.DeleteLast;
              end;
         end;
@@ -172,30 +158,22 @@ begin
         case Item.Step of
           0: begin
                Inc(Item.Step);
-               Item.Start := Data.Position;
-               Item.ResIndex := Tree.Add;
-               G := TGrammarSelection(Item.Rule).Op1.Data;
-               Item := @Stack.Items[Stack.Add];
-               Item.SetUp(G);
+               Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op1.Data);
              end;
           1: if Accept then begin
-               Tree.Items[Item.ResIndex].SetUp(Item.Rule.Id, Item.Start, Item.Len, ResIndex);
-               ResIndex := Item.ResIndex;
+               Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, ResIndex);
+               ResIndex := Tree.Count-1;
                Stack.DeleteLast;
              end else begin
                Inc(Item.Step);
-               G := TGrammarSelection(Item.Rule).Op2.Data;
-               Item := @Stack.Items[Stack.Add];
-               Item.SetUp(G);
+               Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op2.Data);
              end;
           2: begin
                if Accept then
                begin
-                 Tree.Items[Item.ResIndex].SetUp(Item.Rule.Id, Item.Start, Item.Len, ResIndex);
-                 ResIndex := Item.ResIndex;
-               end
-               else
-                 Tree.Count := Item.ResIndex;
+                 Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, ResIndex);
+                 ResIndex := Tree.Count-1;
+               end;
                Stack.DeleteLast;
              end;
         end;
@@ -206,40 +184,38 @@ begin
             Accept := False;
             Stack.DeleteLast;
           end else begin
+            Inc(Item.Step);
             Item.Start := Data.Position;
             Item.ResIndex := Tree.Add;
             Item.Len := 0;
-            Inc(Item.Step);
-            G := TGrammarGreedyRepeater(Item.Rule).Op.Data;
-            Item := @Stack.Items[Stack.Add];
-            Item.SetUp(G);
+            Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
           end
         else
         if Accept and (Item.Step < TGrammarGreedyRepeater(Item.Rule).MaxCount) then begin
           Inc(Item.Step);
           Inc(Item.Len, Len);
           if Item.Step=1 then begin
-            Item.ResStep := ResIndex;
+            Item.ResLastChild := ResIndex;
             Tree.Items[Item.ResIndex].FirstChild := ResIndex;
           end else begin
-            Tree.Items[Item.ResStep].NextSibling := ResIndex;
-            Item.ResStep := ResIndex;
+            Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
+            Item.ResLastChild := ResIndex;
           end;
           Data.Position := Data.Position + Len;
-          G := TGrammarGreedyRepeater(Item.Rule).Op.Data;
-          Item := @Stack.Items[Stack.Add];
-          Item.SetUp(G);
+          Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
         end
         else begin
           if Accept then
             Inc(Item.Len, Len);
           with TGrammarGreedyRepeater(Item.Rule) do
             Accept := (Item.Step >= MinCount) and (Item.Step <= MaxCount);
-          if Accept then
-            ResIndex := Item.ResIndex
+          if not Accept then
+            Tree.Count := Item.ResIndex
           else
-            Tree.Count := Item.ResIndex;
-          Len := Item.Len;
+          begin
+            ResIndex := Item.ResIndex;
+            Len := Item.Len;
+          end;
           Data.Position := Item.Start;
           Stack.DeleteLast;
         end;
@@ -248,16 +224,14 @@ begin
         if Item.Step=0 then
         begin
           Inc(Item.Step);
-          G := TGrammarNot(Item.Rule).Op.Data;
-          Item := @Stack.Items[Stack.Add];
-          Item.SetUp(G);
+          Stack.Items[Stack.Add].SetUp(TGrammarNot(Item.Rule).Op.Data);
         end
         else
         begin
           Accept := not Accept;
-          Len := 0;
           if Accept then
           begin
+            Len := 0;
             ResIndex := Tree.Add;
             Tree[ResIndex].SetUp(Item.Rule.Id, Data.Position,0);
           end;
@@ -267,9 +241,9 @@ begin
       gtEOF:
         begin
           Accept := Data.EOF;
-          Len := 0;
           if Accept then
           begin
+            Len := 0;
             ResIndex := Tree.Add;
             Tree[ResIndex].SetUp(Item.Rule.Id, Data.Position,0);
           end;
@@ -279,6 +253,8 @@ begin
     end; { case Item.Rule.GrammarType of }
   until Stack.Count=0;
   result := Accept;
+  if not result then
+    Tree.Clear;
 end;
 
 end.

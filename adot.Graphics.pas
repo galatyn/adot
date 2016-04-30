@@ -198,7 +198,6 @@ begin
     result := RGBToColor(BrNew, BrNew, BrNew)
   else
     result := AdjustBrightness(C, BrNew*100 div BrCur);
-  BrCur := GetBrightness(Result);
 end;
 
 class function TColorUtils.GetR(C: TColor): byte;

@@ -59,7 +59,7 @@ type
     class operator Implicit(A : TMedia) : TGrammar;
   end;
 
-  { abstract class for expression with no operands }
+  { abstract class for expression with no operands (string, char, EOF etc) }
   TGrammarClassOp0 = class abstract(TGrammarClass)
   protected
     FOp: IInterfacedObject<TGrammarClass>;
@@ -69,7 +69,7 @@ type
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
   end;
 
-  { abstract class for expression with one operand }
+  { abstract class for expression with one operand (link, repeater, not etc) }
   TGrammarClassOp1 = class abstract(TGrammarClass)
   protected
     FOp: IInterfacedObject<TGrammarClass>;
@@ -81,7 +81,7 @@ type
     property Op: IInterfacedObject<TGrammarClass> read FOp;
   end;
 
-  { abstract class for expression with two operand }
+  { abstract class for expression with two operand (sequence, selection etc) }
   TGrammarClassOp2 = class abstract(TGrammarClass)
   protected
     FOp1: IInterfacedObject<TGrammarClass>;
