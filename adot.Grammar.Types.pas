@@ -49,7 +49,6 @@ type
 
     constructor Create(AMainRule: TGrammarClass); overload; virtual;
     constructor Create(AMainRule: IInterfacedObject<TGrammarClass>); overload;
-    procedure RunSubexpression(Expr,SubExpr: TGrammarClass; Tag: integer); virtual; abstract;
     procedure Clear; virtual;
     function Accepted: Boolean; overload; virtual; abstract;
     function Accepted(const AData: TBuffer): Boolean; overload;
@@ -90,15 +89,10 @@ type
     procedure Release; virtual; abstract;
     { add operands to the collections }
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); virtual; abstract;
-    { if input is accepted by rule, then consumes (or not) input data }
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; virtual; abstract;
     { called once only for main rule by parser (PEG for example) }
     procedure SetupMainRule; virtual;
     { called by SetupMainRule for every rule in the tree (one time when parser is to be initialized) }
     procedure SetupRule; virtual;
-    { any grammar rule may ask parser to execute subexpression and parser
-      will deliver result back to the rule }
-    procedure SubExprResult(Accepted: boolean; const P: TPos; Tag: integer); virtual;
 
     property GrammarType: TGrammarType read FGrammarType;
     property Id: int64 read FId;
@@ -203,11 +197,6 @@ end;
 
 procedure TGrammarClass.SetupRule;
 begin
-end;
-
-procedure TGrammarClass.SubExprResult(Accepted: boolean; const P: TPos; Tag: integer);
-begin
-  { nothing to do here }
 end;
 
 { TGrammarParser }

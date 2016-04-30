@@ -103,7 +103,6 @@ type
     FLink: PGrammar;
   public
     constructor Create(var ALink: TGrammar);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
     procedure SetupRule; override;
   end;
 
@@ -113,7 +112,6 @@ type
     FCaseSensitive: boolean;
   public
     constructor Create(Value: String; CaseSensitive: boolean);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     { input accepted: return length of accepted block
       input rejected: -1}
@@ -129,7 +127,6 @@ type
     FCaseSensitive: boolean;
   public
     constructor Create(ValueFrom,ValueTo: Char; CaseSensitive: boolean);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     { input accepted: return length of accepted block
       input rejected: -1}
@@ -144,14 +141,12 @@ type
   protected
   public
     constructor Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarSelection = class(TGrammarClassOp2)
   protected
   public
     constructor Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarGreedyRepeater = class(TGrammarClassOp1)
@@ -159,7 +154,6 @@ type
     FMinCount, FMaxCount: integer;
   public
     constructor Create(AOp: IInterfacedObject<TGrammarClass>; AMinCount,AMaxCount: integer);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
 
     property MinCount: integer read FMinCount;
     property MaxCount: integer read FMaxCount;
@@ -169,14 +163,12 @@ type
   protected
   public
     constructor Create(AOp: IInterfacedObject<TGrammarClass>);
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
   TGrammarEOF = class(TGrammarClassOp0)
   protected
   public
     constructor Create;
-    function Accepted(Parser: TGrammarParser; var P: TPos): Boolean; override;
   end;
 
 { all possible expressions for TGrammar (used in right side of rule definition) }
@@ -392,11 +384,6 @@ begin
     FOp := FLink.Grm;
 end;
 
-function TGrammarLink.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-begin
-  result := Op.Data.Accepted(Parser, P);
-end;
-
 { TGrammarString }
 
 constructor TGrammarString.Create(Value: String; CaseSensitive: boolean);
@@ -426,32 +413,6 @@ begin
   else
     if not TStr.SameText(@Value[Low(Value)], Buffer.CurrentData, Length(Value)) then
       result := -1;
-end;
-
-function TGrammarString.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-var
-  LenBytes: integer;
-begin
-
-  { empty string is always matched }
-  if Value='' then
-  begin
-    P.SetPos(Parser.Data.Position, 0);
-    Exit(True);
-  end;
-
-  { not enough of data to match }
-  LenBytes := Length(Value)*SizeOf(Char);
-  if Parser.Data.Left < LenBytes then
-    Exit(False);
-
-  { we have enough of data, it is safe to compare }
-  if CaseSensitive then
-    result := CompareMem(@Value[Low(Value)], Parser.Data.CurrentData, LenBytes)
-  else
-    result := TStr.SameText(@Value[Low(Value)], Parser.Data.CurrentData, Length(Value));
-  if result then
-    P.SetPos(Parser.Data.Position, LenBytes);
 end;
 
 { TGrammarChar }
@@ -488,30 +449,6 @@ begin
 
 end;
 
-function TGrammarChar.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-var
-  C: Char;
-begin
-
-  { not enough of data to match }
-  if Parser.Data.Left < SizeOf(Char) then
-    Exit(False);
-
-  if CaseSensitive then
-  begin
-    C := Char(Parser.Data.CurrentData^);
-    result := (C >= FValueFrom) and (C <= FValueTo);
-  end
-  else
-  begin
-    C := TStr.LowerCaseChar(Char(Parser.Data.CurrentData^));
-    result := (C >= TStr.LowerCaseChar(FValueFrom)) and (C <= TStr.LowerCaseChar(FValueTo));
-  end;
-  if result then
-    P.SetPos(Parser.Data.Position, SizeOf(Char));
-
-end;
-
 { TGrammarSequence }
 
 constructor TGrammarSequence.Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
@@ -519,22 +456,6 @@ begin
   inherited Create(gtSequence);
   FOp1 := AOp1;
   FOp2 := AOp2;
-end;
-
-function TGrammarSequence.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-var
-  P1, P2: TPos;
-  Position: integer;
-begin
-  result := Op1.Data.Accepted(Parser, P1);
-  if not result then
-    Exit;
-  Position := Parser.Data.Position;
-  Parser.Data.Position := Parser.Data.Position + P1.Len;
-  result := Op2.Data.Accepted(Parser, P2);
-  Parser.Data.Position := Position;
-  if result then
-    P.SetPos(P1.Start, P1.Len + P2.Len);
 end;
 
 { TGrammarSelection }
@@ -546,35 +467,7 @@ begin
   FOp2 := AOp2;
 end;
 
-function TGrammarSelection.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-begin
-  result := Op1.Data.Accepted(Parser, P) or Op2.Data.Accepted(Parser, P);
-end;
-
 { TGrammarGreedyRepeater }
-
-function TGrammarGreedyRepeater.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-var
-  I,J,Position: Integer;
-  CurPos: TPos;
-begin
-  Position := Parser.Data.Position;
-  CurPos.SetPos(Position, 0);
-  J := 0;
-  for I := 0 to MaxCount-1 do
-    if not Op.Data.Accepted(Parser, CurPos) then
-      Break
-    else
-    begin
-      inc(J);
-      Parser.Data.Position := CurPos.Start + CurPos.Len;
-    end;
-  Parser.Data.Position := Position;
-  result := (J >= MinCount) and (J <= MaxCount);
-  { CurPos keeps last matched position or [Position;0] if there is no matches }
-  if result then
-    P.SetPos(Position, CurPos.Start + CurPos.Len - Position);
-end;
 
 constructor TGrammarGreedyRepeater.Create(AOp: IInterfacedObject<TGrammarClass>; AMinCount, AMaxCount: integer);
 begin
@@ -592,26 +485,11 @@ begin
   FOp := AOp;
 end;
 
-function TGrammarNot.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-var CurPos: TPos;
-begin
-  result := not Op.Data.Accepted(Parser, CurPos);
-  if result then
-    P.SetPos(Parser.Data.Position, 0);
-end;
-
 { TGrammarEOF }
 
 constructor TGrammarEOF.Create;
 begin
   inherited Create(gtEOF);
-end;
-
-function TGrammarEOF.Accepted(Parser: TGrammarParser; var P: TPos): Boolean;
-begin
-  result := Parser.Data.EOF;
-  if result then
-    P.SetPos(Parser.Data.Position, 0);
 end;
 
 end.

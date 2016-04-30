@@ -36,8 +36,6 @@ type
       Tree: TVector<TMatchingResult>;
 
   public
-
-    procedure RunSubexpression(Expr,SubExpr: TGrammarClass; Tag: integer); override;
     function Accepted: Boolean; override;
   end;
 
@@ -59,15 +57,6 @@ begin
 end;
 
 { TPegParser }
-
-procedure TPegParser.RunSubexpression(Expr, SubExpr: TGrammarClass; Tag: integer);
-var
-  Accept: Boolean;
-  P: TPos;
-begin
-  Accept := SubExpr.Accepted(Self, P);
-  Expr.SubExprResult(Accept, P, Tag);
-end;
 
 function TPegParser.Accepted: Boolean;
 var

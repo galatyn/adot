@@ -829,6 +829,11 @@ type
     constructor Create(AProc: TProc<T>; AValue: T);
   end;
 
+  TValueUtils = class
+  public
+    class procedure Exchange<T>(var A,B: T); static; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
 function Min3(const A,B,C: integer): integer; overload;
 function Min3(const A,B,C: double): double; overload;
 function Max3(const A,B,C: integer): integer; overload;
@@ -3435,6 +3440,16 @@ destructor TOutOfScopeAction<T>.TRunOnDestroy.Destroy;
 begin
   FProc(FValue);
   inherited;
+end;
+
+{ TValueUtils }
+
+class procedure TValueUtils.Exchange<T>(var A, B: T);
+var C: T;
+begin
+  C := A;
+  A := B;
+  B := C;
 end;
 
 end.
