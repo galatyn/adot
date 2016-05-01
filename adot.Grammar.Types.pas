@@ -6,7 +6,9 @@ uses
   adot.Types,
   adot.Collections,
   adot.Tools,
-  System.Generics.Collections;
+  adot.Tools.Rtti,
+  System.Generics.Collections,
+  System.SysUtils;
 
 type
   TGrammarClass = class;
@@ -18,13 +20,13 @@ type
 
   //PMatchingResult = ^TMatchingResult;
   TMatchingResult = record
-    RuleId: int64;
+    Rule: TGrammarClass;
     Position: TPos;
     FirstChild: integer;
     NextSibling: integer;
 
-    procedure SetUp(const ARuleId: int64; AStart,ALen: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetUp(const ARuleId: int64; AStart,ALen,AFirstChild: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetUp(ARule: TGrammarClass; AStart,ALen: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetUp(ARule: TGrammarClass; AStart,ALen,AFirstChild: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   TParserCache = class abstract
@@ -53,6 +55,7 @@ type
     function Accepted: Boolean; overload; virtual; abstract;
     function Accepted(const AData: TBuffer): Boolean; overload;
     function Accepted(const AData: string): Boolean; overload;
+    procedure LogResult; virtual; abstract;
   end;
 
   TGrammarType = (gtUnknown, gtLink, gtString, gtChar, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
@@ -81,6 +84,9 @@ type
 
     { implements TEnumerate using GetOperands method }
     function DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>; override;
+    function GetInfo: string; virtual;
+    class function GetOperandInfo(Operand: TGrammarClass): string; overload; static;
+    class function GetOperandInfo(const Operand: IInterfacedObject<TGrammarClass>): string; overload; static;
 
   public
     constructor Create(AGrammarType: TGrammarType);
@@ -95,7 +101,12 @@ type
     procedure SetupRule; virtual;
 
     property GrammarType: TGrammarType read FGrammarType;
+
+    { global (process-wide) identifier of the instance }
     property Id: int64 read FId;
+
+    { descriptive/readable text presentation }
+    property Info: string read GetInfo;
   end;
 
 implementation
@@ -110,17 +121,17 @@ end;
 
 { TMatchingResult }
 
-procedure TMatchingResult.SetUp(const ARuleId: int64; AStart,ALen: integer);
+procedure TMatchingResult.SetUp(ARule: TGrammarClass; AStart,ALen: integer);
 begin
-  RuleId := ARuleId;
+  Rule := ARule;
   Position.SetPos(AStart, ALen);
   FirstChild := -1;
   NextSibling := -1;
 end;
 
-procedure TMatchingResult.SetUp(const ARuleId: int64; AStart, ALen, AFirstChild: integer);
+procedure TMatchingResult.SetUp(ARule: TGrammarClass; AStart, ALen, AFirstChild: integer);
 begin
-  RuleId := ARuleId;
+  Rule := ARule;
   Position.SetPos(AStart, ALen);
   FirstChild := AFirstChild;
   NextSibling := -1;
@@ -159,6 +170,40 @@ end;
 function TGrammarClass.DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>;
 begin
   result := TCustomGrammarEnumerator.Create(Self);
+end;
+
+function TGrammarClass.GetInfo: string;
+begin
+  result := Format('#%d %s (%s)', [Id, TEnumeration<TGrammarType>.ToString(FGrammarType), ClassName]);
+end;
+
+class function TGrammarClass.GetOperandInfo(const Operand: IInterfacedObject<TGrammarClass>): string;
+begin
+  if Operand=nil then
+    result := 'Op:nil'
+  else
+    result := GetOperandInfo(Operand.Data);
+end;
+
+class function TGrammarClass.GetOperandInfo(Operand: TGrammarClass): string;
+var
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
+begin
+  if Operand=nil then
+    result := 'Op:nil'
+  else
+    if Operand.FGrammarType=gtLink then
+    begin
+      Operands.Clear;
+      Operand.GetOperands(Operands);
+      Assert(Operands.Count=1);
+      result := Format('Op:%s(#%d)={#%d: %s}', [
+        TEnumeration<TGrammarType>.ToString(Operand.GrammarType), Operand.Id,
+        Operands[0].Data.Id, TEnumeration<TGrammarType>.ToString(Operands[0].Data.GrammarType)
+      ])
+    end
+    else
+      result := Format('Op:%s (#%d)', [TEnumeration<TGrammarType>.ToString(Operand.GrammarType), Operand.Id]);
 end;
 
 procedure TGrammarClass.SetupMainRule;
@@ -223,7 +268,6 @@ end;
 function TGrammarParser.Accepted(const AData: string): Boolean;
 begin
   Data.Text := AData;
-  Results.Clear;
   Result := Accepted;
 end;
 

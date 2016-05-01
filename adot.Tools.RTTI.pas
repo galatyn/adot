@@ -1,4 +1,4 @@
-﻿unit adot.Tools.RTTI;
+﻿unit adot.Tools.Rtti;
 
 { Definition of classes/record types:
 

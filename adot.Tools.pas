@@ -780,7 +780,7 @@ type
     procedure Write(const Src: string); overload;
 
     procedure Read(var Dst; ByteCount: integer); overload;
-    procedure Read(var Dst: string; CharOffset,CharCount: integer); overload;
+    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
     procedure Read(var Dst: string; CharCount: integer); overload;
 
     procedure ReadAllData(var Dst); overload;
@@ -832,6 +832,7 @@ type
   TValueUtils = class
   public
     class procedure Exchange<T>(var A,B: T); static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function BoolToStr(Value: boolean): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
 function Min3(const A,B,C: integer): integer; overload;
@@ -3350,9 +3351,9 @@ begin
   Position := Size;
 end;
 
-procedure TBuffer.Read(var Dst: string; CharOffset, CharCount: integer);
+procedure TBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
 begin
-  Read(Dst[CharOffset+Low(Dst)], CharCount*SizeOf(Char));
+  Read(Dst[DstCharOffset+Low(Dst)], CharCount*SizeOf(Char));
 end;
 
 procedure TBuffer.Read(var Dst: string; CharCount: integer);
@@ -3443,6 +3444,12 @@ begin
 end;
 
 { TValueUtils }
+
+class function TValueUtils.BoolToStr(Value: boolean): string;
+begin
+  if Value then result := 'True'
+    else result := 'False';
+end;
 
 class procedure TValueUtils.Exchange<T>(var A, B: T);
 var C: T;

@@ -12,7 +12,10 @@ uses
   adot.Grammar,
   adot.Tools,
   adot.Collections,
-  System.SysUtils;
+  adot.Strings,
+  adot.Log,
+  System.SysUtils,
+  System.Classes;
 
 type
 
@@ -34,9 +37,13 @@ type
 
     var
       Tree: TVector<TMatchingResult>;
+      Root: integer;
+
+    procedure LogTextInputParseTree(ResIndex, Margin: integer);
 
   public
     function Accepted: Boolean; override;
+    procedure LogResult; override;
   end;
 
 implementation
@@ -58,6 +65,45 @@ end;
 
 { TPegParser }
 
+procedure TPegParser.LogResult;
+begin
+  AppLog.Log('');
+  AppLog.Log('Input string:');
+  AppLog.Log(TStr.GetReadable(Data.Text));
+  AppLog.Log('Parse tree:');
+  LogTextInputParseTree(Root, 0);
+end;
+
+procedure TPegParser.LogTextInputParseTree(ResIndex, Margin: integer);
+
+  procedure L(const S: string; const Args: array of const; Margin: integer);
+  begin
+    AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
+  end;
+
+var
+  R: TMatchingResult;
+  S: string;
+begin
+  while ResIndex>=0 do
+  begin
+    R := Tree.Items[ResIndex];
+
+    Assert(R.Position.Len mod SizeOf(Char)=0);
+    try
+      L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
+    except
+      L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
+    end;
+    Data.Position := R.Position.Start;
+    Data.Read(S, R.Position.Len div SizeOf(Char));
+    L('%s', [TStr.GetReadable(S)], Margin+R.Position.Start);
+
+    LogTextInputParseTree(R.FirstChild, Margin + 2);
+    ResIndex := Tree.Items[ResIndex].NextSibling;
+  end;
+end;
+
 function TPegParser.Accepted: Boolean;
 var
 
@@ -75,6 +121,7 @@ var
   { pointer to current/new item on the stack (invalid after any modification of the stack) }
   Item: PCallStackItem;
 begin
+  Results.Clear;
   Stack.Clear;
   Tree.Clear;
   Accept := False;
@@ -98,7 +145,7 @@ begin
           if Accept then
           begin
             ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule.Id, Data.Position, Len);
+            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
           end;
           Stack.DeleteLast;
         end;
@@ -110,7 +157,7 @@ begin
           if Accept then
           begin
             ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule.Id, Data.Position, Len);
+            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
           end;
           Stack.DeleteLast;
         end;
@@ -135,7 +182,7 @@ begin
                if Accept then
                begin
                  Inc(Len, Item.Len);
-                 Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, Item.ResIndex);
+                 Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, Item.ResIndex);
                  Tree.Items[Item.ResIndex].NextSibling := ResIndex;
                  ResIndex := Tree.Count-1;
                end;
@@ -150,7 +197,7 @@ begin
                Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op1.Data);
              end;
           1: if Accept then begin
-               Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, ResIndex);
+               Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
                ResIndex := Tree.Count-1;
                Stack.DeleteLast;
              end else begin
@@ -160,7 +207,7 @@ begin
           2: begin
                if Accept then
                begin
-                 Tree.Items[Tree.Add].SetUp(Item.Rule.Id, Data.Position, Len, ResIndex);
+                 Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
                  ResIndex := Tree.Count-1;
                end;
                Stack.DeleteLast;
@@ -195,7 +242,16 @@ begin
         end
         else begin
           if Accept then
+          begin
             Inc(Item.Len, Len);
+            if Item.Step=1 then begin
+              Item.ResLastChild := ResIndex;
+              Tree.Items[Item.ResIndex].FirstChild := ResIndex;
+            end else begin
+              Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
+              Item.ResLastChild := ResIndex;
+            end;
+          end;
           with TGrammarGreedyRepeater(Item.Rule) do
             Accept := (Item.Step >= MinCount) and (Item.Step <= MaxCount);
           if not Accept then
@@ -204,6 +260,8 @@ begin
           begin
             ResIndex := Item.ResIndex;
             Len := Item.Len;
+            Tree.Items[ResIndex].Rule := Item.Rule;
+            Tree.Items[ResIndex].Position.SetPos(Item.Start, Len);
           end;
           Data.Position := Item.Start;
           Stack.DeleteLast;
@@ -222,7 +280,7 @@ begin
           begin
             Len := 0;
             ResIndex := Tree.Add;
-            Tree[ResIndex].SetUp(Item.Rule.Id, Data.Position,0);
+            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
           end;
           Stack.DeleteLast;
         end;
@@ -234,7 +292,7 @@ begin
           begin
             Len := 0;
             ResIndex := Tree.Add;
-            Tree[ResIndex].SetUp(Item.Rule.Id, Data.Position,0);
+            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
           end;
           Stack.DeleteLast;
         end;
@@ -242,8 +300,13 @@ begin
     end; { case Item.Rule.GrammarType of }
   until Stack.Count=0;
   result := Accept;
-  if not result then
+  if result then
+    Root := ResIndex
+  else
+  begin
+    Root := -1;
     Tree.Clear;
+  end;
 end;
 
 end.

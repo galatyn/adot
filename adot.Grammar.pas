@@ -10,10 +10,12 @@ uses
   adot.Tools,
   adot.Strings,
   adot.Grammar.Types,
+  adot.Tools.RTTI,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.SysUtils,
-  System.Character;
+  System.Character,
+  System.StrUtils;
 
 type
   { Record type for grammar definition. Construct grammar rules with help of Ex/Rep functions:
@@ -61,9 +63,6 @@ type
 
   { abstract class for expression with no operands (string, char, EOF etc) }
   TGrammarClassOp0 = class abstract(TGrammarClass)
-  protected
-    FOp: IInterfacedObject<TGrammarClass>;
-
   public
     procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
@@ -74,6 +73,7 @@ type
   protected
     FOp: IInterfacedObject<TGrammarClass>;
 
+    function GetInfo: string; override;
   public
     procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
@@ -87,6 +87,7 @@ type
     FOp1: IInterfacedObject<TGrammarClass>;
     FOp2: IInterfacedObject<TGrammarClass>;
 
+    function GetInfo: string; override;
   public
     procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
@@ -101,6 +102,8 @@ type
   TGrammarLink = class(TGrammarClassOp1)
   protected
     FLink: PGrammar;
+
+    function GetInfo: string; override;
   public
     constructor Create(var ALink: TGrammar);
     procedure SetupRule; override;
@@ -110,6 +113,8 @@ type
   protected
     FValue: String;
     FCaseSensitive: boolean;
+
+    function GetInfo: string; override;
   public
     constructor Create(Value: String; CaseSensitive: boolean);
 
@@ -125,6 +130,8 @@ type
   protected
     FValueFrom,FValueTo: Char;
     FCaseSensitive: boolean;
+
+    function GetInfo: string; override;
   public
     constructor Create(ValueFrom,ValueTo: Char; CaseSensitive: boolean);
 
@@ -152,6 +159,8 @@ type
   TGrammarGreedyRepeater = class(TGrammarClassOp1)
   protected
     FMinCount, FMaxCount: integer;
+
+    function GetInfo: string; override;
   public
     constructor Create(AOp: IInterfacedObject<TGrammarClass>; AMinCount,AMaxCount: integer);
 
@@ -341,6 +350,11 @@ end;
 
 { TGrammarClassOp1 }
 
+function TGrammarClassOp1.GetInfo: string;
+begin
+  result := inherited + ' ' + GetOperandInfo(FOp);
+end;
+
 procedure TGrammarClassOp1.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
 begin
   if FOp<>nil then
@@ -353,6 +367,11 @@ begin
 end;
 
 { TGrammarClassOp2 }
+
+function TGrammarClassOp2.GetInfo: string;
+begin
+  result := inherited + ' ' + GetOperandInfo(FOp1) + ' ' + GetOperandInfo(FOp2);
+end;
 
 procedure TGrammarClassOp2.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
 begin
@@ -374,6 +393,11 @@ constructor TGrammarLink.Create(var ALink: TGrammar);
 begin
   inherited Create(gtLink);
   FLink := @ALink;
+end;
+
+function TGrammarLink.GetInfo: string;
+begin
+  result := inherited + ' linked:' + FOp.Data.Info;
 end;
 
 procedure TGrammarLink.SetupRule;
@@ -415,6 +439,11 @@ begin
       result := -1;
 end;
 
+function TGrammarString.GetInfo: string;
+begin
+  result := inherited + Format(' Value:"%s", CaseSensitive:%s', [TStr.GetReadable(FValue), TValueUtils.BoolToStr(FCaseSensitive)]);
+end;
+
 { TGrammarChar }
 
 constructor TGrammarChar.Create(ValueFrom, ValueTo: Char; CaseSensitive: boolean);
@@ -449,6 +478,14 @@ begin
 
 end;
 
+function TGrammarChar.GetInfo: string;
+begin
+  result := inherited + Format(' Value:"%s", CaseSensitive:%s', [
+    TStr.GetReadable(IfThen(FValueFrom=FValueTo, FValueFrom, '['+FValueFrom+'..'+FValueFrom+']')),
+    TValueUtils.BoolToStr(FCaseSensitive)
+  ]);
+end;
+
 { TGrammarSequence }
 
 constructor TGrammarSequence.Create(AOp1, AOp2: IInterfacedObject<TGrammarClass>);
@@ -475,6 +512,17 @@ begin
   FOp := AOp;
   FMinCount := AMinCount;
   FMaxCount := AMaxCount;
+end;
+
+function TGrammarGreedyRepeater.GetInfo: string;
+  function CntToStr(n: Integer): string;
+  begin
+    if n=High(n) then result := 'infinite' else result := IntToStr(n);
+  end;
+begin
+  result := inherited + Format(' Repeat:%s', [
+    IfThen(FMinCount=FMaxCount, IntToStr(FMinCount), '['+CntToStr(FMinCount)+'..'+CntToStr(FMaxCount)+']')
+  ]);
 end;
 
 { TGrammarNot }

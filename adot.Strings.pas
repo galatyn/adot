@@ -177,6 +177,9 @@ type
     class function StringToSet(const s: string): TAnsiChars;
     class function IntToString(const N: int64; MinResLen: integer = -1): string; static;
 
+    class function GetReadable(const S: string): string; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function GetReadable(S: PChar; Count: integer): string; overload; static;
+
     { randomization }
     class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
     class function Random(ALen: integer; const AChars: string): string; overload;
@@ -881,6 +884,24 @@ begin
     else { not part of number }
       if State=stNum then
         State := stSpace; { space is required before next number }
+end;
+
+class function TStr.GetReadable(const S: string): string;
+begin
+  result := GetReadable(PChar(S), Length(S));
+end;
+
+class function TStr.GetReadable(S: PChar; Count: integer): string;
+var
+  I: Integer;
+begin
+  SetLength(Result, Count);
+  if Count<=0 then
+    Exit;
+  System.Move(S^, result[Low(result)], Count*SizeOf(Char));
+  for I := Low(result) to High(result) do
+    if result[I]<' ' then
+      result[I] := '_';
 end;
 
 class procedure TStr.InitializeVars;
