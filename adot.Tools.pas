@@ -94,6 +94,10 @@ interface
 uses
   adot.Types,
   adot.Collections,
+{$IFDEF MSWINDOWS}
+  { Preventing from "Inline has not been expanded" }
+  Winapi.Windows,
+{$ENDIF}
   System.DateUtils,
   System.Types,
   System.Rtti,

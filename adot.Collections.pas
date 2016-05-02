@@ -860,6 +860,16 @@ type
     procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
 
+    procedure Sort; overload;
+    procedure Sort(const Comparer: IComparer<T>); overload;
+    procedure Sort(const Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
+    procedure Copy(var Destination: array of T); overload;
+    procedure Copy(var Destination: array of T; Count: NativeInt); overload;
+    procedure Copy(var Destination: array of T; SourceIndex, DestIndex, Count: NativeInt); overload;
+
     property Count: integer read FCount write SetCount;
     property Length: integer read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
@@ -4638,6 +4648,52 @@ begin
   FCount := ACount;
   if ACount > Capacity then
     Capacity := ACount;
+end;
+
+procedure TVector<T>.Sort;
+begin
+  TArray.Sort<T>(Items, TComparerUtils.DefaultComparer<T>, 0,Count);
+end;
+
+procedure TVector<T>.Sort(const Comparer: IComparer<T>);
+begin
+  TArray.Sort<T>(Items, Comparer, 0, Count);
+end;
+
+procedure TVector<T>.Sort(const Comparer: IComparer<T>; AIndex, ACount: Integer);
+begin
+  TArray.Sort<T>(Items, Comparer, AIndex, ACount);
+end;
+
+function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer): Boolean;
+begin
+  TArray.BinarySearch<T>(Items, Item, FoundIndex, TComparerUtils.DefaultComparer<T>, 0, Count);
+end;
+
+function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean;
+begin
+  TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, 0, Count);
+end;
+
+function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean;
+begin
+  TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, AIndex,ACount);
+end;
+
+procedure TVector<T>.Copy(var Destination: array of T);
+begin
+  //SetLength(Destination, Count);
+  TArray.Copy<T>(Items, Destination, 0, 0, Count);
+end;
+
+procedure TVector<T>.Copy(var Destination: array of T; Count: NativeInt);
+begin
+  TArray.Copy<T>(Items, Destination, 0, 0, Count);
+end;
+
+procedure TVector<T>.Copy(var Destination: array of T; SourceIndex, DestIndex, Count: NativeInt);
+begin
+  TArray.Copy<T>(Items, Destination, SourceIndex, DestIndex, Count);
 end;
 
 { TBHeap<TKey, TValue> }
