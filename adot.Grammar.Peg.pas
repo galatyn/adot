@@ -39,11 +39,14 @@ type
       Tree: TVector<TMatchingResult>;
       Root: integer;
 
-    procedure LogTextInputParseTree(ResIndex, Margin: integer);
+    procedure LogTextInputParseTree(const ParseTree: TVector<TMatchingResult>; ResIndex, Margin: integer);
 
   public
     function Accepted: Boolean; override;
     procedure LogResult; override;
+
+    { Returns subtree of .Tree with rules assigned to TGRammar, skips all rules with IsIntermediate=True }
+    function GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
   end;
 
 implementation
@@ -65,16 +68,58 @@ end;
 
 { TPegParser }
 
+function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
+
+  procedure GetChildsAndSiblings(SrcItem, Parent,LastChild: integer);
+  var
+    DstItem: Integer;
+  begin
+    while SrcItem<>-1 do
+    begin
+      if Tree.Items[SrcItem].Rule.IsIntermediate then
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, Parent,LastChild)
+      else
+      begin
+        DstItem := Dst.Add(Tree.Items[SrcItem]);
+        Dst.Items[DstItem].FirstChild := -1;
+        Dst.Items[DstItem].NextSibling := -1;
+
+        if LastChild < 0 then
+          Tree.Items[Parent].FirstChild := SrcItem
+        else
+          Tree.Items[LastChild].NextSibling := SrcItem;
+        LastChild := SrcItem;
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, SrcItem,-1);
+      end;                             aaa
+      SrcItem := Tree.Items[SrcItem].NextSibling;
+    end;
+  end;
+
+begin
+  Dst.Clear;
+  result := Root >= 0;
+  if result then
+  begin
+//    I := Dst.Add(Tree[Root]);
+  //  Dst.Items[I]
+    GetChildsAndSiblings(Tree.Items[Root].FirstChild, Root,-1);
+  end;
+end;
+
 procedure TPegParser.LogResult;
+var
+  ParseTree: TVector<TMatchingResult>;
 begin
   AppLog.Log('');
   AppLog.Log('Input string:');
   AppLog.Log(TStr.GetReadable(Data.Text));
   AppLog.Log('Parse tree:');
-  LogTextInputParseTree(Root, 0);
+  //LogTextInputParseTree(Root, 0);
+  GetParseTree(ParseTree);
+  LogTextInputParseTree(ParseTree, 0,0);
 end;
 
-procedure TPegParser.LogTextInputParseTree(ResIndex, Margin: integer);
+procedure TPegParser.LogTextInputParseTree(const ParseTree: TVector<TMatchingResult>; ResIndex, Margin: integer);
 
   procedure L(const S: string; const Args: array of const; Margin: integer);
   begin
@@ -87,20 +132,16 @@ var
 begin
   while ResIndex>=0 do
   begin
-    R := Tree.Items[ResIndex];
+    R := ParseTree.Items[ResIndex];
 
     Assert(R.Position.Len mod SizeOf(Char)=0);
-    try
-      L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
-    except
-      L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
-    end;
+    L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
     Data.Position := R.Position.Start;
     Data.Read(S, R.Position.Len div SizeOf(Char));
     L('%s', [TStr.GetReadable(S)], Margin+R.Position.Start);
 
-    LogTextInputParseTree(R.FirstChild, Margin + 2);
-    ResIndex := Tree.Items[ResIndex].NextSibling;
+    LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);
+    ResIndex := ParseTree.Items[ResIndex].NextSibling;
   end;
 end;
 

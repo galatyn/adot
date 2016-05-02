@@ -62,6 +62,7 @@ type
 
   { basic class for grammar definition }
   TGrammarClass = class abstract(TEnumerable<IInterfacedObject<TGrammarClass>>)
+  private
   protected
     type
       TCustomGrammarEnumerator = class(TEnumerator<IInterfacedObject<TGrammarClass>>)
@@ -81,12 +82,14 @@ type
     var
       FGrammarType: TGrammarType;
       FId: int64;
+      FIsIntermediate: Boolean;
 
     { implements TEnumerate using GetOperands method }
     function DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>; override;
     function GetInfo: string; virtual;
     class function GetOperandInfo(Operand: TGrammarClass): string; overload; static;
     class function GetOperandInfo(const Operand: IInterfacedObject<TGrammarClass>): string; overload; static;
+    procedure SetIsIntermediate(const Value: Boolean); virtual;
 
   public
     constructor Create(AGrammarType: TGrammarType);
@@ -107,6 +110,8 @@ type
 
     { descriptive/readable text presentation }
     property Info: string read GetInfo;
+
+    property IsIntermediate: Boolean read FIsIntermediate write SetIsIntermediate;
   end;
 
 implementation
@@ -165,6 +170,7 @@ begin
   inc(FIdCnt);
   FId := FIdCnt;
   FGrammarType := AGrammarType;
+  FIsIntermediate := True;
 end;
 
 function TGrammarClass.DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>;
@@ -204,6 +210,11 @@ begin
     end
     else
       result := Format('Op:%s (#%d)', [TEnumeration<TGrammarType>.ToString(Operand.GrammarType), Operand.Id]);
+end;
+
+procedure TGrammarClass.SetIsIntermediate(const Value: Boolean);
+begin
+  FIsIntermediate := Value;
 end;
 
 procedure TGrammarClass.SetupMainRule;

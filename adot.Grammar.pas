@@ -310,6 +310,7 @@ end;
 class operator TGrammar.Implicit(A: TMedia): TGrammar;
 begin
   Result.Grm := A.MediaGrm;
+  A.MediaGrm.Data.IsIntermediate := False;
 end;
 
 { TMedia }
