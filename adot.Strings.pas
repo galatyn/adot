@@ -185,6 +185,12 @@ type
     class function Random(ALen: integer; const AChars: string): string; overload;
     class function Random(ALen: integer): string; overload;
     class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
+
+    { General function for escaping special characters. To be more precise it is allowed to escape
+      any char except digits and latin chars in range 'A'..'F'. Example:
+      Escape('key=value', '=') = 'key\3D00value' }
+    class function Escape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
+    class function Unescape(const Value: string; const EscapeChar: Char = '\'): string; static;
   end;
 
   { Position of token in the text. Starts from zero. }
@@ -704,6 +710,50 @@ begin
       end
       else
         result := result + Delimeter + Src[i];
+end;
+
+class function TStr.Escape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
+var
+  S: TSet<Char>;
+  B: TBuffer;
+  I: Integer;
+begin
+  S.Clear;
+  for I := Low(CharsToEscape) to High(CharsToEscape) do
+  begin
+    Assert( not (((CharsToEscape[I]>='0') and (CharsToEscape[I]<='9')) or ((CharsToEscape[I]>='A') and (CharsToEscape[I]<='F'))) );
+    S.Add(CharsToEscape[I]);
+  end;
+  S.Add(EscapeChar);
+  B.Clear;
+  for I := 0 to Length(Value)-1 do
+    if not (Value.Chars[I] in S) then
+      B.Write(Value, I,1)
+    else
+      B.Write(EscapeChar + THex.Encode(Value.Chars[I]) );
+  B.ReadAllData(result);
+end;
+
+class function TStr.Unescape(const Value: string; const EscapeChar: Char): string;
+var
+  S: TSet<Char>;
+  B: TBuffer;
+  I: Integer;
+begin
+  B.Clear;
+  I := 0;
+  while I < Length(Value) do
+  begin
+    if Value.Chars[I] <> EscapeChar then
+      B.Write(Value, I,1)
+    else
+    begin
+      B.Write(THex.DecodeString(Value.SubString(I+1, SizeOf(Char)*2)));
+      Inc(I, SizeOf(Char)*2);
+    end;
+    inc(I);
+  end;
+  B.ReadAllData(result);
 end;
 
 class function TStr.Extract(InfoType: TExtractType; const s: string): String;

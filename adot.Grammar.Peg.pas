@@ -70,40 +70,39 @@ end;
 
 function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
 
-  procedure GetChildsAndSiblings(SrcItem, Parent,LastChild: integer);
+  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild: integer);
   var
     DstItem: Integer;
   begin
     while SrcItem<>-1 do
     begin
       if Tree.Items[SrcItem].Rule.IsIntermediate then
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, Parent,LastChild)
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild)
       else
       begin
         DstItem := Dst.Add(Tree.Items[SrcItem]);
         Dst.Items[DstItem].FirstChild := -1;
         Dst.Items[DstItem].NextSibling := -1;
-
-        if LastChild < 0 then
-          Tree.Items[Parent].FirstChild := SrcItem
+        if DstParent < 0 then
+          DstParent := DstItem
         else
-          Tree.Items[LastChild].NextSibling := SrcItem;
-        LastChild := SrcItem;
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, SrcItem,-1);
-      end;                             aaa
+        begin
+          if DstLastChild < 0 then
+            Dst.Items[DstParent].FirstChild := DstItem
+          else
+            Dst.Items[DstLastChild].NextSibling := DstItem;
+          DstLastChild := DstItem;
+        end;
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1);
+      end;
       SrcItem := Tree.Items[SrcItem].NextSibling;
     end;
   end;
 
 begin
   Dst.Clear;
-  result := Root >= 0;
-  if result then
-  begin
-//    I := Dst.Add(Tree[Root]);
-  //  Dst.Items[I]
-    GetChildsAndSiblings(Tree.Items[Root].FirstChild, Root,-1);
-  end;
+  GetChildsAndSiblings(Root, -1,-1);
+  result := Dst.Count >= 0;
 end;
 
 procedure TPegParser.LogResult;
