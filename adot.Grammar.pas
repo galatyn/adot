@@ -57,8 +57,14 @@ type
 
     var
       Grm: IInterfacedObject<TGrammarClass>;
+
+  private
+    function GetDef: TGrammarClass; {$IFNDEF DEBUG}inline;{$ENDIF}
+
   public
     class operator Implicit(A : TMedia) : TGrammar;
+
+    property Def: TGrammarClass read GetDef;
   end;
 
   { abstract class for expression with no operands (string, char, EOF etc) }
@@ -218,9 +224,9 @@ var
 begin
   Assert(Rule.Grm<>nil, 'rule is not initialized');
   Queue.Clear;
-  Queue.Add(Rule.Grm.Data);
+  Queue.Add(Rule.Def);
   QueuedIds.Clear;
-  QueuedIds.Add(Rule.Grm.Data.Id);
+  QueuedIds.Add(Rule.Def.Id);
   repeat
 
     { process next rule }
@@ -307,10 +313,15 @@ end;
 
 { TGrammar }
 
+function TGrammar.GetDef: TGrammarClass;
+begin
+  result := Grm.Data;
+end;
+
 class operator TGrammar.Implicit(A: TMedia): TGrammar;
 begin
   Result.Grm := A.MediaGrm;
-  A.MediaGrm.Data.IsIntermediate := False;
+  A.MediaGrm.Data.IncludeIntoParseTree := True;
 end;
 
 { TMedia }

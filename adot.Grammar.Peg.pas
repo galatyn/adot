@@ -70,14 +70,14 @@ end;
 
 function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
 
-  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild: integer);
+  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild, Depth: integer);
   var
     DstItem: Integer;
   begin
     while SrcItem<>-1 do
     begin
-      if Tree.Items[SrcItem].Rule.IsIntermediate then
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild)
+      if not Tree.Items[SrcItem].Rule.IncludeIntoParseTree then
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild, Depth+1)
       else
       begin
         DstItem := Dst.Add(Tree.Items[SrcItem]);
@@ -93,7 +93,7 @@ function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
             Dst.Items[DstLastChild].NextSibling := DstItem;
           DstLastChild := DstItem;
         end;
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1);
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1, Depth+1);
       end;
       SrcItem := Tree.Items[SrcItem].NextSibling;
     end;
@@ -101,7 +101,7 @@ function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
 
 begin
   Dst.Clear;
-  GetChildsAndSiblings(Root, -1,-1);
+  GetChildsAndSiblings(Root, -1,-1, 0);
   result := Dst.Count >= 0;
 end;
 
@@ -127,7 +127,7 @@ procedure TPegParser.LogTextInputParseTree(const ParseTree: TVector<TMatchingRes
 
 var
   R: TMatchingResult;
-  S: string;
+  S,T: string;
 begin
   while ResIndex>=0 do
   begin
@@ -137,7 +137,15 @@ begin
     L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
     Data.Position := R.Position.Start;
     Data.Read(S, R.Position.Len div SizeOf(Char));
-    L('%s', [TStr.GetReadable(S)], Margin+R.Position.Start);
+    T := Data.Text;
+    if T=S then
+      L('[EXP] %s', [TStr.GetReadable(S)], Margin)
+      //L('%s', [TStr.GetReadable(S)], Margin+R.Position.Start div 2)
+    else
+    begin
+      L('[EXP] %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetReadable(S)], Margin);
+      L('[INP] %s', [TStr.GetReadable(T)], Margin);
+    end;
 
     LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);
     ResIndex := ParseTree.Items[ResIndex].NextSibling;

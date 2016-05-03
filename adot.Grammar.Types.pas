@@ -8,7 +8,8 @@ uses
   adot.Tools,
   adot.Tools.Rtti,
   System.Generics.Collections,
-  System.SysUtils;
+  System.SysUtils,
+  System.StrUtils;
 
 type
   TGrammarClass = class;
@@ -82,14 +83,15 @@ type
     var
       FGrammarType: TGrammarType;
       FId: int64;
-      FIsIntermediate: Boolean;
+      FIncludeIntoParseTree: Boolean;
+      FName: string;
 
     { implements TEnumerate using GetOperands method }
     function DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>; override;
     function GetInfo: string; virtual;
     class function GetOperandInfo(Operand: TGrammarClass): string; overload; static;
     class function GetOperandInfo(const Operand: IInterfacedObject<TGrammarClass>): string; overload; static;
-    procedure SetIsIntermediate(const Value: Boolean); virtual;
+    procedure SetIncludeIntoParseTree(const Value: Boolean); virtual;
 
   public
     constructor Create(AGrammarType: TGrammarType);
@@ -111,7 +113,10 @@ type
     { descriptive/readable text presentation }
     property Info: string read GetInfo;
 
-    property IsIntermediate: Boolean read FIsIntermediate write SetIsIntermediate;
+    property IncludeIntoParseTree: Boolean read FIncludeIntoParseTree write SetIncludeIntoParseTree;
+
+    { user friendly name (can be set by user) }
+    property Name: string read FName write FName;
   end;
 
 implementation
@@ -170,7 +175,7 @@ begin
   inc(FIdCnt);
   FId := FIdCnt;
   FGrammarType := AGrammarType;
-  FIsIntermediate := True;
+  FIncludeIntoParseTree := False;
 end;
 
 function TGrammarClass.DoGetEnumerator: TEnumerator<IInterfacedObject<TGrammarClass>>;
@@ -180,7 +185,7 @@ end;
 
 function TGrammarClass.GetInfo: string;
 begin
-  result := Format('#%d %s (%s)', [Id, TEnumeration<TGrammarType>.ToString(FGrammarType), ClassName]);
+  result := Format('%s#%d %s (%s)', [IfThen(Name='','',Format('{%s} ',[Name])), Id, TEnumeration<TGrammarType>.ToString(FGrammarType), ClassName]);
 end;
 
 class function TGrammarClass.GetOperandInfo(const Operand: IInterfacedObject<TGrammarClass>): string;
@@ -212,9 +217,9 @@ begin
       result := Format('Op:%s (#%d)', [TEnumeration<TGrammarType>.ToString(Operand.GrammarType), Operand.Id]);
 end;
 
-procedure TGrammarClass.SetIsIntermediate(const Value: Boolean);
+procedure TGrammarClass.SetIncludeIntoParseTree(const Value: Boolean);
 begin
-  FIsIntermediate := Value;
+  FIncludeIntoParseTree := Value;
 end;
 
 procedure TGrammarClass.SetupMainRule;

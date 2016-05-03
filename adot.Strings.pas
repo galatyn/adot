@@ -736,7 +736,6 @@ end;
 
 class function TStr.Unescape(const Value: string; const EscapeChar: Char): string;
 var
-  S: TSet<Char>;
   B: TBuffer;
   I: Integer;
 begin
