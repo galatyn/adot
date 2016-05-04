@@ -949,7 +949,7 @@ begin
     Exit;
   System.Move(S^, result[Low(result)], Count*SizeOf(Char));
   for I := Low(result) to High(result) do
-    if result[I]<' ' then
+    if result[I].IsControl then
       result[I] := '_';
 end;
 

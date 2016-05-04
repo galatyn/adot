@@ -278,7 +278,7 @@ begin
         if Accept and (Item.Step < TGrammarGreedyRepeater(Item.Rule).MaxCount) then begin
           Inc(Item.Step);
           Inc(Item.Len, Len);
-          if Item.Step=1 then begin
+          if Item.Step=2 { we just incremented, 2 means first accepted iteration } then begin
             Item.ResLastChild := ResIndex;
             Tree.Items[Item.ResIndex].FirstChild := ResIndex;
           end else begin
@@ -292,12 +292,12 @@ begin
           if Accept then
           begin
             Inc(Item.Len, Len);
-            if Item.Step=1 then begin
-              Item.ResLastChild := ResIndex;
+            if Item.Step=1 { 1 means first iteration was not accepted } then begin
+              //Item.ResLastChild := ResIndex;
               Tree.Items[Item.ResIndex].FirstChild := ResIndex;
             end else begin
               Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
-              Item.ResLastChild := ResIndex;
+              //Item.ResLastChild := ResIndex;
             end;
           end;
           with TGrammarGreedyRepeater(Item.Rule) do
