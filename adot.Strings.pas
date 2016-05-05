@@ -140,10 +140,10 @@ type
     { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
     class function SameText(const A: string; const B: array of string): Boolean; overload;
+    class function SameText(A,B: PChar; Len: integer): Boolean; overload;
     class function SameTrimText(const A,B: string): Boolean; overload;
     class function CompareText(const A,B: string): integer; overload;
     class function CompareTrimText(const A,B: string): integer; overload;
-    class function SameText(A,B: PChar; Len: integer): Boolean; overload;
 
     class function LowerCaseChar(C: Char): Char; static;
 
@@ -177,8 +177,10 @@ type
     class function StringToSet(const s: string): TAnsiChars;
     class function IntToString(const N: int64; MinResLen: integer = -1): string; static;
 
-    class function GetReadable(const S: string): string; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetReadable(S: PChar; Count: integer): string; overload; static;
+    { make string printable (replace all unprintable/control chars):
+        GetPrintable( 'line1' + #13#10 + 'line2' ) = 'line1??line2' }
+    class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
 
     { randomization }
     class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
@@ -187,8 +189,8 @@ type
     class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
 
     { General function for escaping special characters. To be more precise it is allowed to escape
-      any char except digits and latin chars in range 'A'..'F'. Example:
-      Escape('key=value', '=') = 'key\3D00value' }
+      any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
+        Escape( 'key=value', '=' ) = 'key\3D00value' }
     class function Escape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
     class function Unescape(const Value: string; const EscapeChar: Char = '\'): string; static;
   end;
@@ -935,12 +937,12 @@ begin
         State := stSpace; { space is required before next number }
 end;
 
-class function TStr.GetReadable(const S: string): string;
+class function TStr.GetPrintable(const S: string; ReplChar: Char = '?'): string;
 begin
-  result := GetReadable(PChar(S), Length(S));
+  result := GetPrintable(PChar(S), Length(S), ReplChar);
 end;
 
-class function TStr.GetReadable(S: PChar; Count: integer): string;
+class function TStr.GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string;
 var
   I: Integer;
 begin
@@ -950,7 +952,7 @@ begin
   System.Move(S^, result[Low(result)], Count*SizeOf(Char));
   for I := Low(result) to High(result) do
     if result[I].IsControl then
-      result[I] := '_';
+      result[I] := ReplChar;
 end;
 
 class procedure TStr.InitializeVars;

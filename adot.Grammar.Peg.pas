@@ -70,14 +70,14 @@ end;
 
 function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
 
-  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild, Depth: integer);
+  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild: integer);
   var
     DstItem: Integer;
   begin
     while SrcItem<>-1 do
     begin
       if not Tree.Items[SrcItem].Rule.IncludeIntoParseTree then
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild, Depth+1)
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild)
       else
       begin
         DstItem := Dst.Add(Tree.Items[SrcItem]);
@@ -93,7 +93,7 @@ function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
             Dst.Items[DstLastChild].NextSibling := DstItem;
           DstLastChild := DstItem;
         end;
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1, Depth+1);
+        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1);
       end;
       SrcItem := Tree.Items[SrcItem].NextSibling;
     end;
@@ -101,7 +101,7 @@ function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
 
 begin
   Dst.Clear;
-  GetChildsAndSiblings(Root, -1,-1, 0);
+  GetChildsAndSiblings(Root, -1,-1);
   result := Dst.Count >= 0;
 end;
 
@@ -111,7 +111,7 @@ var
 begin
   AppLog.Log('');
   AppLog.Log('Input string:');
-  AppLog.Log(TStr.GetReadable(Data.Text));
+  AppLog.Log(TStr.GetPrintable(Data.Text));
   AppLog.Log('Parse tree:');
   //LogTextInputParseTree(Root, 0);
   GetParseTree(ParseTree);
@@ -139,12 +139,12 @@ begin
     Data.Read(S, R.Position.Len div SizeOf(Char));
     T := Data.Text;
     if T=S then
-      L('[EXP] %s', [TStr.GetReadable(S)], Margin)
-      //L('%s', [TStr.GetReadable(S)], Margin+R.Position.Start div 2)
+      L('[EXP] %s', [TStr.GetPrintable(S)], Margin)
+      //L('%s', [TStr.GetPrintable(S)], Margin+R.Position.Start div 2)
     else
     begin
-      L('[EXP] %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetReadable(S)], Margin);
-      L('[INP] %s', [TStr.GetReadable(T)], Margin);
+      L('[EXP] %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetPrintable(S)], Margin);
+      L('[INP] %s', [TStr.GetPrintable(T)], Margin);
     end;
 
     LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);
@@ -270,46 +270,44 @@ begin
           end else begin
             Inc(Item.Step);
             Item.Start := Data.Position;
-            Item.ResIndex := Tree.Add;
             Item.Len := 0;
+            Item.ResIndex := Tree.Add;
+            Tree.Items[Item.ResIndex].SetUp(Item.Rule, Data.Position, 0);
             Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
           end
         else
         if Accept and (Item.Step < TGrammarGreedyRepeater(Item.Rule).MaxCount) then begin
           Inc(Item.Step);
           Inc(Item.Len, Len);
-          if Item.Step=2 { we just incremented, 2 means first accepted iteration } then begin
-            Item.ResLastChild := ResIndex;
-            Tree.Items[Item.ResIndex].FirstChild := ResIndex;
-          end else begin
+          if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
+            Tree.Items[Item.ResIndex].FirstChild := ResIndex
+          else
             Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
-            Item.ResLastChild := ResIndex;
-          end;
+          Item.ResLastChild := ResIndex;
           Data.Position := Data.Position + Len;
           Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
         end
         else begin
+          { add last iteration to the result (if accepted) }
           if Accept then
           begin
+            Inc(Item.Step);
             Inc(Item.Len, Len);
-            if Item.Step=1 { 1 means first iteration was not accepted } then begin
-              //Item.ResLastChild := ResIndex;
-              Tree.Items[Item.ResIndex].FirstChild := ResIndex;
-            end else begin
+            if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
+              Tree.Items[Item.ResIndex].FirstChild := ResIndex
+            else
               Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
-              //Item.ResLastChild := ResIndex;
-            end;
           end;
-          with TGrammarGreedyRepeater(Item.Rule) do
-            Accept := (Item.Step >= MinCount) and (Item.Step <= MaxCount);
+          { ">" because Step=AcceptedCount+1. No need to check MaxCount here. }
+          Accept := (Item.Step > TGrammarGreedyRepeater(Item.Rule).MinCount);
+          { assign or reset result }
           if not Accept then
             Tree.Count := Item.ResIndex
           else
           begin
             ResIndex := Item.ResIndex;
             Len := Item.Len;
-            Tree.Items[ResIndex].Rule := Item.Rule;
-            Tree.Items[ResIndex].Position.SetPos(Item.Start, Len);
+            Tree.Items[ResIndex].Position.Len := Len;
           end;
           Data.Position := Item.Start;
           Stack.DeleteLast;
