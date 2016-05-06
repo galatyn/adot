@@ -178,7 +178,7 @@ type
     class function IntToString(const N: int64; MinResLen: integer = -1): string; static;
 
     { make string printable (replace all unprintable/control chars):
-        GetPrintable( 'line1' + #13#10 + 'line2' ) = 'line1??line2' }
+        GetPrintable( 'line1' + #13#10 + 'line2' + #8 + 'qqq' ) = 'line1  line2?qqq' }
     class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
 
@@ -951,6 +951,9 @@ begin
     Exit;
   System.Move(S^, result[Low(result)], Count*SizeOf(Char));
   for I := Low(result) to High(result) do
+    if result[I].IsWhiteSpace then
+      result[I] := ' '
+    else
     if result[I].IsControl then
       result[I] := ReplChar;
 end;

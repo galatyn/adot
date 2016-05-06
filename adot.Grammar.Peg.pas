@@ -35,18 +35,11 @@ type
         procedure SetUp(ARule: TGrammarClass; AStart: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
       end;
 
-    var
-      Tree: TVector<TMatchingResult>;
-      Root: integer;
-
     procedure LogTextInputParseTree(const ParseTree: TVector<TMatchingResult>; ResIndex, Margin: integer);
 
   public
     function Accepted: Boolean; override;
     procedure LogResult; override;
-
-    { Returns subtree of .Tree with rules assigned to TGRammar, skips all rules with IsIntermediate=True }
-    function GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
   end;
 
 implementation
@@ -67,43 +60,6 @@ begin
 end;
 
 { TPegParser }
-
-function TPegParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
-
-  procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild: integer);
-  var
-    DstItem: Integer;
-  begin
-    while SrcItem<>-1 do
-    begin
-      if not Tree.Items[SrcItem].Rule.IncludeIntoParseTree then
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstParent,DstLastChild)
-      else
-      begin
-        DstItem := Dst.Add(Tree.Items[SrcItem]);
-        Dst.Items[DstItem].FirstChild := -1;
-        Dst.Items[DstItem].NextSibling := -1;
-        if DstParent < 0 then
-          DstParent := DstItem
-        else
-        begin
-          if DstLastChild < 0 then
-            Dst.Items[DstParent].FirstChild := DstItem
-          else
-            Dst.Items[DstLastChild].NextSibling := DstItem;
-          DstLastChild := DstItem;
-        end;
-        GetChildsAndSiblings(Tree.Items[SrcItem].FirstChild, DstItem,-1);
-      end;
-      SrcItem := Tree.Items[SrcItem].NextSibling;
-    end;
-  end;
-
-begin
-  Dst.Clear;
-  GetChildsAndSiblings(Root, -1,-1);
-  result := Dst.Count >= 0;
-end;
 
 procedure TPegParser.LogResult;
 var
@@ -171,7 +127,7 @@ var
 begin
   Results.Clear;
   Stack.Clear;
-  Tree.Clear;
+  FullParseTree.Clear;
   Accept := False;
   Len := 0;
   ResIndex := -1;
@@ -192,8 +148,8 @@ begin
           Accept := Len >= 0;
           if Accept then
           begin
-            ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
           end;
           Stack.DeleteLast;
         end;
@@ -204,8 +160,20 @@ begin
           Accept := Len >= 0;
           if Accept then
           begin
-            ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
+          end;
+          Stack.DeleteLast;
+        end;
+
+      gtCharClass:
+        begin
+          Len    := TGrammarCharClass(Item.Rule).GetAcceptedBlock(Data);
+          Accept := Len >= 0;
+          if Accept then
+          begin
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
           end;
           Stack.DeleteLast;
         end;
@@ -230,9 +198,9 @@ begin
                if Accept then
                begin
                  Inc(Len, Item.Len);
-                 Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, Item.ResIndex);
-                 Tree.Items[Item.ResIndex].NextSibling := ResIndex;
-                 ResIndex := Tree.Count-1;
+                 FullParseTree.Items[FullParseTree.Add].SetUp(Item.Rule, Data.Position, Len, Item.ResIndex);
+                 FullParseTree.Items[Item.ResIndex].NextSibling := ResIndex;
+                 ResIndex := FullParseTree.Count-1;
                end;
                Stack.DeleteLast;
              end;
@@ -245,8 +213,8 @@ begin
                Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op1.Data);
              end;
           1: if Accept then begin
-               Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
-               ResIndex := Tree.Count-1;
+               FullParseTree.Items[FullParseTree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
+               ResIndex := FullParseTree.Count-1;
                Stack.DeleteLast;
              end else begin
                Inc(Item.Step);
@@ -255,8 +223,8 @@ begin
           2: begin
                if Accept then
                begin
-                 Tree.Items[Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
-                 ResIndex := Tree.Count-1;
+                 FullParseTree.Items[FullParseTree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
+                 ResIndex := FullParseTree.Count-1;
                end;
                Stack.DeleteLast;
              end;
@@ -271,8 +239,8 @@ begin
             Inc(Item.Step);
             Item.Start := Data.Position;
             Item.Len := 0;
-            Item.ResIndex := Tree.Add;
-            Tree.Items[Item.ResIndex].SetUp(Item.Rule, Data.Position, 0);
+            Item.ResIndex := FullParseTree.Add;
+            FullParseTree.Items[Item.ResIndex].SetUp(Item.Rule, Data.Position, 0);
             Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
           end
         else
@@ -280,9 +248,9 @@ begin
           Inc(Item.Step);
           Inc(Item.Len, Len);
           if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
-            Tree.Items[Item.ResIndex].FirstChild := ResIndex
+            FullParseTree.Items[Item.ResIndex].FirstChild := ResIndex
           else
-            Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
+            FullParseTree.Items[Item.ResLastChild].NextSibling := ResIndex;
           Item.ResLastChild := ResIndex;
           Data.Position := Data.Position + Len;
           Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
@@ -294,20 +262,20 @@ begin
             Inc(Item.Step);
             Inc(Item.Len, Len);
             if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
-              Tree.Items[Item.ResIndex].FirstChild := ResIndex
+              FullParseTree.Items[Item.ResIndex].FirstChild := ResIndex
             else
-              Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
+              FullParseTree.Items[Item.ResLastChild].NextSibling := ResIndex;
           end;
           { ">" because Step=AcceptedCount+1. No need to check MaxCount here. }
           Accept := (Item.Step > TGrammarGreedyRepeater(Item.Rule).MinCount);
           { assign or reset result }
           if not Accept then
-            Tree.Count := Item.ResIndex
+            FullParseTree.Count := Item.ResIndex
           else
           begin
             ResIndex := Item.ResIndex;
             Len := Item.Len;
-            Tree.Items[ResIndex].Position.Len := Len;
+            FullParseTree.Items[ResIndex].Position.Len := Len;
           end;
           Data.Position := Item.Start;
           Stack.DeleteLast;
@@ -325,8 +293,8 @@ begin
           if Accept then
           begin
             Len := 0;
-            ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
           end;
           Stack.DeleteLast;
         end;
@@ -337,8 +305,8 @@ begin
           if Accept then
           begin
             Len := 0;
-            ResIndex := Tree.Add;
-            Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
           end;
           Stack.DeleteLast;
         end;
@@ -347,11 +315,11 @@ begin
   until Stack.Count=0;
   result := Accept;
   if result then
-    Root := ResIndex
+    FullParseTreeRoot := ResIndex
   else
   begin
-    Root := -1;
-    Tree.Clear;
+    FullParseTreeRoot := -1;
+    FullParseTree.Clear;
   end;
 end;
 

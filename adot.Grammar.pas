@@ -60,11 +60,13 @@ type
 
   private
     function GetDef: TGrammarClass; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetId: int64; {$IFNDEF DEBUG}inline;{$ENDIF}
 
   public
     class operator Implicit(A : TMedia) : TGrammar;
 
     property Def: TGrammarClass read GetDef;
+    property Id: int64 read GetId;
   end;
 
   { abstract class for expression with no operands (string, char, EOF etc) }
@@ -150,6 +152,22 @@ type
     property ValueTo: char read FValueTo write FValueTo;
   end;
 
+  TCharClass = (ccControl, ccDigit, ccLetter, ccLetterOrDigit, ccLower, ccPunctuation, ccSeparator, ccSymbol, ccUpper, ccWhiteSpace, ccAny);
+  TGrammarCharClass = class(TGrammarClassOp0)
+  protected
+    FCharClass: TCharClass;
+
+    function GetInfo: string; override;
+  public
+    constructor Create(ACharClass: TCharClass);
+
+    { input accepted: return length of accepted block
+      input rejected: -1}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer;
+
+    property CharClass: TCharClass read FCharClass write FCharClass;
+  end;
+
   TGrammarSequence = class(TGrammarClassOp2)
   protected
   public
@@ -190,6 +208,7 @@ type
 function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload;
 function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload;
 {function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
 function Ex(Value: array of Byte): TGrammar.TMedia; overload;
 function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
@@ -268,6 +287,11 @@ begin
   result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarChar.Create(CharRangeFrom,CharRangeTo, CaseSensitive));
 end;
 
+function Ex(ACharClass: TCharClass): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharClass.Create(ACharClass));
+end;
+
 {function Ex(Value: TArray<Byte>): TGrammar.TMedia;
 begin
 end;
@@ -290,7 +314,10 @@ end;
 function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange;
 begin
   result.MinCount := AMinCount;
-  result.MaxCount := AMaxCount;
+  if AMaxCount=integer(infinite) then
+    result.MaxCount := High(AMaxCount)
+  else
+    result.MaxCount := AMaxCount;
 end;
 
 function Rep(AExactCount: integer): TGrammar.TRange;
@@ -316,6 +343,11 @@ end;
 function TGrammar.GetDef: TGrammarClass;
 begin
   result := Grm.Data;
+end;
+
+function TGrammar.GetId: int64;
+begin
+  result := Grm.Data.Id;
 end;
 
 class operator TGrammar.Implicit(A: TMedia): TGrammar;
@@ -496,6 +528,43 @@ begin
     TStr.GetPrintable(IfThen(FValueFrom=FValueTo, FValueFrom, '['+FValueFrom+'..'+FValueFrom+']')),
     TValueUtils.BoolToStr(FCaseSensitive)
   ]);
+end;
+
+{ TGrammarCharClass }
+
+constructor TGrammarCharClass.Create(ACharClass: TCharClass);
+begin
+  inherited Create(gtCharClass);
+  FCharClass := ACharClass;
+end;
+
+function TGrammarCharClass.GetAcceptedBlock(var Buffer: TBuffer): integer;
+var
+  C: Char;
+begin
+  { not enough of data to match }
+  if Buffer.Left < SizeOf(Char) then
+    Exit(-1);
+  C := Char(Buffer.CurrentData^);
+  case FCharClass of
+    ccControl       : if C.IsControl       then result := SizeOf(Char) else result := -1;
+    ccDigit         : if C.IsDigit         then result := SizeOf(Char) else result := -1;
+    ccLetter        : if C.IsLetter        then result := SizeOf(Char) else result := -1;
+    ccLetterOrDigit : if C.IsLetterOrDigit then result := SizeOf(Char) else result := -1;
+    ccLower         : if C.IsLower         then result := SizeOf(Char) else result := -1;
+    ccPunctuation   : if C.IsPunctuation   then result := SizeOf(Char) else result := -1;
+    ccSeparator     : if C.IsSeparator     then result := SizeOf(Char) else result := -1;
+    ccSymbol        : if C.IsSymbol        then result := SizeOf(Char) else result := -1;
+    ccUpper         : if C.IsUpper         then result := SizeOf(Char) else result := -1;
+    ccWhiteSpace    : if C.IsWhiteSpace    then result := SizeOf(Char) else result := -1;
+    ccAny           : result := SizeOf(Char);
+    else result := -1;
+  end;
+end;
+
+function TGrammarCharClass.GetInfo: string;
+begin
+  result := inherited + Format(' CharClass:"%s"', [TEnumeration<TCharClass>.ToString(FCharClass)]);
 end;
 
 { TGrammarSequence }
