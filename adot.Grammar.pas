@@ -168,6 +168,19 @@ type
     property CharClass: TCharClass read FCharClass write FCharClass;
   end;
 
+  TGrammarCharSetClass = class(TGrammarClassOp0)
+  protected
+    function GetInfo: string; override;
+  public
+    CharSet: TSet<Char>;
+
+    constructor Create(const Chars: array of Char; CaseSensitive: boolean = False);
+
+    { input accepted: return length of accepted block
+      input rejected: -1}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
   TGrammarSequence = class(TGrammarClassOp2)
   protected
   public
@@ -209,6 +222,7 @@ function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload;
 function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload;
+function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 {function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
 function Ex(Value: array of Byte): TGrammar.TMedia; overload;
 function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
@@ -219,12 +233,15 @@ function ExAnsi(CharRangeFrom,CharRangeTo: AnsiChar; CaseSensitive: boolean = Fa
 function ExAnsi(CharSet: TSet<AnsiChar>): TGrammar.TMedia; overload;
 }
 
+procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
+
 function EOF: TGrammar.TMedia; overload;
 
 { all possible repeaters for TGrammar (used as multiplyer of expression in right side of rule definiton) }
 function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange; overload;
 function Rep(AExactCount: integer): TGrammar.TRange; overload;
 function Rep: TGrammar.TRange; overload;
+function Rep1: TGrammar.TRange; overload;
 function Opt: TGrammar.TRange; overload;
 
 { Should be called after initialization of all rules, but before main rule will be used.
@@ -292,6 +309,11 @@ begin
   result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharClass.Create(ACharClass));
 end;
 
+function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
 {function Ex(Value: TArray<Byte>): TGrammar.TMedia;
 begin
 end;
@@ -305,6 +327,15 @@ function Ex(CharSet: TSet<Char>): TGrammar.TMedia;
 begin
 
 end;}
+
+procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
+var
+  I: Integer;
+begin
+  Assert(Length(Rules)=Length(Names));
+  for I := Low(Rules) to High(Rules) do
+    Rules[I].Def.Name := Names[I];
+end;
 
 function EOF: TGrammar.TMedia;
 begin
@@ -329,6 +360,12 @@ end;
 function Rep: TGrammar.TRange;
 begin
   result.MinCount := 0;
+  result.MaxCount := High(result.MaxCount);
+end;
+
+function Rep1: TGrammar.TRange;
+begin
+  result.MinCount := 1;
   result.MaxCount := High(result.MaxCount);
 end;
 
@@ -565,6 +602,50 @@ end;
 function TGrammarCharClass.GetInfo: string;
 begin
   result := inherited + Format(' CharClass:"%s"', [TEnumeration<TCharClass>.ToString(FCharClass)]);
+end;
+
+{ TGrammarCharSetClass }
+
+constructor TGrammarCharSetClass.Create(const Chars: array of Char; CaseSensitive: boolean);
+var C: Char;
+begin
+  inherited Create(gtCharSet);
+  CharSet.Clear;
+  if CaseSensitive then
+    for C in Chars do
+      CharSet.Add(C)
+  else
+    for C in Chars do
+    begin
+      CharSet.Add(C.ToLower);
+      CharSet.Add(C.ToUpper);
+    end;
+end;
+
+function TGrammarCharSetClass.GetAcceptedBlock(var Buffer: TBuffer): integer;
+begin
+  if (Buffer.Left >= SizeOf(Char)) and (Char(Buffer.CurrentData^) in CharSet) then
+    Result := SizeOf(Char)
+  else
+    Result := -1;
+end;
+
+function TGrammarCharSetClass.GetInfo: string;
+var
+  C: Char;
+begin
+  result := '';
+  for C in CharSet do
+    if Length(Result)>=20 then begin
+      result := result + ',...';
+      break;
+    end else
+    if result='' then
+      result := '[' + C
+    else
+      result := result + ',' + C;
+  if result='' then result := '[]' else result := result + ']';
+  result := inherited + Format(' CharSet: %s', [TStr.GetPrintable(result)]);
 end;
 
 { TGrammarSequence }

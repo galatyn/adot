@@ -11,6 +11,9 @@ uses
   System.SysUtils,
   System.StrUtils;
 
+const
+  infinitely = High(integer);
+
 type
   TGrammarClass = class;
   TPos = record
@@ -19,7 +22,6 @@ type
     procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
-  //PMatchingResult = ^TMatchingResult;
   TMatchingResult = record
     Rule: TGrammarClass;
     Position: TPos;
@@ -30,11 +32,11 @@ type
     procedure SetUp(ARule: TGrammarClass; AStart,ALen,AFirstChild: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
-  TParserCache = class abstract
+  {TParserCache = class abstract
   public
     procedure Clear; virtual; abstract;
     function TryGetValue(const RuleId: int64; Position: integer; var P: TPos; var Accept: boolean): Boolean; virtual; abstract;
-  end;
+  end;}
 
   TParserRes = record
     Position: TPos;
@@ -68,7 +70,18 @@ type
     property Values[P: TPos]: string read GetValue;
   end;
 
-  TGrammarType = (gtUnknown, gtLink, gtString, gtChar, gtCharClass, gtSequence, gtSelection, gtRepeat, gtNot, gtEOF);
+  TGrammarType = (
+    gtUnknown,   { invalid/not initialized properly }
+    gtLink,      { link to another rule }
+    gtString,    { Delphi-compatible string (2 bytes per char) + CaseSensitive flag }
+    gtChar,      { range of chars + CaseSensitive flag }
+    gtCharClass, { char class (letter, digit, whitespace etc) }
+    gtCharSet,   { set of chars + CaseSensitive flag }
+    gtSequence,  { sequence of rules (accepted if all rules in the sequence are accepted in defined order) }
+    gtSelection, { selection from several rules (accepted when first rule in the list is accepted) }
+    gtRepeat,    { greedy repeater (accepted if operand rule is accepted N times and N is in the range) }
+    gtNot,       { negation, doesn't consume data from the input buffer (accepted if operand rule is not accepted) }
+    gtEOF);      { accepted if all data is read from the input (input buffer is empty already) }
 
   { basic class for grammar definition }
   TGrammarClass = class abstract(TEnumerable<IInterfacedObject<TGrammarClass>>)

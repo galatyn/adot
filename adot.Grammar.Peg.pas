@@ -178,6 +178,18 @@ begin
           Stack.DeleteLast;
         end;
 
+      gtCharSet:
+        begin
+          Len    := TGrammarCharSetClass(Item.Rule).GetAcceptedBlock(Data);
+          Accept := Len >= 0;
+          if Accept then
+          begin
+            ResIndex := FullParseTree.Add;
+            FullParseTree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
+          end;
+          Stack.DeleteLast;
+        end;
+
       gtSequence:
         case Item.Step of
           0: begin
