@@ -45,6 +45,19 @@ type
     SubExprCount: integer;
   end;
 
+  TParseTree = record
+  private
+    function GetItem(n: integer): TMatchingResult; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetChilds(Root: integer): TArray<integer>; {$IFNDEF DEBUG}inline;{$ENDIF}
+  public
+    Items: TVector<TMatchingResult>;
+
+    property MatchResults[n: integer]:TMatchingResult read GetItem;
+    property Count: integer read GetCount;
+    property Childs[Root: integer]: TArray<integer> read GetChilds;
+  end;
+
   { grammar based parser }
   TGrammarParser = class abstract
   private
@@ -63,6 +76,11 @@ type
     function Accepted(const AData: TBuffer): Boolean; overload;
     function Accepted(const AData: string): Boolean; overload;
     procedure LogResult; virtual; abstract;
+
+    class procedure EnumChilds(const Tree: TVector<TMatchingResult>; Root: integer; EnumProc: TFunc<integer, boolean>); static;
+    class function GetChilds(const Tree: TVector<TMatchingResult>; Root: integer): TArray<integer>; static;
+    class function GetChildsById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): TArray<integer>; static;
+    class function GetChildById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): integer; static;
 
     { Returns subtree of .Tree with rules assigned to TGRammar, skips all rules with IsIntermediate=True }
     function GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
@@ -167,6 +185,23 @@ begin
   Position.SetPos(AStart, ALen);
   FirstChild := AFirstChild;
   NextSibling := -1;
+end;
+
+{ TParseTree }
+
+function TParseTree.GetChilds(Root: integer): TArray<integer>;
+begin
+
+end;
+
+function TParseTree.GetCount: integer;
+begin
+  result := Items.Count;
+end;
+
+function TParseTree.GetItem(n: integer): TMatchingResult;
+begin
+  result := Items.Items[n];
 end;
 
 { TGrammarClass.TCustomGrammarEnumerator }
@@ -293,6 +328,96 @@ end;
 constructor TGrammarParser.Create(AMainRule: IInterfacedObject<TGrammarClass>);
 begin
   Create(AMainRule.Data);
+end;
+
+class function TGrammarParser.GetChilds(const Tree: TVector<TMatchingResult>; Root: integer): TArray<integer>;
+var
+  Stack: TVector<integer>;
+  Res: TVector<integer>;
+  I,J: integer;
+begin
+  Stack.Clear;
+  Res.Clear;
+  if Root >= 0 then
+  begin
+    J := Tree.Items[Root].FirstChild;
+    if J >= 0 then
+      Stack.Add(J);
+  end;
+  while Stack.Count>0 do
+  begin
+    I := Stack.ExtractLast;
+    repeat
+      Res.Add(I);
+      J := Tree.Items[I].FirstChild;
+      if J >= 0 then
+        Stack.Add(J);
+      I := Tree.Items[I].NextSibling;
+    until I < 0;
+  end;
+  Res.TrimExcess;
+  result := Res.Items;
+end;
+
+class procedure TGrammarParser.EnumChilds(const Tree: TVector<TMatchingResult>; Root: integer;
+  EnumProc: TFunc<integer, boolean>);
+var
+  Stack: TVector<integer>;
+  I,J: integer;
+begin
+  if Root<0 then
+    Exit;
+  Stack.Clear;
+  J := Tree.Items[Root].FirstChild;
+  if J >= 0 then
+    Stack.Add(J);
+  while Stack.Count>0 do
+  begin
+    I := Stack.ExtractLast;
+    repeat
+      if not EnumProc(I) then
+        Exit;
+      J := Tree.Items[I].FirstChild;
+      if J >= 0 then
+        Stack.Add(J);
+      I := Tree.Items[I].NextSibling;
+    until I < 0;
+  end;
+end;
+
+class function TGrammarParser.GetChildsById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): TArray<integer>;
+var
+  Src: TArray<TMatchingResult>;
+  Res: TVector<integer>;
+begin
+  Src := Tree.Items;
+  Res.Clear;
+  EnumChilds(Tree, Root,
+    function(Node: integer):boolean
+    begin
+      result := True;
+      if Src[Node].Rule.Id=Id then
+        Res.Add(Node);
+    end);
+  Res.TrimExcess;
+  result := Res.Items;
+end;
+
+class function TGrammarParser.GetChildById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): integer;
+var
+  Src: TArray<TMatchingResult>;
+  I: Integer;
+begin
+  Src := Tree.Items;
+  I := -1;
+  EnumChilds(Tree, Root,
+    function(Node: integer):boolean
+    begin
+      result := Src[Node].Rule.Id <> Id;
+      if not result then
+        I := Node;
+    end);
+  result := I;
 end;
 
 function TGrammarParser.GetParseTree(

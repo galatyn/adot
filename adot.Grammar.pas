@@ -174,7 +174,9 @@ type
   public
     CharSet: TSet<Char>;
 
-    constructor Create(const Chars: array of Char; CaseSensitive: boolean = False);
+    constructor Create(const Chars: array of Char; CaseSensitive: boolean = False); overload;
+    constructor Create(Chars: TEnumerable<Char>; CaseSensitive: boolean = False); overload;
+    constructor Create(Chars: TSet<Char>; CaseSensitive: boolean = False); overload;
 
     { input accepted: return length of accepted block
       input rejected: -1}
@@ -223,6 +225,8 @@ function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; ove
 function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload;
 function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 {function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
 function Ex(Value: array of Byte): TGrammar.TMedia; overload;
 function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
@@ -310,6 +314,16 @@ begin
 end;
 
 function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
+function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
+function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia;
 begin
   result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
 end;
@@ -496,6 +510,9 @@ begin
   inherited Create(gtString);
   FValue := Value;
   FCaseSensitive := CaseSensitive;
+  { FCaseSensitive is faster, so we use FCaseSensitive=true as much as possible }
+  if not FCaseSensitive and (Value.ToUpper=Value.ToLower) then
+    FCaseSensitive := True;
 end;
 
 function TGrammarString.GetAcceptedBlock(var Buffer: TBuffer): integer;
@@ -607,6 +624,38 @@ end;
 { TGrammarCharSetClass }
 
 constructor TGrammarCharSetClass.Create(const Chars: array of Char; CaseSensitive: boolean);
+var C: Char;
+begin
+  inherited Create(gtCharSet);
+  CharSet.Clear;
+  if CaseSensitive then
+    for C in Chars do
+      CharSet.Add(C)
+  else
+    for C in Chars do
+    begin
+      CharSet.Add(C.ToLower);
+      CharSet.Add(C.ToUpper);
+    end;
+end;
+
+constructor TGrammarCharSetClass.Create(Chars: TEnumerable<Char>; CaseSensitive: boolean);
+var C: Char;
+begin
+  inherited Create(gtCharSet);
+  CharSet.Clear;
+  if CaseSensitive then
+    for C in Chars do
+      CharSet.Add(C)
+  else
+    for C in Chars do
+    begin
+      CharSet.Add(C.ToLower);
+      CharSet.Add(C.ToUpper);
+    end;
+end;
+
+constructor TGrammarCharSetClass.Create(Chars: TSet<Char>; CaseSensitive: boolean);
 var C: Char;
 begin
   inherited Create(gtCharSet);
