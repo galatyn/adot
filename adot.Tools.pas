@@ -839,6 +839,12 @@ type
     class function BoolToStr(Value: boolean): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
+  TEventUtils = class
+  public
+    class function IsSameHandler(const A,B: TNotifyEvent): Boolean; overload; static;
+    class function IsSameHandler(const A,B: TActionEvent): Boolean; overload; static;
+  end;
+
 function Min3(const A,B,C: integer): integer; overload;
 function Min3(const A,B,C: double): double; overload;
 function Max3(const A,B,C: integer): integer; overload;
@@ -3461,6 +3467,18 @@ begin
   C := A;
   A := B;
   B := C;
+end;
+
+{ TEventUtils }
+
+class function TEventUtils.IsSameHandler(const A, B: TNotifyEvent): Boolean;
+begin
+  result := CompareMem(@A, @B, SizeOF(TNotifyEvent));
+end;
+
+class function TEventUtils.IsSameHandler(const A, B: TActionEvent): Boolean;
+begin
+  result := CompareMem(@A, @B, SizeOF(TActionEvent));
 end;
 
 end.
