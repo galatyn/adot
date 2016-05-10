@@ -420,7 +420,51 @@ begin
   result := I;
 end;
 
-function TGrammarParser.GetParseTree(
+function TGrammarParser.GetParseTree(var Dst: TVector<TMatchingResult>): Boolean;
+var
+  Stack: TVector<TCompound<integer,integer>>; { SrcItem + DstParent }
+  DstLastChild: TVector<integer>;
+  I: TCompound<integer,integer>;
+  J: integer;
+begin
+  Dst.Clear;
+  DstLastChild.Clear;
+  if FullParseTreeRoot >= 0 then
+  begin
+    Stack.Clear;
+    Stack.Add(TCompound<integer,integer>.Create(FullParseTreeRoot, -1));
+    while Stack.Count>0 do
+    begin
+      I := Stack.ExtractLast;
+      repeat
+        if FullParseTree.Items[I.A].Rule.IncludeIntoParseTree then
+        begin
+          J := Dst.Add(FullParseTree.Items[I.A]);
+          Dst.Items[J].FirstChild  := -1;
+          Dst.Items[J].NextSibling := -1;
+          DstLastChild.Add(-1);
+          if I.B >= 0 then
+          begin
+            if Dst.Items[I.B].FirstChild < 0 then
+              Dst.Items[I.B].FirstChild := J
+            else
+              Dst.Items[DstLastChild[I.B]].NextSibling := J;
+            DstLastChild[I.B] := J;
+          end;
+          I.B := J;
+        end;
+        J := FullParseTree.Items[I.A].FirstChild;
+        if J >= 0 then
+          Stack.Add(TCompound<integer,integer>.Create(J, I.B));
+        I.A := FullParseTree.Items[I.A].NextSibling;
+      until I.A < 0;
+    end;
+  end;
+  Dst.TrimExcess;
+  result := Dst.Count >= 0;
+end;
+
+(*function TGrammarParser.GetParseTree(
   var Dst: TVector<TMatchingResult>): Boolean;
 
   procedure GetChildsAndSiblings(SrcItem, DstParent,DstLastChild: integer);
@@ -456,7 +500,7 @@ begin
   Dst.Clear;
   GetChildsAndSiblings(FullParseTreeRoot, -1,-1);
   result := Dst.Count >= 0;
-end;
+end; *)
 
 function TGrammarParser.GetValue(P: TPos): string;
 begin

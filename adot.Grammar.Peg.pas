@@ -69,9 +69,10 @@ begin
   AppLog.Log('Input string:');
   AppLog.Log(TStr.GetPrintable(Data.Text));
   AppLog.Log('Parse tree:');
-  //LogTextInputParseTree(Root, 0);
   GetParseTree(ParseTree);
   LogTextInputParseTree(ParseTree, 0,0);
+  AppLog.Log('Full parse tree:');
+  LogTextInputParseTree(FullParseTree, FullParseTreeRoot,0);
 end;
 
 procedure TPegParser.LogTextInputParseTree(const ParseTree: TVector<TMatchingResult>; ResIndex, Margin: integer);
