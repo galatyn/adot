@@ -1380,15 +1380,16 @@ type
       FCount: integer;
       FOwnsValues: boolean;
 
-    function AllocItem: PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function AllocItem(const Value: T): PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure FreeItem(Item: PDoublyLinkedListItem); {$IFNDEF DEBUG}inline;{$ENDIF}
     function DoGetEnumerator: TEnumerator<T>; override;
     procedure SetOwnsValues(AOwnsValues: boolean);
   public
     constructor Create(const AValues: array of T); overload;
     constructor Create(const AValues: TEnumerable<T>); overload;
     destructor Destroy; override;
+
+    function AllocItem: PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function AllocItem(const Value: T): PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure FreeItem(Item: PDoublyLinkedListItem); {$IFNDEF DEBUG}inline;{$ENDIF}
 
     procedure Add(Value: T); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Add(const AValues: array of T); overload;
@@ -1402,6 +1403,8 @@ type
     procedure Remove(Item: PDoublyLinkedListItem); {$IFNDEF DEBUG}inline;{$ENDIF}
     function Extract(Item: PDoublyLinkedListItem):PDoublyLinkedListItem;
     procedure Clear;
+    function FindByIndex(Index: integer): PDoublyLinkedListItem;
+    function FindValueByIndex(Index: integer): T;
 
     procedure Exchange(Item1, Item2: PDoublyLinkedListItem); overload;
     class procedure Exchange(Item1, Item2: PDoublyLinkedListItem; List1,List2: TDoublyLinkedListClass<T>); overload; static;
@@ -5591,6 +5594,21 @@ begin
   result.Data := Value;
 end;
 
+function TDoublyLinkedListClass<T>.FindByIndex(Index: integer): PDoublyLinkedListItem;
+begin
+  result := First;
+  while Index>0 do
+  begin
+    Dec(Index);
+    result := result.Next;
+  end;
+end;
+
+function TDoublyLinkedListClass<T>.FindValueByIndex(Index: integer): T;
+begin
+  result := FindByIndex(Index).Data;
+end;
+
 procedure TDoublyLinkedListClass<T>.FreeItem(Item: PDoublyLinkedListItem);
 begin
   if FOwnsValues then
@@ -5640,6 +5658,8 @@ begin
   if Item = FLast then
     FLast := Item.Prev;
   dec(FCount);
+  result.Prev := nil;
+  result.Next := nil;
 end;
 
 procedure TDoublyLinkedListClass<T>.Remove(Item: PDoublyLinkedListItem);
