@@ -96,12 +96,12 @@ begin
     Data.Read(S, R.Position.Len div SizeOf(Char));
     T := Data.Text;
     if T=S then
-      L('[EXP] %s', [TStr.GetPrintable(S)], Margin)
+      L('       %s', [TStr.GetPrintable(S)], Margin)
       //L('%s', [TStr.GetPrintable(S)], Margin+R.Position.Start div 2)
     else
     begin
-      L('[EXP] %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetPrintable(S)], Margin);
-      L('[INP] %s', [TStr.GetPrintable(T)], Margin);
+      L('       %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetPrintable(S) ], Margin);
+      L('       %s', [TStr.GetPrintable(T)], Margin);
     end;
 
     LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);

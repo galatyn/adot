@@ -1505,18 +1505,19 @@ end;
 
 class procedure TArrayUtils.Inverse<T>(var Arr: TArray<T>; AStartIndex, ACount: integer);
 var
-  i,l,r: Integer;
-  v: T;
+  i,EndIndex: Integer;
+  Value: T;
 begin
-  if ACount<0 then
+  if ACount < 0 then
     ACount := Length(Arr);
+  EndIndex := AStartIndex + ACount - 1;
   for i := 0 to ACount div 2-1 do
   begin
-    l := AStartIndex + i;
-    r := AStartIndex + ACount-1 - i;
-    v      := Arr[l];
-    Arr[l] := Arr[r];
-    Arr[r] := v;
+    Value := Arr[AStartIndex];
+    Arr[AStartIndex] := Arr[EndIndex];
+    Arr[EndIndex] := Value;
+    inc(AStartIndex);
+    dec(EndIndex);
   end;
 end;
 
