@@ -802,7 +802,19 @@ type
     property Keys: TKeyCollection read GetKeys;
   end;
 
-  { Wrapper for TArray<T> (array with Add/Delete functionality). }
+  { Wrapper for TArray<T> (array with Add/Delete functionality). Example:
+       function GetFiltered(const Src: TArray<integer>; Filter: TFunc<integer, boolean>): TArray<integer>;
+       var
+         V: TVector<integer>;
+         I: integer;
+       begin
+         V.Clear;
+         for I := 0 to High(Src) do
+           if Filter(Src[I]) then
+             V.Add(Src[I]); // more efficient than resizing TArray<> every time
+         V.TrimExcess;
+         Result := V.Items; // no copying of data here, we copy pointer to array only
+       end; }
   TVector<T> = record
   public
     { we define it before other field to make access more efficient }
@@ -820,6 +832,7 @@ type
     function GetLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetFirst(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetLast(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
 
   public
     type
@@ -874,6 +887,7 @@ type
     property Length: integer read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
+    property Empty: boolean read GetEmpty;
   end;
 
   { Low level heap operations on array.}
@@ -4600,6 +4614,11 @@ procedure TVector<T>.SetCapacity(ACapacity: integer);
 begin
   Assert(ACapacity>=Count);
   SetLength(Items, ACapacity);
+end;
+
+function TVector<T>.GetEmpty: Boolean;
+begin
+  Result := FCount <= 0;
 end;
 
 function TVector<T>.GetEnumerator: TEnumerator;

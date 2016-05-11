@@ -78,8 +78,7 @@ type
     function Accepted(const AData: string): Boolean; overload;
     procedure LogResult; virtual; abstract;
 
-    class procedure EnumChilds(const Tree: TVector<TMatchingResult>; Root: integer; EnumProc: TFunc<integer, boolean>); static;
-    class function GetChilds(const Tree: TVector<TMatchingResult>; Root: integer): TArray<integer>; static;
+    class procedure EnumParseTree(const Tree: TVector<TMatchingResult>; Root: integer; EnumProc: TFunc<integer, boolean>); static;
     class function GetChildsById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): TArray<integer>; static;
     class function GetChildById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): integer; static;
 
@@ -339,59 +338,29 @@ begin
   Create(AMainRule.Data);
 end;
 
-class function TGrammarParser.GetChilds(const Tree: TVector<TMatchingResult>; Root: integer): TArray<integer>;
-var
-  Stack: TVector<integer>;
-  Res: TVector<integer>;
-  I,J: integer;
-begin
-  Stack.Clear;
-  Res.Clear;
-  if Root >= 0 then
-  begin
-    J := Tree.Items[Root].FirstChild;
-    if J >= 0 then
-      Stack.Add(J);
-  end;
-  while Stack.Count>0 do
-  begin
-    I := Stack.ExtractLast;
-    repeat
-      Res.Add(I);
-      J := Tree.Items[I].FirstChild;
-      if J >= 0 then
-        Stack.Add(J);
-      I := Tree.Items[I].NextSibling;
-    until I < 0;
-  end;
-  Res.TrimExcess;
-  result := Res.Items;
-end;
-
-class procedure TGrammarParser.EnumChilds(const Tree: TVector<TMatchingResult>; Root: integer;
+class procedure TGrammarParser.EnumParseTree(const Tree: TVector<TMatchingResult>; Root: integer;
   EnumProc: TFunc<integer, boolean>);
 var
   Stack: TVector<integer>;
   I,J: integer;
 begin
-  if Root<0 then
+  if Root < 0 then
     Exit;
   Stack.Clear;
-  J := Tree.Items[Root].FirstChild;
-  if J >= 0 then
-    Stack.Add(J);
-  while Stack.Count>0 do
-  begin
+  Stack.Add(Root);
+  repeat
     I := Stack.ExtractLast;
-    repeat
-      if not EnumProc(I) then
-        Exit;
-      J := Tree.Items[I].FirstChild;
-      if J >= 0 then
-        Stack.Add(J);
+    if not EnumProc(I) then
+      Break;
+    J := Stack.Count;
+    I := Tree.Items[I].FirstChild;
+    while I >= 0 do
+    begin
+      Stack.Add(I);
       I := Tree.Items[I].NextSibling;
-    until I < 0;
-  end;
+    end;
+    TArrayUtils.Inverse<integer>(Stack.Items, J, Stack.Count-J);
+  until Stack.Empty;
 end;
 
 class function TGrammarParser.GetChildsById(const Tree: TVector<TMatchingResult>; Root: integer; const Id: int64): TArray<integer>;
@@ -401,7 +370,7 @@ var
 begin
   Src := Tree.Items;
   Res.Clear;
-  EnumChilds(Tree, Root,
+  EnumParseTree(Tree, Root,
     function(Node: integer):boolean
     begin
       result := True;
@@ -419,7 +388,7 @@ var
 begin
   Src := Tree.Items;
   I := -1;
-  EnumChilds(Tree, Root,
+  EnumParseTree(Tree, Root,
     function(Node: integer):boolean
     begin
       result := Src[Node].Rule.Id <> Id;

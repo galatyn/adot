@@ -3268,6 +3268,7 @@ procedure TBuffer.Clear;
 begin
   Size := 0;
   Capacity := Size;
+  FPosition := 0;
 end;
 
 function TBuffer.GetCapacity: integer;
@@ -3340,7 +3341,7 @@ procedure TBuffer.SetSize(Value: integer);
 begin
   CheckCapacity(Value);
   FSize := Value;
-  FPosition := Min(FPosition, FSize);
+  FPosition := Max(Min(FPosition, FSize), 0);
 end;
 
 procedure TBuffer.TrimExcess;

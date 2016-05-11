@@ -15,7 +15,8 @@ uses
   adot.Strings,
   adot.Log,
   System.SysUtils,
-  System.Classes;
+  System.Classes,
+  System.Character;
 
 type
 
@@ -82,6 +83,22 @@ procedure TPegParser.LogTextInputParseTree(const ParseTree: TVector<TMatchingRes
     AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
   end;
 
+  function ShowWS(const S: string): String;
+  const
+    C1 = #$2591  { shade char to show trailing spaces };
+    C2 = #$2B10; { arrow char to show empty string position }
+  var
+    I: Integer;
+  begin
+    result := S;
+    for I := Low(Result) to High(Result) do
+      if Result[I].IsWhiteSpace then Result[I] := C1 else Break;
+    for I := High(Result) downto Low(Result) do
+      if Result[I].IsWhiteSpace then Result[I] := C1 else Break;
+    if Result='' then
+      Result := C2;
+  end;
+
 var
   R: TMatchingResult;
   S,T: string;
@@ -97,11 +114,10 @@ begin
     T := Data.Text;
     if T=S then
       L('       %s', [TStr.GetPrintable(S)], Margin)
-      //L('%s', [TStr.GetPrintable(S)], Margin+R.Position.Start div 2)
     else
     begin
-      L('       %s', [StringOfChar(' ', R.Position.Start div 2) + TStr.GetPrintable(S) ], Margin);
-      L('       %s', [TStr.GetPrintable(T)], Margin);
+      L('       %s', [StringOfChar(' ', R.Position.Start div 2) + ShowWS(TStr.GetPrintable(S)) ], Margin);
+      L('       %s', [ShowWS(TStr.GetPrintable(T))], Margin);
     end;
 
     LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);
