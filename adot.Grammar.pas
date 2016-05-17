@@ -1,6 +1,6 @@
 unit adot.Grammar;
 
-{ Uniform grammar presentation classes }
+{ Uniform grammar presentation classes/record types }
 
 interface
 
@@ -15,7 +15,8 @@ uses
   System.Generics.Defaults,
   System.SysUtils,
   System.Character,
-  System.StrUtils;
+  System.StrUtils,
+  System.Math;
 
 type
   { Record type for grammar definition. Construct grammar rules with help of Ex/Rep functions:
@@ -59,31 +60,42 @@ type
       Grm: IInterfacedObject<TGrammarClass>;
 
   private
-    function GetDef: TGrammarClass; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetId: int64; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetName: string; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetName(const Value: string); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetIncludeIntoParseTree: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetIncludeIntoParseTree(const Value: Boolean); {$IFNDEF DEBUG}inline;{$ENDIF}
 
   public
     class operator Implicit(A : TMedia) : TGrammar;
 
-    property Def: TGrammarClass read GetDef;
+    { It is important to call Release for main rule (at least), because
+      grammar classes usually have lot of cross references and can not be automatically
+      destroyed when TGrammar records go out of scope. }
+    procedure Release;
+
+    { expose some poperties from Grm.Data:TGrammarClass }
     property Id: int64 read GetId;
+    property Name: string read GetName write SetName;
+    property IncludeIntoParseTree: Boolean read GetIncludeIntoParseTree write SetIncludeIntoParseTree;
   end;
 
   { abstract class for expression with no operands (string, char, EOF etc) }
   TGrammarClassOp0 = class abstract(TGrammarClass)
+  protected
+    procedure DoRelease; override;
   public
-    procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
   end;
 
-  { abstract class for expression with one operand (link, repeater, not etc) }
+  { abstract class for expression with one operand (link, repeater, NOT etc) }
   TGrammarClassOp1 = class abstract(TGrammarClass)
   protected
     FOp: IInterfacedObject<TGrammarClass>;
 
     function GetInfo: string; override;
+    procedure DoRelease; override;
   public
-    procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
 
     property Op: IInterfacedObject<TGrammarClass> read FOp;
@@ -96,8 +108,8 @@ type
     FOp2: IInterfacedObject<TGrammarClass>;
 
     function GetInfo: string; override;
+    procedure DoRelease; override;
   public
-    procedure Release; override;
     procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
 
     property Op1: IInterfacedObject<TGrammarClass> read FOp1;
@@ -177,6 +189,19 @@ type
     constructor Create(const Chars: array of Char; CaseSensitive: boolean = False); overload;
     constructor Create(Chars: TEnumerable<Char>; CaseSensitive: boolean = False); overload;
     constructor Create(Chars: TSet<Char>; CaseSensitive: boolean = False); overload;
+
+    { input accepted: return length of accepted block
+      input rejected: -1}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
+  TGrammarBytesClass = class(TGrammarClassOp0)
+  protected
+    function GetInfo: string; override;
+  public
+    Bytes: TArray<Byte>;
+
+    constructor Create(const ABytes: TArray<Byte>);
 
     { input accepted: return length of accepted block
       input rejected: -1}
@@ -264,9 +289,9 @@ var
 begin
   Assert(Rule.Grm<>nil, 'rule is not initialized');
   Queue.Clear;
-  Queue.Add(Rule.Def);
+  Queue.Add(Rule.Grm.Data);
   QueuedIds.Clear;
-  QueuedIds.Add(Rule.Def.Id);
+  QueuedIds.Add(Rule.Id);
   repeat
 
     { process next rule }
@@ -348,7 +373,7 @@ var
 begin
   Assert(Length(Rules)=Length(Names));
   for I := Low(Rules) to High(Rules) do
-    Rules[I].Def.Name := Names[I];
+    Rules[I].Name := Names[I];
 end;
 
 function EOF: TGrammar.TMedia;
@@ -391,20 +416,41 @@ end;
 
 { TGrammar }
 
-function TGrammar.GetDef: TGrammarClass;
-begin
-  result := Grm.Data;
-end;
-
 function TGrammar.GetId: int64;
 begin
   result := Grm.Data.Id;
+end;
+
+function TGrammar.GetIncludeIntoParseTree: Boolean;
+begin
+  result := Grm.Data.IncludeIntoParseTree;
+end;
+
+procedure TGrammar.SetIncludeIntoParseTree(const Value: Boolean);
+begin
+  Grm.Data.IncludeIntoParseTree := Value;
+end;
+
+function TGrammar.GetName: string;
+begin
+  result := Grm.Data.Name;
+end;
+
+procedure TGrammar.SetName(const Value: string);
+begin
+  Grm.Data.Name := Value;
 end;
 
 class operator TGrammar.Implicit(A: TMedia): TGrammar;
 begin
   Result.Grm := A.MediaGrm;
   A.MediaGrm.Data.IncludeIntoParseTree := True;
+end;
+
+procedure TGrammar.Release;
+begin
+  if Grm<>nil then
+    Grm.Data.Release;
 end;
 
 { TMedia }
@@ -438,7 +484,7 @@ begin
   { nothing to do here }
 end;
 
-procedure TGrammarClassOp0.Release;
+procedure TGrammarClassOp0.DoRelease;
 begin
   { nothing to do here }
 end;
@@ -456,7 +502,7 @@ begin
     Dst.Add(FOp);
 end;
 
-procedure TGrammarClassOp1.Release;
+procedure TGrammarClassOp1.DoRelease;
 begin
   FOp := nil;
 end;
@@ -476,7 +522,7 @@ begin
     Dst.Add(FOp2);
 end;
 
-procedure TGrammarClassOp2.Release;
+procedure TGrammarClassOp2.DoRelease;
 begin
   FOp1 := nil;
   FOp2 := nil;
@@ -499,7 +545,7 @@ procedure TGrammarLink.SetupRule;
 begin
   inherited;
   Assert(FLink.Grm<>nil, 'link is not initialized');
-  if Op=nil then
+  if FOp=nil then
     FOp := FLink.Grm;
 end;
 
@@ -695,6 +741,32 @@ begin
       result := result + ',' + C;
   if result='' then result := '[]' else result := result + ']';
   result := inherited + Format(' CharSet: %s', [TStr.GetPrintable(result)]);
+end;
+
+{ TGrammarBytesClass }
+
+constructor TGrammarBytesClass.Create(const ABytes: TArray<Byte>);
+begin
+  inherited Create(gtBytes);
+  Bytes := ABytes;
+end;
+
+function TGrammarBytesClass.GetAcceptedBlock(var Buffer: TBuffer): integer;
+begin
+  Result := Length(Bytes);
+  if (Buffer.Left < Result) or not CompareMem(Buffer.CurrentData, @Bytes[0], Result) then
+    Result := -1;
+end;
+
+function TGrammarBytesClass.GetInfo: string;
+var
+  N,L: integer;
+begin
+  L := Length(Bytes);
+  N := Min(32, L);
+  if N=0 then result := '[]' else
+    result := '[' + THex.Encode(Bytes[0], N) + IfThen(N<L,'...','') + ']';
+  result := inherited + ' Bytes: ' + Result;
 end;
 
 { TGrammarSequence }

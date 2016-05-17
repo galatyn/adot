@@ -200,6 +200,12 @@ type
   public
     Start, Len: Integer;
 
+    constructor Create(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { [StartBytes; LenBytes] -> [StartChars; LenChars] }
+    function BytesToChars: TTokenPos;
+
     class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
     class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
     class operator In(const A: integer; const B: TTokenPos): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
@@ -1489,6 +1495,24 @@ class operator TTokenPos.Add(const A, B: TTokenPos): TTokenPos;
 begin
   result.Start := Min(A.Start, B.Start);
   result.Len   := Max(A.Start+A.Len, B.Start+B.Len) - result.Start;
+end;
+
+function TTokenPos.BytesToChars: TTokenPos;
+begin
+  Assert((Start mod SizeOf(Char)=0) and (Len mod SizeOf(Char)=0));
+  result.SetPos(Start div SizeOf(Char), Len div SizeOf(Char));
+end;
+
+constructor TTokenPos.Create(AStart, ALen: integer);
+begin
+  Start := AStart;
+  Len := ALen;
+end;
+
+procedure TTokenPos.SetPos(AStart, ALen: integer);
+begin
+  Start := AStart;
+  Len := ALen;
 end;
 
 class operator TTokenPos.In(const A: integer; const B: TTokenPos): Boolean;
