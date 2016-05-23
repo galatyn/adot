@@ -410,6 +410,7 @@ type
   public
     class function IsValid(const S: string): Boolean; static;
     class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
+    class procedure New(var Dst: TGUID); static;
   end;
 
   { Block reader and other utils }
@@ -1741,6 +1742,11 @@ begin
     THex.IsValid(S, 15, 4) and
     THex.IsValid(S, 20, 4) and
     THex.IsValid(S, 25,12);
+end;
+
+class procedure TGUIDUtils.New(var Dst: TGUID);
+begin
+  CreateGUID(Dst);
 end;
 
 class function TGUIDUtils.TryStringToGUID(const S: string; out Dst: TGUID): boolean;

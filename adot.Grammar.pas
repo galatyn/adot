@@ -201,7 +201,9 @@ type
   public
     Bytes: TArray<Byte>;
 
-    constructor Create(const ABytes: TArray<Byte>);
+    constructor Create(const ABytes: TArray<Byte>); overload;
+    constructor Create(const ABytes: array of Byte); overload;
+    constructor Create(ABytes: TEnumerable<Byte>); overload;
 
     { input accepted: return length of accepted block
       input rejected: -1}
@@ -246,23 +248,23 @@ type
 
 { all possible expressions for TGrammar (used in right side of rule definition) }
 function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload;
+
 function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload;
 function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-{function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
+
+function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
 function Ex(Value: array of Byte): TGrammar.TMedia; overload;
 function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
-function Ex(const ByteSet: TByteSet): TGrammar.TMedia; overload;
+{function Ex(const ByteSet: TByteSet): TGrammar.TMedia; overload;
 function Ex(CharSet: TSet<Char>): TGrammar.TMedia; overload;
 function ExAnsi(const Value: AnsiString; ; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function ExAnsi(CharRangeFrom,CharRangeTo: AnsiChar; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
 function ExAnsi(CharSet: TSet<AnsiChar>): TGrammar.TMedia; overload;
 }
-
-procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
 
 function EOF: TGrammar.TMedia; overload;
 
@@ -272,6 +274,9 @@ function Rep(AExactCount: integer): TGrammar.TRange; overload;
 function Rep: TGrammar.TRange; overload;
 function Rep1: TGrammar.TRange; overload;
 function Opt: TGrammar.TRange; overload;
+
+{ optional - set readable names for grammar rules }
+procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
 
 { Should be called after initialization of all rules, but before main rule will be used.
   Fixes internal links etc. }
@@ -353,13 +358,24 @@ begin
   result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
 end;
 
-{function Ex(Value: TArray<Byte>): TGrammar.TMedia;
+function Ex(Value: TArray<Byte>): TGrammar.TMedia;
 begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
 end;
 
-function Ex(const ByteSet: TByteSet): TGrammar.TMedia;
+function Ex(Value: array of Byte): TGrammar.TMedia;
 begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
+end;
 
+function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
+end;
+
+{function Ex(const ByteSet: TByteSet): TGrammar.TMedia;
+begin
+aa
 end;
 
 function Ex(CharSet: TSet<Char>): TGrammar.TMedia;
@@ -749,6 +765,28 @@ constructor TGrammarBytesClass.Create(const ABytes: TArray<Byte>);
 begin
   inherited Create(gtBytes);
   Bytes := ABytes;
+end;
+
+constructor TGrammarBytesClass.Create(const ABytes: array of Byte);
+var
+  L: Integer;
+begin
+  inherited Create(gtBytes);
+  L := Length(ABytes);
+  SetLength(Bytes, L);
+  System.Move(ABytes[Low(ABytes)], Bytes[0], L);
+end;
+
+constructor TGrammarBytesClass.Create(ABytes: TEnumerable<Byte>);
+var
+  B: TBuffer;
+  I: Byte;
+begin
+  B.Clear;
+  for I in ABytes do
+    B.Write(I, SizeOf(I));
+  B.TrimExcess;
+  Bytes := B.Data;
 end;
 
 function TGrammarBytesClass.GetAcceptedBlock(var Buffer: TBuffer): integer;
