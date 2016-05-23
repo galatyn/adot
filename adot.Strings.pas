@@ -193,6 +193,26 @@ type
         Escape( 'key=value', '=' ) = 'key\3D00value' }
     class function Escape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
     class function Unescape(const Value: string; const EscapeChar: Char = '\'): string; static;
+
+    { Returns max possible encoded substring for specified bufer. }
+    class function GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes; static;
+    { Write/read max possible part of the string to the buffer (default encoding is UTF8). Example:
+      TRec = record
+        LenBytes : integer;
+        TextUtf8 : array[0..9] of byte;
+      end;
+
+      function TRec.GetText(var R: TRec): string;
+      begin
+        result := TStr.BufToString(R.TextUtf8, R.LenBytes);
+      end;
+
+      procedure TRec.SetText(const Value: string; var R: TRec);
+      begin
+        R.LenBytes := TStr.StringToBuf(Value, R.TextUtf8, SizeOf(R.TextUtf8));
+      end; }
+    class function StringToBuf(const S: string; var Buf; BufSizeBytes: integer; Encoding: TEncoding = nil): integer; static;
+    class function BufToString(const Buf; CountBytes: integer; Encoding: TEncoding = nil): string; static;
   end;
 
   { Position of token in the text. Starts from zero. }
@@ -1016,6 +1036,57 @@ begin
       inc(j);
       result[j] := s[i];
     end;
+end;
+
+class function TStr.GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes;
+var
+  M,N,I,J: Integer;
+begin
+  { usually string should fit the buffer, in such case we process it in most efficient way }
+  if Length(S) <= BufSize then
+  begin
+    result := Encoding.GetBytes(S);
+    if Length(result) <= BufSize then
+      Exit;
+  end;
+
+  { find N=number of chars to be encoded and M=required buffer size (<=BufSize) }
+  M := 0;
+  N := 0;
+  for I := Low(S) to High(S) do
+  begin
+    J := Encoding.GetByteCount(S[I]);
+    if M+J > BufSize then
+      Break;
+    inc(M, J);
+    inc(N);
+  end;
+  Result := Encoding.GetBytes(S.Substring(0, N));
+  Assert(Length(Result) = M);
+end;
+
+class function TStr.StringToBuf(const S: string; var Buf; BufSizeBytes: integer; Encoding: TEncoding): integer;
+var
+  B: TBytes;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  B := GetMaxEncodedBytes(S, BufSizeBytes, Encoding);
+  result := Length(B);
+  if result > 0 then
+    Move(B[0], Buf, result);
+end;
+
+class function TStr.BufToString(const Buf; CountBytes: integer; Encoding: TEncoding): string;
+var
+  B: TBytes;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  SetLength(B, CountBytes);
+  if CountBytes > 0 then
+    Move(Buf, B[0], CountBytes);
+  result := Encoding.GetString(B);
 end;
 
 class function TStr.SubstringDistance(const a,b: String; var Dist: integer):Boolean;
