@@ -487,6 +487,9 @@ type
     class procedure Load<T: record>(const FileName: string; var Dst: TArray<T>); overload;
     class function Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer; var ErrMsg: string): boolean; overload;
     class procedure Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer); overload;
+
+    { Encode disabled chars (hex), check disabled names ("COM1", "PRN", "NUL" etc). }
+    class function StringToFilename(const AStr: string): string; static;
   end;
 
   { Generic implementation of IfThen (to accept virtually any type). Example:
@@ -2074,6 +2077,36 @@ begin
   finally
     s.Free;
   end;
+end;
+
+class function TFileUtils.StringToFilename(const AStr: string): string;
+const
+  DisabledNames: array[0..21] of string = (
+    'CON', 'PRN', 'AUX', 'NUL',
+    'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
+    'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9'
+  );
+  DisabledChars = [#0..#31, '<', '>', ':', '"', '/', '\', '|', '?', '*'];
+var
+  i: Integer;
+  c: Char;
+begin
+  { http://stackoverflow.com/questions/960772/how-can-i-sanitize-a-string-for-use-as-a-filename }
+  result := '';
+  for i := Low(AStr) to High(AStr) do
+  begin
+    c := AStr[i];
+    if (c<#127) and (AnsiChar(c) in DisabledChars) then
+      result := result + '%' + THex.Encode(c, SizeOf(c))
+    else
+      result := result + c;
+  end;
+  for i := Low(DisabledNames) to High(DisabledNames) do
+    if AnsiSameText(result, DisabledNames[i]) then
+    begin
+      result := result + '_';
+      Break;
+    end;
 end;
 
 procedure FindOpenFiles(

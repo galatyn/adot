@@ -439,6 +439,8 @@ type
     function GetAsArray: TArray<T>;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
+    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     property ReadOnly: TSetClass<T> read GetReadonly;
     property ReadWrite: TSetClass<T> read GetReadWrite;
@@ -476,7 +478,6 @@ type
 
     function Copy: TSet<T>;
 
-    function Count: integer;
     procedure Clear;
 
     class operator In(const a: T; b: TSet<T>) : Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
@@ -537,6 +538,8 @@ type
     property AsString: string read GetAsString;
     property AsArray: TArray<T> read GetAsArray;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property Empty: Boolean read GetEmpty;
+    property Count: integer read GetCount;
   end;
 
   { Class for map. Based on TDictionary and extends it with some features. }
@@ -603,9 +606,10 @@ type
 
     function GetKeys: TKeyCollection;
     function GetValues: TValueCollection;
-    function GetItem(const Key: TKey): TValue;
-    procedure SetItem(const Key: TKey; const Value: TValue);
-    function GetCount: integer;
+    function GetItem(const Key: TKey): TValue; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetItem(const Key: TKey; const Value: TValue); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetAsString: string;
 
   public
@@ -646,6 +650,7 @@ type
 
     property Items[const Key: TKey]: TValue read GetItem write SetItem; default;
     property Count: Integer read GetCount;
+    property Empty: Boolean read GetEmpty;
     property Keys: TKeyCollection read GetKeys;
     property Values: TValueCollection read GetValues;
     property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
@@ -2533,6 +2538,11 @@ begin
       D.Include(Value);
 end;
 
+function TSet<T>.GetEmpty: Boolean;
+begin
+  result := Count = 0;
+end;
+
 function TSet<T>.GetEnumerator: TEnumerator;
 begin
   result := Readonly.GetEnumerator;
@@ -2756,7 +2766,7 @@ begin
   ReadWrite.Clear;
 end;
 
-function TSet<T>.Count: integer;
+function TSet<T>.GetCount: integer;
 begin
   result := ReadOnly.Count;
 end;
@@ -3083,6 +3093,11 @@ begin
       FMapInt.Data.OwnsValues := FMapInt.Data.OwnsValues;
     end;
   result := FMapInt.Data;
+end;
+
+function TMap<TKey, TValue>.GetEmpty: Boolean;
+begin
+  Result := Count = 0;
 end;
 
 function TMap<TKey, TValue>.GetEnumerator: TPairEnumerator;
