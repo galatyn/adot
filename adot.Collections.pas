@@ -368,6 +368,8 @@ type
     function GetComparer: IEqualityComparer<TValue>;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetOwnsValues: boolean;
+    function GetAsArray: TArray<TValue>;
+    function GetAsString: string;
 
   public
     constructor Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil); overload;
@@ -397,6 +399,8 @@ type
     property Count: integer read GetCount;
     property Comparer: IEqualityComparer<TValue> read GetComparer;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property AsString: string read GetAsString;
+    property AsArray: TArray<TValue> read GetAsArray;
   end;
 
   {  Example:
@@ -647,6 +651,9 @@ type
     procedure TrimExcess;
     function ContainsKey(const Key: TKey): Boolean;
     function ToArray: TArray<TPair<TKey,TValue>>;
+
+    class operator Equal(A,B: TMap<TKey,TValue>): Boolean;
+    class operator NotEqual(A,B: TMap<TKey,TValue>): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     property Items[const Key: TKey]: TValue read GetItem write SetItem; default;
     property Count: Integer read GetCount;
@@ -1756,6 +1763,34 @@ begin
   result := FSet.Count=0;
 end;
 
+function TSetClass<TValue>.GetAsArray: TArray<TValue>;
+var
+  i: Integer;
+  Value: TValue;
+begin
+  SetLength(Result, Count);
+  i := 0;
+  for Value in Self do
+  begin
+    Result[i] := Value;
+    inc(i);
+  end;
+end;
+
+function TSetClass<TValue>.GetAsString: string;
+var
+  Arr: TArray<TValue>;
+  Value: TValue;
+  Buf: TBuffer;
+begin
+  Arr := AsArray;
+  TArray.Sort<TValue>(Arr);
+  Buf.Clear;
+  for Value in Arr do
+    Buf.Write(IfThen(Buf.Empty,'',' ') + TRttiUtils.ValueAsString<TValue>(Value));
+  Result := Buf.Text;
+end;
+
 function TSetClass<TValue>.GetComparer: IEqualityComparer<TValue>;
 begin
   result := FComparerCopy;
@@ -1962,8 +1997,8 @@ var
   ValueComparer: IComparer<TValue>;
   Pair: TPair<TKey, TValue>;
   i: Integer;
+  Buf: TBuffer;
 begin
-  Result := '';
   Arr := ToArray;
   KeyComparer := TComparer<TKey>.Default;
   ValueComparer := TComparer<TValue>.Default;
@@ -1974,14 +2009,17 @@ begin
       if result=0 then
         result := ValueComparer.Compare(L.Value, R.Value);
     end));
+  Buf.Clear;
   for Pair in Arr do
-    Result := Result +
-      IfThen(Result='','',' ') +
+    Buf.Write(
+      IfThen(Buf.Empty,'',' ') +
       '(' +
       EscapeStrVal(TRttiUtils.ValueAsString<TKey>(Pair.Key)) +
       ', ' +
       EscapeStrVal(TRttiUtils.ValueAsString<TValue>(Pair.Value)) +
-      ')';
+      ')'
+    );
+  Result := Buf.Text;
 end;
 
 function TMapClass<TKey, TValue>.GetOwnsKeys: boolean;
@@ -2585,19 +2623,8 @@ begin
 end;
 
 function TSet<T>.GetAsArray: TArray<T>;
-var
-  S: TSetClass<T>;
-  i: Integer;
-  Value: T;
 begin
-  S := ReadOnly;
-  SetLength(Result, S.Count);
-  i := 0;
-  for Value in S do
-  begin
-    Result[i] := Value;
-    inc(i);
-  end;
+  Result := Readonly.AsArray;
 end;
 
 function TSet<T>.GetOwnsValues: boolean;
@@ -2612,15 +2639,8 @@ begin
 end;
 
 function TSet<T>.GetAsString: string;
-var
-  Arr: TArray<T>;
-  Value: T;
 begin
-  Result := '';
-  Arr := AsArray;
-  TArray.Sort<T>(Arr);
-  for Value in Arr do
-    Result := Result + IfThen(Result='','',' ') + TRttiUtils.ValueAsString<T>(Value);
+  Result := Readonly.AsString;
 end;
 
 function TSet<T>.Contains(const a: T) : Boolean;
@@ -3188,6 +3208,26 @@ end;
 function TMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
 begin
   result := ReadOnly.TryGetValue(Key, Value);
+end;
+
+class operator TMap<TKey, TValue>.Equal(A, B: TMap<TKey, TValue>): Boolean;
+var
+  Pair: TPair<TKey, TValue>;
+  Value: TValue;
+  ValueComparer: IComparer<TValue>;
+begin
+  if A.Count<>B.Count then
+    Exit(False);
+  ValueComparer := TComparerUtils.DefaultComparer<TValue>;
+  for Pair in A do
+    if not B.TryGetValue(Pair.Key, Value) or (ValueComparer.Compare(Pair.Value, Value) <> 0) then
+      Exit(False);
+  Result := True;
+end;
+
+class operator TMap<TKey, TValue>.NotEqual(A, B: TMap<TKey, TValue>): Boolean;
+begin
+  result := not (A=B);
 end;
 
 function TMap<TKey, TValue>.ExtractPair(const Key: TKey): TPair<TKey, TValue>;

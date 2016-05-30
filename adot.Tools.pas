@@ -781,6 +781,7 @@ type
     function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetText: string;
     procedure SetText(const Value: string);
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
   public
 
     procedure Write(const Src; ByteCount: integer); overload;
@@ -807,6 +808,7 @@ type
     property CurrentData: pointer read GetCurrentData;
     property EOF: boolean read GetEOF;
     property Text: string read GetText write SetText;
+    property Empty: boolean read GetEmpty;
   end;
 
   { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
@@ -3318,6 +3320,11 @@ end;
 function TBuffer.GetCurrentData: pointer;
 begin
   result := @Data[Position];
+end;
+
+function TBuffer.GetEmpty: Boolean;
+begin
+  result := Size=0;
 end;
 
 function TBuffer.GetEOF: boolean;
