@@ -93,6 +93,8 @@ const
 
 type
 
+  EForbiddenOperation = class(Exception);
+
   {  All objects placed in TAutoFreeCollection will be destroyed automatically
      when collection goes out of the scope. Items will be removed in reverse order.
      Example:
@@ -895,6 +897,12 @@ type
     procedure Copy(var Destination: array of T; Count: NativeInt); overload;
     procedure Copy(var Destination: array of T; SourceIndex, DestIndex, Count: NativeInt); overload;
 
+    class operator Equal(ALeft, ARight: TVector<T>): Boolean; overload;
+    class operator Equal(ALeft: TVector<T>; ARight: TEnumerable<T>): Boolean; overload;
+    class operator Equal(ALeft: TEnumerable<T>; ARight:TVector<T>): Boolean; overload;
+    class operator Equal(ALeft: TVector<T>; const ARight: TArray<T>): Boolean; overload;
+    class operator Equal(const ALeft: TArray<T>; ARight: TVector<T>): Boolean; overload;
+
     property Count: integer read FCount write SetCount;
     property Length: integer read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
@@ -1298,7 +1306,7 @@ type
   { Binary search tree. }
   TBinarySearchTree<TKey,TValue> = Class(TAATree<TKey,TValue>);
 
-  { We do not expose handle-related function here. That is why TAATree is slightly
+  { We do not expose handle-related functions here. That is why TAATree is slightly
     faster, but TOrderedMapClass has interface similar to TDictionary.
     Usually TMap is preferred over direct access to TAATree. }
   { Ordered map. }
@@ -1441,6 +1449,98 @@ type
     property Last: PDoublyLinkedListItem read FLast;
     property Count: integer read FCount;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
+  end;
+
+  { Simple record type to build/keep tree as array of nodes with FirstChild/NextSibling properties.
+    The tree is kept as array of nodes and thus there is no Delete/Remove functionality.
+    The only way to delete a node (with subnodes) is call Rollback.
+    As soon as Node is commited (Append + Commit or Add) the only way to delete it is Clear for whole tree. }
+  TTreeArray<T> = record
+  public
+    type
+      TNode = record
+        Data: T;
+        FirstChild: integer;
+        NextSibling: integer;
+      end;
+      PNode = ^TNode;
+
+      TEnumerator = record
+      private
+        FItems: TArray<TNode>;
+        FCount: integer;
+        FIndex: integer;
+
+        function GetCurrent: T;
+      public
+        constructor Create(const Tree: TTreeArray<T>);
+        function MoveNext: Boolean;
+        property Current: T read GetCurrent;
+      end;
+
+    var
+      Nodes: TVector<TNode>;   { Tree of the nodes stored as array. It is recommended to create single root node. }
+      Stack: TVector<integer>; { Stack for tracking of CurParent }
+      CurParent: integer;      { Current destination (parent node) for Append/Add. }
+
+  private
+    function GetEmpty: boolean;
+    function GetCount: integer;
+    function GetNode(n: integer): TNode;
+    function GetValue(n: integer): T;
+    procedure SetNode(n: integer; const Value: TNode);
+    procedure SetValue(n: integer; const Value: T);
+    function GetValuesAsArray: TArray<T>;
+
+  public
+    { Empty Nodes and other structures. }
+    procedure Clear;
+
+    { Sequentional adding. Append/Commit(or Rollback) must be balanced. Example:
+        Tree.Append('root item');
+          Tree.Add('child 1');
+          Tree.Append('child 2');
+            Tree.Add('child 2.1');
+            Tree.Add('child 2.2');
+            Tree.Add('child 2.3');
+          Tree.Commit;
+          Tree.Add('child 3');
+        Tree.Commit; }
+
+    { add new node (as child to CurParent) and make it CurParent }
+    function Append(const Value: T): integer;
+    { Add = Append + Commit (add single child without own sibling/child nodes) }
+    function Add(const Value: T): integer;
+    { all subchilds are added, assign parent node as CurParent }
+    procedure Commit; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Commit(ReverseOrderOfChildNodes: Boolean); overload;
+    { remove CurParent with all childs and assign parent node as CurParent }
+    procedure Rollback;
+
+    { Random add functions. Example:
+        Tree.Clear;
+        I := Tree.AddChild('root item', -1);
+          J := Tree.AddChild('child 1', I);
+          J := Tree.AddSibling('child 2', J);
+            K := Tree.AddChild('child 2.1', J);
+            K := Tree.AddSibling('child 2.2', K);
+            K := Tree.AddSibling('child 2.3', K);
+          J := Tree.AddSibling('child 3', J); }
+
+    { Add child node (AParent=-1 for root node). Only one root node is allowed. }
+    function AddChild(const Value: T; AParent: integer): integer;
+    { Add sibling node. APrevSibling must be provided. }
+    function AddSibling(const Value: T; APrevSibling: integer): integer;
+
+    { Example: for S in Tree do (*...*) ; }
+    { Enumerator of values (top-down,left-right). }
+    function GetEnumerator: TEnumerator;
+
+    property Empty: boolean read GetEmpty;
+    property Count: integer read GetCount;
+    property Items[n: integer]: TNode read GetNode write SetNode;
+    property Values[n: integer]: T read GetValue write SetValue; default;
+    property AsArray: TArray<T> read GetValuesAsArray;
   end;
 
 implementation
@@ -3369,8 +3469,7 @@ end;
 
 class function TAutoFree<T>.Create: TAutoFree<T>;
 begin
-  result.FValue := nil;
-  result.FGuard := nil;
+  result.Clear;
 end;
 
 procedure TAutoFree<T>.Clear;
@@ -3381,6 +3480,7 @@ end;
 
 class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
 begin
+  result.Clear;
   result.Value := AValue;
 end;
 
@@ -3448,12 +3548,12 @@ end;
 
 class function TAuto<T>.Create: TAutoFree<T>;
 begin
-  result.FValue := nil;
-  result.FGuard := nil;
+  result.Clear;
 end;
 
 class function TAuto<T>.Create(const AValue: T): TAutoFree<T>;
 begin
+  result.Clear;
   result.Value := AValue;
 end;
 
@@ -4551,12 +4651,15 @@ end;
 
 constructor TVector<T>.Create(ACapacity: integer);
 begin
+  Clear;
   Capacity := ACapacity;
 end;
 
 constructor TVector<T>.Create(ADst: TArray<T>);
 begin
+  Clear;
   Items := ADst;
+  Count := High(Items)-Low(Items)+1;
 end;
 
 function TVector<T>.Add: integer;
@@ -4618,6 +4721,62 @@ var
   for I := C to Count-1 do
     Items[I] := Default(T);
   FCount := C;
+end;
+
+class operator TVector<T>.Equal(ALeft, ARight: TVector<T>): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+  I: Integer;
+begin
+  if ALeft.Count<>ARight.Count then
+    Exit(False);
+  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+  for I := 0 to ALeft.Count-1 do
+    if not Comparer.Equals(ALeft[I], ARight[I]) then
+      Exit(False);
+  result := True;
+end;
+
+class operator TVector<T>.Equal(ALeft: TVector<T>; ARight: TEnumerable<T>): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+  Value: T;
+  I,Count: Integer;
+begin
+  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+  Count := ALeft.Count;
+  I := 0;
+  for Value in ARight do
+    if (I >= Count) or not Comparer.Equals(Value, ALeft[I]) then
+      Exit(False)
+    else
+      inc(I);
+end;
+
+class operator TVector<T>.Equal(ALeft: TEnumerable<T>; ARight: TVector<T>): Boolean;
+begin
+  { we have implementation for Left:Vector + Right:TEnumerable already }
+  result := ARight=ALeft;
+end;
+
+class operator TVector<T>.Equal(ALeft: TVector<T>; const ARight: TArray<T>): Boolean;
+var
+  Comparer: IEqualityComparer<T>;
+  I: Integer;
+begin
+  if ALeft.Count<>High(ARight)-Low(ARight)+1 then
+    Exit(False);
+  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+  for I := 0 to ALeft.Count-1 do
+    if not Comparer.Equals(ALeft[I], ARight[I+Low(ARight)]) then
+      Exit(False);
+  Result := True;
+end;
+
+class operator TVector<T>.Equal(const ALeft: TArray<T>; ARight: TVector<T>): Boolean;
+begin
+  { we have implementation for Left:Vector + Right:TArray already }
+  result := ARight=ALeft;
 end;
 
 function TVector<T>.Extract(ItemIndex: integer): T;
@@ -5853,6 +6012,220 @@ begin
   FirstItem.prev := LastItem;
   if NLast<>nil then
     NLast.Prev := NPrev;
+end;
+
+{ TTreeArray<T>.TEnumerator }
+
+constructor TTreeArray<T>.TEnumerator.Create(const Tree: TTreeArray<T>);
+begin
+  FItems := Tree.Nodes.Items;
+  FCount := Tree.Nodes.Count;
+  FIndex := 0;
+end;
+
+function TTreeArray<T>.TEnumerator.GetCurrent: T;
+begin
+  result := FItems[FIndex-1].Data;
+end;
+
+function TTreeArray<T>.TEnumerator.MoveNext: Boolean;
+begin
+  result := FIndex < FCount;
+  if result then
+    inc(FIndex);
+end;
+
+{ TTreeArray<T> }
+
+function TTreeArray<T>.GetCount: integer;
+begin
+  result := Nodes.Count;
+end;
+
+function TTreeArray<T>.GetEmpty: boolean;
+begin
+  result := Nodes.Empty;
+end;
+
+function TTreeArray<T>.GetEnumerator: TEnumerator;
+begin
+  result := TEnumerator.Create(Self);
+end;
+
+function TTreeArray<T>.GetNode(n: integer): TNode;
+begin
+  result := Nodes[n];
+end;
+
+function TTreeArray<T>.GetValue(n: integer): T;
+begin
+  result := Nodes.Items[n].Data;
+end;
+
+procedure TTreeArray<T>.SetNode(n: integer; const Value: TNode);
+begin
+  Nodes[n] := Value;
+end;
+
+procedure TTreeArray<T>.SetValue(n: integer; const Value: T);
+begin
+  Nodes.Items[n].Data := Value;
+end;
+
+function TTreeArray<T>.GetValuesAsArray: TArray<T>;
+var
+  I: Integer;
+begin
+  setlength(result, Nodes.Count);
+  for I := 0 to Nodes.Count-1 do
+    result[I] := Nodes.Items[I].Data;
+end;
+
+procedure TTreeArray<T>.Clear;
+begin
+  Nodes.Clear;
+  Stack.Clear;
+  CurParent := -1;
+end;
+
+function TTreeArray<T>.Append(const Value: T): integer;
+var
+  Node: PNode;
+begin
+  Result := Nodes.Add;
+  Node := @Nodes.Items[result];
+  Node.Data := Value;
+  Node.FirstChild := -1;
+  if CurParent < 0 then
+    if Nodes.Count > 1 then
+    begin
+      Nodes.DeleteLast;
+      raise EForbiddenOperation.Create('Only one root node is allowed');
+    end
+    else
+      Node.NextSibling := -1
+  else
+    with Nodes.Items[CurParent] do
+    begin
+      Node.NextSibling := FirstChild;
+      FirstChild := result;
+    end;
+  Stack.Add(result); { to be able rollback, we save CurParent Nodes.Count }
+  Stack.Add(CurParent);
+  CurParent := result;
+end;
+
+function TTreeArray<T>.Add(const Value: T): integer;
+var
+  Node: PNode;
+begin
+
+  { We can use pair Append+Commit here, but we can make it more
+    efficient if we avoid manipulations with Stack/CurParent. }
+//  result := Append(Value);
+//  Commit;
+
+  Result := Nodes.Add;
+  Node := @Nodes.Items[result];
+  Node.Data := Value;
+  Node.FirstChild := -1;
+  if CurParent < 0 then
+    if Nodes.Count > 1 then
+    begin
+      Nodes.DeleteLast;
+      raise EForbiddenOperation.Create('Only one root node is allowed');
+    end
+    else
+      Node.NextSibling := -1
+  else
+    with Nodes.Items[CurParent] do
+    begin
+      Node.NextSibling := FirstChild;
+      FirstChild := result;
+    end;
+end;
+
+procedure TTreeArray<T>.Commit(ReverseOrderOfChildNodes: Boolean);
+var
+  FirstChild, C,I,J: Integer;
+begin
+  C := CurParent;
+  CurParent := Stack.ExtractLast; { stored CurParrent }
+  Stack.DeleteLast; { stored Count (used by rollback) }
+  { we added items in reverse order, we restore normal order here }
+  if ReverseOrderOfChildNodes then
+    Exit;
+
+  { if there is no child nodes, we can exit }
+  FirstChild := Nodes.Items[C].FirstChild;
+  if FirstChild < 0 then
+    Exit;
+
+  { if there is one only child node, we can exit }
+  I := Nodes.Items[FirstChild].NextSibling;
+  if I < 0 then
+    Exit;
+
+  { We just taken NextSibling from FirstChild and will insert all childs before that node.
+    It means FirstChild became last node in new chain and we should assign NextSibling = -1. }
+  Nodes.Items[FirstChild].NextSibling := -1;
+  repeat
+    J := Nodes.Items[I].NextSibling;
+    Nodes.Items[I].NextSibling := FirstChild;
+    FirstChild := I;
+    I := J;
+  until I < 0;
+  Nodes.Items[C].FirstChild := FirstChild;
+end;
+
+procedure TTreeArray<T>.Commit;
+begin
+  Commit(False);
+end;
+
+procedure TTreeArray<T>.Rollback;
+begin
+  CurParent := Stack.ExtractLast;
+
+  { Append method always adds item as first child to its parent.
+    It means we don't need to scan chain to remove the node currectly. }
+  if CurParent >= 0 then
+    with Nodes.Items[CurParent] do
+      FirstChild := Nodes.Items[FirstChild].NextSibling;
+
+  { now we can delete the node with all subnodes }
+  Nodes.Count := Stack.ExtractLast;
+end;
+
+function TTreeArray<T>.AddChild(const Value: T; AParent: integer): integer;
+var
+  Node: PNode;
+begin
+  Result := Nodes.Add;
+  Node := @Nodes.Items[result];
+  Node.Data := Value;
+  Node.FirstChild := -1;
+  if AParent=-1 then
+    Node.NextSibling := -1
+  else
+  with Nodes.Items[AParent] do
+  begin
+    Node.NextSibling := FirstChild;
+    FirstChild := Result;
+  end;
+end;
+
+function TTreeArray<T>.AddSibling(const Value: T; APrevSibling: integer): integer;
+var
+  Node: PNode;
+begin
+  Assert(APrevSibling >= 0);
+  Result := Nodes.Add;
+  Nodes.Items[APrevSibling].NextSibling := Result;
+  Node := @Nodes.Items[result];
+  Node.Data := Value;
+  Node.FirstChild := -1;
+  Node.NextSibling := -1;
 end;
 
 end.
