@@ -100,6 +100,8 @@ type
   TSimilarityOptions = set of TSimilarityOption;
   TAnsiChars = set of AnsiChar;
 
+  TStrCharsPos = (scAll, scFirst, scLast);
+
   { string utils }
   TStr = class
   public
@@ -113,9 +115,10 @@ type
       );
 
   private
-    {$IFNDEF NoLoCaseMap}
+    {$IFNDEF NoCaseMap}
     class var
-      FLowerCaseMap: array[Char] of Char;
+      FLoCaseMap: array[Char] of Char;
+      FHiCaseMap: array[Char] of Char;
     {$ENDIF}
 
     class function LevensteinDistance(s, t: string): integer; static;
@@ -146,6 +149,9 @@ type
     class function CompareTrimText(const A,B: string): integer; overload;
 
     class function LowerCaseChar(C: Char): Char; static;
+    class function UpperCaseChar(C: Char): Char; static;
+    class function LowerCase(const S: string; Chars: TStrCharsPos = scAll): string; static;
+    class function UpperCase(const S: string; Chars: TStrCharsPos = scAll): string; static;
 
     { based on TTokLines }
     class procedure TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True); overload; static;
@@ -220,7 +226,7 @@ type
   public
     Start, Len: Integer;
 
-    constructor Create(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    constructor Create(AStart,ALen: integer);
     procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
 
     { [StartBytes; LenBytes] -> [StartChars; LenChars] }
@@ -783,6 +789,46 @@ begin
   B.ReadAllData(result);
 end;
 
+class function TStr.UpperCase(const S: string; Chars: TStrCharsPos): string;
+begin
+  case Chars of
+    scAll:
+      result := S.ToUpper;
+    scFirst:
+      begin
+        result := S;
+        if result<>'' then
+          result[Low(result)] := result[Low(result)].ToUpper;
+      end;
+    scLast:
+      begin
+        result := S;
+        if result<>'' then
+          result[High(result)] := result[High(result)].ToUpper;
+      end;
+  end;
+end;
+
+class function TStr.LowerCase(const S: string; Chars: TStrCharsPos): string;
+begin
+  case Chars of
+    scAll:
+      result := S.ToLower;
+    scFirst:
+      begin
+        result := S;
+        if result<>'' then
+          result[Low(result)] := LowerCaseChar(result[Low(result)]);
+      end;
+    scLast:
+      begin
+        result := S;
+        if result<>'' then
+          result[High(result)] := LowerCaseChar(result[High(result)]);
+      end;
+  end;
+end;
+
 class function TStr.Extract(InfoType: TExtractType; const s: string): String;
 begin
   case InfoType of
@@ -985,14 +1031,17 @@ begin
 end;
 
 class procedure TStr.InitializeVars;
-{$IFNDEF NoLoCaseMap}
+{$IFNDEF NoCaseMap}
 var
   C: Char;
 {$ENDIF}
 begin
-  {$IFNDEF NoLoCaseMap}
+  {$IFNDEF NoCaseMap}
   for C := Low(C) to High(C) do
-    FLowerCaseMap[C] := C.ToLower;
+  begin
+    FLoCaseMap[C] := C.ToLower;
+    FHiCaseMap[C] := C.ToUpper;
+  end;
   {$ENDIF}
 end;
 
@@ -1179,9 +1228,9 @@ class function TStr.SameText(A, B: PChar; Len: integer): Boolean;
 var
   I: integer;
 begin
-  {$IFNDEF NoLoCaseMap}
+  {$IFNDEF NoCaseMap}
   for I := 0 to Len-1 do
-    if FLowerCaseMap[A[I]] <> FLowerCaseMap[B[I]] then
+    if FLoCaseMap[A[I]] <> FLoCaseMap[B[I]] then
       Exit(False);
   {$ELSE}
   for I := 0 to Len-1 do
@@ -1193,10 +1242,19 @@ end;
 
 class function TStr.LowerCaseChar(C: Char): Char;
 begin
-  {$IFNDEF NoLoCaseMap}
-  result := FLowerCaseMap[C];
+  {$IFNDEF NoCaseMap}
+  result := FLoCaseMap[C];
   {$ELSE}
   result := C.ToLower;
+  {$ENDIF}
+end;
+
+class function TStr.UpperCaseChar(C: Char): Char;
+begin
+  {$IFNDEF NoCaseMap}
+  result := FHiCaseMap[C];
+  {$ELSE}
+  result := C.ToUpper;
   {$ENDIF}
 end;
 

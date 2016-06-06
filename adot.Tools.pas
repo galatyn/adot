@@ -408,9 +408,13 @@ type
   { IsValid and other utils }
   TGUIDUtils = class
   public
+    const
+      NullGuid: TGUID = '{00000000-0000-0000-0000-000000000000}';
+
     class function IsValid(const S: string): Boolean; static;
     class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
-    class procedure New(var Dst: TGUID); static;
+    class procedure New(var Dst: TGUID); static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function GetNew: TGUID; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   { Block reader and other utils }
@@ -497,6 +501,11 @@ type
   TIfThen = class
   public
     class function Get<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+  end;
+
+  TFun = class
+    class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
@@ -1752,6 +1761,11 @@ end;
 class procedure TGUIDUtils.New(var Dst: TGUID);
 begin
   CreateGUID(Dst);
+end;
+
+class function TGUIDUtils.GetNew: TGUID;
+begin
+  CreateGUID(Result);
 end;
 
 class function TGUIDUtils.TryStringToGUID(const S: string; out Dst: TGUID): boolean;
@@ -3527,6 +3541,21 @@ end;
 class function TEventUtils.IsSameHandler(const A, B: TActionEvent): Boolean;
 begin
   result := CompareMem(@A, @B, SizeOF(TActionEvent));
+end;
+
+{ TFun }
+
+class function TFun.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
+begin
+  if ACondition then result := AValueTrue else result := AValueFalse;
+end;
+
+class function TFun.InRange<T>(AValue, AValueMin, AValueMax: T): boolean;
+var
+  Comparer: IComparer<T>;
+begin
+  Comparer := TComparerUtils.DefaultComparer<T>;
+  Result := (Comparer.Compare(AValue, AValueMin) >= 0) and (Comparer.Compare(AValue, AValueMax) <= 0);
 end;
 
 end.
