@@ -708,8 +708,9 @@ type
     procedure Read(out Value: string); overload;
   end;
 
-  { Extends any type by IsNull property }
-  TNullable<T> = record
+  { Extends any type by IsNull property. Compare operator will use case insensitive comparer for strings
+    (unlike default comparer for strings in Delphi). }
+  TBox<T> = record
   private
     type
       PT = ^T;
@@ -717,29 +718,60 @@ type
       FValue: T;
       FHasValue: string;
 
+    { AH: all "inline" directives are commented, because Delphi failed to compile it in
+          release configuration (internal error). Reproduced in Delphi 10.1 }
     function GetValue: T;
     procedure SetValue(const AValue: T);
-    function GetIsNull: boolean;
-    procedure SetIsNull(const AIsNull: boolean);
-    function GetHasValue: boolean;
-    procedure SetHasValue(const AHasValue: boolean);
-    function GetPointer: pointer;
+    function GetEmpty: boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetPointer: PT; //{$IFNDEF DEBUG}inline;{$ENDIF}
   public
-    class function Create: TNullable<T>; overload; static;
-    class function Create(const AValue: T): TNullable<T>; overload; static;
-    class operator Equal(const ALeft, ARight: TNullable<T>): Boolean;
-    class operator Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
-    class operator NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
-    class operator NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
-    class operator Implicit(const AValue: TNullable<T>): T;
-    class operator Implicit(const AValue: T): TNullable<T>;
-    class operator Implicit(const AValue: PT): TNullable<T>;
-    class operator Implicit(const AValue: Variant): TNullable<T>;
+
+    { we use class functions because parameterless constructors are not allowed here }
+    class function Create: TBox<T>; overload; static; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class function Create(const AValue: T): TBox<T>; overload; static;
+
+    procedure Clear; //{$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { assign operators }
+    class operator Implicit(const AValue: TBox<T>): T;
+    class operator Implicit(const AValue: T): TBox<T>;
+
+    { Unfortunately we can't generate compile time error when variant is assigned to TBox.
+      Delphi will try to convert it to type T automatically.
+      If T=string, then Unassigned will be converted to empty string, but Null generates exception.
+      We keep it "as is" to be sure it work same way as regular assignment from Variant to type T.
+    class operator Implicit(const AValue: Variant): TBox<T>; }
+
+    { compare operators }
+    class operator Equal(const Left, Right: TBox<T>): Boolean;
+    class operator Equal(const Left: TBox<T>; const Right: T): Boolean;
+    class operator Equal(const Left: T; const Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator NotEqual(const Left, Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator NotEqual(const Left: TBox<T>; const Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator NotEqual(const Left: T; const Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator LessThan(const Left,Right: TBox<T>): Boolean;
+    class operator LessThan(const Left: TBox<T>; Right: T): Boolean;
+    class operator LessThan(const Left: T; Right: TBox<T>): Boolean;
+    class operator LessThanOrEqual(const Left,Right: TBox<T>): Boolean;
+    class operator LessThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
+    class operator LessThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
+    class operator GreaterThan(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThan(const Left: TBox<T>; Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThan(const Left: T; Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThanOrEqual(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThanOrEqual(const Left: TBox<T>; Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThanOrEqual(const Left: T; Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { basic math operators (available for numeric types) }
+    class operator Add(Left: TBox<T>; Right: TBox<T>): TBox<T>;
+    class operator Subtract(Left: TBox<T>; Right: TBox<T>): TBox<T>;
+    class operator Multiply(Left: TBox<T>; Right: TBox<T>): TBox<T>;
+    class operator Divide(Left: TBox<T>; Right: TBox<T>): TBox<T>;
+    class operator Negative(Value: TBox<T>): TBox<T>;
 
     property Value: T read GetValue write SetValue;
-    property IsNull: boolean read GetIsNull write SetIsNull;
-    property HasValue: boolean read GetHasValue write SetHasValue; { not IsNull }
-    property Ptr: pointer read GetPointer;
+    property Empty: boolean read GetEmpty;
+    property ValuePtr: PT read GetPointer;
   end;
 
   { PDF-compatible RLE codec }
@@ -2599,124 +2631,279 @@ begin
   Value := TEncoding.UTF8.GetString(Bytes);
 end;
 
-{ TNullable<T> }
+{ TBox<T> }
 
-class function TNullable<T>.Create: TNullable<T>;
+class function TBox<T>.Create: TBox<T>;
 begin
-  result.FValue := Default(T);
-  result.FHasValue := '';
+  Result.Clear;
 end;
 
-class function TNullable<T>.Create(const AValue: T): TNullable<T>;
+class function TBox<T>.Create(const AValue: T): TBox<T>;
 begin
-  result.FValue := AValue;
-  result.FHasValue := '1';
+  result.Value := AValue;
 end;
 
-function TNullable<T>.GetValue: T;
+procedure TBox<T>.Clear;
 begin
-  if IsNull then
-    raise EInvalidOperation.Create('Var is NULL');
+  FValue := Default(T);
+  FHasValue := '';
+end;
+
+function TBox<T>.GetValue: T;
+begin
+  if Empty then
+    raise EInvalidOperation.Create('No value to read');
   result := FValue;
 end;
 
-procedure TNullable<T>.SetValue(const AValue: T);
+procedure TBox<T>.SetValue(const AValue: T);
 begin
   FValue := AValue;
-  IsNull := False;
+  FHasValue := '1';
 end;
 
-function TNullable<T>.GetIsNull: boolean;
+function TBox<T>.GetEmpty: boolean;
 begin
   result := FHasValue='';
 end;
 
-function TNullable<T>.GetPointer: pointer;
+function TBox<T>.GetPointer: PT;
 begin
   result := @FValue;
 end;
 
-procedure TNullable<T>.SetIsNull(const AIsNull: boolean);
+class operator TBox<T>.GreaterThan(const Left, Right: TBox<T>): Boolean;
 begin
-  if AIsNull then
-  begin
-    FHasValue := '';
-    FValue := Default(T);
-  end
-  else
-    FHasValue := '1';
+  { we have LessThan implementation already }
+  Result := Right < Left;
 end;
 
-function TNullable<T>.GetHasValue: boolean;
+class operator TBox<T>.GreaterThan(const Left: TBox<T>; Right: T): Boolean;
 begin
-  result := not IsNull;
+  { we have LessThan implementation already }
+  Result := Right < Left;
 end;
 
-procedure TNullable<T>.SetHasValue(const AHasValue: boolean);
+class operator TBox<T>.GreaterThan(const Left: T; Right: TBox<T>): Boolean;
 begin
-  IsNull := not AHasValue;
+  { we have LessThan implementation already }
+  Result := Right < Left;
 end;
 
-class operator TNullable<T>.Equal(const ALeft, ARight: TNullable<T>): Boolean;
+class operator TBox<T>.GreaterThanOrEqual(const Left, Right: TBox<T>): Boolean;
+begin
+  { we have LessThanOrEqual implementation already }
+  result := Right <= Left;
+end;
+
+class operator TBox<T>.GreaterThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
+begin
+  { we have LessThanOrEqual implementation already }
+  result := Right <= Left;
+end;
+
+class operator TBox<T>.GreaterThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
+begin
+  { we have LessThanOrEqual implementation already }
+  result := Right <= Left;
+end;
+
+class operator TBox<T>.Equal(const Left, Right: TBox<T>): Boolean;
 var
   Comparer: IEqualityComparer<T>;
 begin
-  if ALeft.HasValue and ARight.HasValue then
-  begin
-    Comparer := TEqualityComparer<T>.Default;
-    Result := Comparer.Equals(ALeft.Value, ARight.Value);
-  end
+  if Left.Empty or Right.Empty then
+    Result := Left.Empty = Right.Empty
   else
-    Result := ALeft.HasValue = ARight.HasValue;
+  begin
+    Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+    Result := Comparer.Equals(Left.Value, Right.Value);
+  end;
 end;
 
-class operator TNullable<T>.Equal(const ALeft: TNullable<T>; const ARight: T): Boolean;
+class operator TBox<T>.Equal(const Left: TBox<T>; const Right: T): Boolean;
 var
   Comparer: IEqualityComparer<T>;
 begin
-  if ALeft.IsNull then
+  if Left.Empty then
     result := False
   else
   begin
-    Comparer := TEqualityComparer<T>.Default;
-    Result := Comparer.Equals(ALeft.Value, ARight);
+    Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+    Result := Comparer.Equals(Left.Value, Right);
   end
 end;
 
-class operator TNullable<T>.NotEqual(const ALeft, ARight: TNullable<T>): Boolean;
+class operator TBox<T>.Equal(const Left: T; const Right: TBox<T>): Boolean;
 begin
-  result := not (ALeft=ARight);
+  { We have implementation for (Left: TBox<T>; Right: T) already. }
+  Result := Right=Left;
 end;
 
-class operator TNullable<T>.NotEqual(const ALeft: TNullable<T>; const ARight: T): Boolean;
+class operator TBox<T>.NotEqual(const Left, Right: TBox<T>): Boolean;
 begin
-  result := not (ALeft=ARight);
+  result := not (Left=Right);
 end;
 
-class operator TNullable<T>.Implicit(const AValue: T): TNullable<T>;
+class operator TBox<T>.NotEqual(const Left: TBox<T>; const Right: T): Boolean;
 begin
-  result := TNullable<T>.Create(AValue);
+  result := not (Left=Right);
 end;
 
-class operator TNullable<T>.Implicit(const AValue: TNullable<T>): T;
+class operator TBox<T>.NotEqual(const Left: T; const Right: TBox<T>): Boolean;
+begin
+  result := not (Left=Right);
+end;
+
+class operator TBox<T>.Implicit(const AValue: T): TBox<T>;
+begin
+  result := TBox<T>.Create(AValue);
+end;
+
+class operator TBox<T>.Implicit(const AValue: TBox<T>): T;
 begin
   result := AValue.Value;
 end;
 
-class operator TNullable<T>.Implicit(const AValue: Variant): TNullable<T>;
+{class operator TBox<T>.Implicit(const AValue: Variant): TBox<T>;
 begin
   if VarIsClear(AValue) then
-    result := TNullable<T>.Create
+    Result.Clear
   else
-    Result := TNullable<T>.Create( TValue.FromVariant(AValue).AsType<T> );
-end;
+    Result.Value := TBox<T>.Create( TValue.FromVariant(AValue).AsType<T> );
+end;}
 
-class operator TNullable<T>.Implicit(const AValue: PT): TNullable<T>;
+{class operator TBox<T>.Implicit(const AValue: PT): TBox<T>;
 begin
   if AValue=nil then
-    result := TNullable<T>.Create
+    result := TBox<T>.Create
   else
-    result := TNullable<T>.Create(AValue^);
+    result := TBox<T>.Create(AValue^);
+end;}
+
+class operator TBox<T>.LessThan(const Left, Right: TBox<T>): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Left.Empty then
+    result := not Right.Empty
+  else
+  if Right.Empty then
+    Result := False
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left.Value, Right.Value) < 0;
+  end;
+end;
+
+class operator TBox<T>.LessThan(const Left: TBox<T>; Right: T): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Left.Empty then
+    result := True
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left.Value, Right) < 0;
+  end;
+end;
+
+class operator TBox<T>.LessThan(const Left: T; Right: TBox<T>): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Right.Empty then
+    result := False
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left, Right.Value) < 0;
+  end;
+end;
+
+class operator TBox<T>.LessThanOrEqual(const Left, Right: TBox<T>): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Left.Empty then
+    Result := True
+  else
+  if Right.Empty then
+    Result := False
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left.Value, Right.Value) <= 0;
+  end;
+end;
+
+class operator TBox<T>.LessThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Left.Empty then
+    Result := True
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left.Value, Right) <= 0;
+  end;
+end;
+
+class operator TBox<T>.LessThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
+var
+  C: IComparer<T>;
+begin
+  { Null < any real value }
+  if Right.Empty then
+    Result := False
+  else
+  begin
+    C := TComparerUtils.DefaultComparer<T>;
+    result := C.Compare(Left, Right.Value) <= 0;
+  end;
+end;
+
+class operator TBox<T>.Add(Left, Right: TBox<T>): TBox<T>;
+begin
+  if Left.Empty or Right.Empty then
+    raise Exception.Create('Bad operation');
+  result := TArithmeticUtils<T>.DefaultArithmetic.Add(Left, Right);
+end;
+
+class operator TBox<T>.Divide(Left, Right: TBox<T>): TBox<T>;
+begin
+  if Left.Empty or Right.Empty then
+    raise Exception.Create('Bad operation');
+  result := TArithmeticUtils<T>.DefaultArithmetic.Divide(Left, Right);
+end;
+
+class operator TBox<T>.Subtract(Left, Right: TBox<T>): TBox<T>;
+begin
+  if Left.Empty or Right.Empty then
+    raise Exception.Create('Bad operation');
+  result := TArithmeticUtils<T>.DefaultArithmetic.Subtract(Left, Right);
+end;
+
+class operator TBox<T>.Multiply(Left, Right: TBox<T>): TBox<T>;
+begin
+  if Left.Empty or Right.Empty then
+    raise Exception.Create('Bad operation');
+  result := TArithmeticUtils<T>.DefaultArithmetic.Multiply(Left, Right);
+end;
+
+class operator TBox<T>.Negative(Value: TBox<T>): TBox<T>;
+begin
+  if Value.Empty then
+    raise Exception.Create('Bad operation');
+  result := TArithmeticUtils<T>.DefaultArithmetic.Negative(Value);
 end;
 
 { TRLE }

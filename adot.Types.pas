@@ -48,6 +48,14 @@ type
     property ReferenceCount: integer read GetRefCount;
   end;
 
+  IArithmetic<T> = interface(IInterface)
+    function Add(Left: T; Right: T): T;
+    function Subtract(Left: T; Right: T): T;
+    function Multiply(Left: T; Right: T): T;
+    function Divide(Left: T; Right: T): T;
+    function Negative(Value: T): T;
+  end;
+
   ICachable = interface
     ['{C61BCB34-157D-4302-A8F9-96BCCF48483A}']
     procedure BegynnKalkulasjon;
@@ -58,6 +66,15 @@ type
   end;
 
   { classes }
+
+  TCustomArithmetic<T> = class(TSingletonImplementation, IArithmetic<T>)
+  public
+    function Add(Left: T; Right: T): T; virtual; abstract;
+    function Subtract(Left: T; Right: T): T; virtual; abstract;
+    function Multiply(Left: T; Right: T): T; virtual; abstract;
+    function Divide(Left: T; Right: T): T; virtual; abstract;
+    function Negative(Value: T): T; virtual; abstract;
+  end;
 
   { A non-reference-counted IInterface implementation. }
   TNRCInterfacedObject = TSingletonImplementation;
