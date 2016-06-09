@@ -56,15 +56,6 @@ type
     function Negative(Value: T): T;
   end;
 
-  ICachable = interface
-    ['{C61BCB34-157D-4302-A8F9-96BCCF48483A}']
-    procedure BegynnKalkulasjon;
-    procedure AvsluttKalkulasjon;
-    procedure OmstartKalkulasjon;
-    function GetKalkulasjonErAktiv: Boolean;
-    function GetKalkulasjonBalanse: Integer;
-  end;
-
   { classes }
 
   TCustomArithmetic<T> = class(TSingletonImplementation, IArithmetic<T>)
@@ -78,20 +69,6 @@ type
 
   { A non-reference-counted IInterface implementation. }
   TNRCInterfacedObject = TSingletonImplementation;
-
-  { Basic class with support ICachable interface }
-  TCustomCachable = class(TNRCInterfacedObject, ICachable)
-  protected
-    function GetKalkulasjonErAktiv: Boolean; virtual; abstract;
-    function GetKalkulasjonBalanse: Integer; virtual; abstract;
-  public
-    procedure BegynnKalkulasjon; virtual; abstract;
-    procedure AvsluttKalkulasjon; virtual; abstract;
-    procedure OmstartKalkulasjon; virtual; abstract;
-
-    property KalkulasjonErAktiv: Boolean read GetKalkulasjonErAktiv;
-    property KalkulasjonBalanse: Integer read GetKalkulasjonBalanse;
-  end;
 
   TCopyFileInfo = record
     FileSize    : int64;

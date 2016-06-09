@@ -501,12 +501,13 @@ type
      A := TIfThen.Get(Visible, fsMDIChild, fsNormal); }
   TIfThen = class
   public
-    class function Get<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function Get<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
   end;
 
   TFun = class
-    class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
+    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static;
+    class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
   end;
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
@@ -599,49 +600,6 @@ type
       call Start/StartSec/Restart }
     procedure SetTimedOut(ATimedOut: boolean);
     function TimedOut: Boolean;
-  end;
-
-  { Basic class for objects with data caching/other read optimizations }
-  TCachable = class(TCustomCachable, ICachable)
-  protected
-    FKalkulasjonBalanse: integer;
-
-    function GetKalkulasjonErAktiv: Boolean; override;
-    function GetKalkulasjonBalanse: Integer; override;
-
-    { There we can create/destroy (or activate/deactivate) all caching. }
-    procedure DoBegynnKalkulasjon; virtual;
-    procedure DoAvsluttKalkulasjon; virtual;
-
-    { UNCOMMENT/USE IT ONLY IF IT IS ABSOLUTELY NECESSARY. }
-    { procedure EndreKalkulasjonBalanse(AInc: integer); }
-  public
-
-    { These functions keep internal balance of calls and call
-      DoBegynnKalkulasjon/DoAvsluttKalkulasjon only when necessary. }
-    procedure BegynnKalkulasjon; override;
-    procedure AvsluttKalkulasjon; override;
-
-    (*  If we need to change data when caching (potentially) is on, then
-       we can use OmstartKalkulasjon to reset cache after changes. Example:
-
-         { we called FDatasett.BegynnKalkulasjon earlier, so caching is on}
-         local_varXX := [some calculations, maybe based on cached values];
-
-         { in section where we write, we should not read any cachable data}
-         FDatasett.SomeObject.SomeValue1 := local_var1;
-         FDatasett.SomeObject.SomeValue2 := local_var2;
-         ...
-
-         { clear all caches to reload after our changes }
-         FDatasett.OmstartKalkulasjon;
-
-       USE IT ONLY IF IT IS ABSOLUTELY NECESSARY. *)
-    procedure OmstartKalkulasjon; override;
-
-    { inherited from TCustomCachable:
-      property KalkulasjonErAktiv: Boolean read GetKalkulasjonErAktiv;
-      property KalkulasjonBalanse: Integer read GetKalkulasjonBalanse; }
   end;
 
   { Currency type utils }
@@ -2376,53 +2334,6 @@ begin
   end;
 end;
 
-{ TCachable }
-
-procedure TCachable.BegynnKalkulasjon;
-begin
-  if TInterlocked.Increment(FKalkulasjonBalanse)=1 then
-    DoBegynnKalkulasjon;
-end;
-
-procedure TCachable.AvsluttKalkulasjon;
-begin
-  if TInterlocked.Decrement(FKalkulasjonBalanse)=0 then
-    DoAvsluttKalkulasjon;
-end;
-
-//procedure TCachable.EndreKalkulasjonBalanse(AInc: integer);
-//begin
-//  if TInterlocked.Add(FKalkulasjonBalanse, AInc)=AInc then
-//    DoBegynnKalkulasjon;
-//end;
-
-procedure TCachable.OmstartKalkulasjon;
-begin
-  if KalkulasjonErAktiv then
-  begin
-    DoAvsluttKalkulasjon;
-    DoBegynnKalkulasjon;
-  end;
-end;
-
-function TCachable.GetKalkulasjonErAktiv: Boolean;
-begin
-  result := FKalkulasjonBalanse<>0;
-end;
-
-function TCachable.GetKalkulasjonBalanse: Integer;
-begin
-  result := FKalkulasjonBalanse;
-end;
-
-procedure TCachable.DoAvsluttKalkulasjon;
-begin
-end;
-
-procedure TCachable.DoBegynnKalkulasjon;
-begin
-end;
-
 { TCurrencyUtils }
 
 class function TCurrencyUtils.ToString(const Value: currency; FractionalPart: boolean): string;
@@ -3632,6 +3543,14 @@ var
 begin
   Comparer := TComparerUtils.DefaultComparer<T>;
   Result := (Comparer.Compare(AValue, AValueMin) >= 0) and (Comparer.Compare(AValue, AValueMax) <= 0);
+end;
+
+class function TFun.Overlapped<T>(AFrom, ATo, BFrom, BTo: T): boolean;
+var
+  Comparer: IComparer<T>;
+begin
+  Comparer := TComparerUtils.DefaultComparer<T>;
+  result := (Comparer.Compare(BTo, AFrom)>=0) and (Comparer.Compare(BFrom, ATo)<=0);
 end;
 
 end.
