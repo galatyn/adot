@@ -77,6 +77,7 @@ interface
 uses
   adot.Types,
   adot.Tools.Rtti,
+  adot.Arithmetic,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.TypInfo,
@@ -1370,54 +1371,6 @@ type
     property KeyCollection: TKeyCollection read GetKeyCollection;
     property ValueCollection: TValueCollection read GetValueCollection;
     property TreeHeight: integer read GetTreeHeight;
-  end;
-
-  TArithmeticUtils<T> = class
-  private
-    class var FArithmetic: IArithmetic<T>;
-
-    type
-      TArithmeticInteger = class(TCustomArithmetic<integer>)
-      protected
-        class var
-          FOrdinal: TArithmeticInteger;
-      public
-        class function Ordinal: TArithmeticInteger;
-        function Add(Left: integer; Right: integer): integer; override;
-        function Subtract(Left: integer; Right: integer): integer; override;
-        function Multiply(Left: integer; Right: integer): integer; override;
-        function Divide(Left: integer; Right: integer): integer; override;
-        function Negative(Value: integer): integer; override;
-      end;
-
-      TArithmeticInt64 = class(TCustomArithmetic<Int64>)
-      protected
-        class var
-          FOrdinal: TArithmeticInt64;
-      public
-        class function Ordinal: TArithmeticInt64;
-        function Add(Left: Int64; Right: Int64): Int64; override;
-        function Subtract(Left: Int64; Right: Int64): Int64; override;
-        function Multiply(Left: Int64; Right: Int64): Int64; override;
-        function Divide(Left: Int64; Right: Int64): Int64; override;
-        function Negative(Value: Int64): Int64; override;
-      end;
-
-      TArithmeticDouble = class(TCustomArithmetic<double>)
-      protected
-        class var
-          FOrdinal: TArithmeticDouble;
-      public
-        class function Ordinal: TArithmeticDouble;
-        function Add(Left: double; Right: double): double; override;
-        function Subtract(Left: double; Right: double): double; override;
-        function Multiply(Left: double; Right: double): double; override;
-        function Divide(Left: double; Right: double): double; override;
-        function Negative(Value: double): double; override;
-      end;
-
-  public
-    class function DefaultArithmetic: IArithmetic<T>; static;
   end;
 
   { Default comparer/equality comparer etc. }
@@ -6281,128 +6234,6 @@ begin
   Node.Data := Value;
   Node.FirstChild := -1;
   Node.NextSibling := -1;
-end;
-
-{ TArithmeticUtils<T> }
-
-class function TArithmeticUtils<T>.DefaultArithmetic: IArithmetic<T>;
-begin
-  if FArithmetic = nil then
-  begin
-    if TypeInfo(T) = TypeInfo(integer) then
-      FArithmetic := IArithmetic<T>( IArithmetic<integer>(TArithmeticInteger.Ordinal) )
-    else
-    if TypeInfo(T) = TypeInfo(int64) then
-      FArithmetic := IArithmetic<T>( IArithmetic<int64>(TArithmeticInt64.Ordinal) )
-    else
-    if TypeInfo(T) = TypeInfo(double) then
-      FArithmetic := IArithmetic<T>( IArithmetic<double>(TArithmeticDouble.Ordinal) )
-    else
-      raise Exception.Create('not implemented');
-  end;
-  Result := FArithmetic;
-end;
-
-{ TArithmeticUtils<T>.TArithmeticInteger }
-
-class function TArithmeticUtils<T>.TArithmeticInteger.Ordinal: TArithmeticInteger;
-begin
-  if FOrdinal = nil then
-    FOrdinal := TArithmeticInteger.Create;
-  Result := FOrdinal;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInteger.Add(Left, Right: integer): integer;
-begin
-  Result := Left + Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInteger.Divide(Left, Right: integer): integer;
-begin
-  Result := Left div Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInteger.Multiply(Left, Right: integer): integer;
-begin
-  Result := Left * Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInteger.Negative(Value: integer): integer;
-begin
-  Result := -Value;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInteger.Subtract(Left, Right: integer): integer;
-begin
-  Result := Left - Right;
-end;
-
-{ TArithmeticUtils<T>.TArithmeticDouble }
-
-class function TArithmeticUtils<T>.TArithmeticDouble.Ordinal: TArithmeticDouble;
-begin
-  if FOrdinal = nil then
-    FOrdinal := TArithmeticDouble.Create;
-  Result := FOrdinal;
-end;
-
-function TArithmeticUtils<T>.TArithmeticDouble.Add(Left, Right: double): double;
-begin
-  Result := Left + Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticDouble.Divide(Left, Right: double): double;
-begin
-  Result := Left / Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticDouble.Multiply(Left, Right: double): double;
-begin
-  Result := Left * Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticDouble.Negative(Value: double): double;
-begin
-  Result := -Value;
-end;
-
-function TArithmeticUtils<T>.TArithmeticDouble.Subtract(Left, Right: double): double;
-begin
-  Result := Left - Right;
-end;
-
-{ TArithmeticUtils<T>.TArithmeticInt64 }
-
-class function TArithmeticUtils<T>.TArithmeticInt64.Ordinal: TArithmeticInt64;
-begin
-  if FOrdinal = nil then
-    FOrdinal := TArithmeticInt64.Create;
-  Result := FOrdinal;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInt64.Add(Left, Right: Int64): Int64;
-begin
-  Result := Left + Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInt64.Divide(Left, Right: Int64): Int64;
-begin
-  Result := Left div Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInt64.Multiply(Left, Right: Int64): Int64;
-begin
-  Result := Left * Right;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInt64.Negative(Value: Int64): Int64;
-begin
-  Result := -Value;
-end;
-
-function TArithmeticUtils<T>.TArithmeticInt64.Subtract(Left, Right: Int64): Int64;
-begin
-  Result := Left - Right;
 end;
 
 end.

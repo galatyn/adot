@@ -94,6 +94,7 @@ interface
 uses
   adot.Types,
   adot.Collections,
+  adot.Arithmetic,
 {$IFDEF MSWINDOWS}
   { Preventing from "Inline has not been expanded" }
   Winapi.Windows,
@@ -735,38 +736,27 @@ type
     { assign operators }
     class operator Implicit(const AValue: TBox<T>): T;
     class operator Implicit(const AValue: T): TBox<T>;
-
-    { Unfortunately we can't generate compile time error when variant is assigned to TBox.
-      Delphi will try to convert it to type T automatically.
-      If T=string, then Unassigned will be converted to empty string, but Null generates exception.
-      We keep it "as is" to be sure it work same way as regular assignment from Variant to type T.
-    class operator Implicit(const AValue: Variant): TBox<T>; }
+    { We can't disable assigning of variant to TBox and some wrong assignments will not be checked in compile time.
+      Delphi has different rules for conversion of Null (exception generated) and Unassigned (converted to default value).
+      We rely on Delphi in such conversion to keep default behaviour.
+    //class operator Implicit(const AValue: Variant): TBox<T>;
 
     { compare operators }
     class operator Equal(const Left, Right: TBox<T>): Boolean;
     class operator Equal(const Left: TBox<T>; const Right: T): Boolean;
     class operator Equal(const Left: T; const Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
     class operator NotEqual(const Left, Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator NotEqual(const Left: TBox<T>; const Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator NotEqual(const Left: T; const Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
     class operator LessThan(const Left,Right: TBox<T>): Boolean;
-    class operator LessThan(const Left: TBox<T>; Right: T): Boolean;
-    class operator LessThan(const Left: T; Right: TBox<T>): Boolean;
     class operator LessThanOrEqual(const Left,Right: TBox<T>): Boolean;
-    class operator LessThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
-    class operator LessThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
     class operator GreaterThan(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator GreaterThan(const Left: TBox<T>; Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator GreaterThan(const Left: T; Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
     class operator GreaterThanOrEqual(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator GreaterThanOrEqual(const Left: TBox<T>; Right: T): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator GreaterThanOrEqual(const Left: T; Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
 
     { basic math operators (available for numeric types) }
     class operator Add(Left: TBox<T>; Right: TBox<T>): TBox<T>;
     class operator Subtract(Left: TBox<T>; Right: TBox<T>): TBox<T>;
     class operator Multiply(Left: TBox<T>; Right: TBox<T>): TBox<T>;
     class operator Divide(Left: TBox<T>; Right: TBox<T>): TBox<T>;
+    class operator IntDivide(Left: TBox<T>; Right: TBox<T>): TBox<T>;
     class operator Negative(Value: TBox<T>): TBox<T>;
 
     property Value: T read GetValue write SetValue;
@@ -2678,31 +2668,7 @@ begin
   Result := Right < Left;
 end;
 
-class operator TBox<T>.GreaterThan(const Left: TBox<T>; Right: T): Boolean;
-begin
-  { we have LessThan implementation already }
-  Result := Right < Left;
-end;
-
-class operator TBox<T>.GreaterThan(const Left: T; Right: TBox<T>): Boolean;
-begin
-  { we have LessThan implementation already }
-  Result := Right < Left;
-end;
-
 class operator TBox<T>.GreaterThanOrEqual(const Left, Right: TBox<T>): Boolean;
-begin
-  { we have LessThanOrEqual implementation already }
-  result := Right <= Left;
-end;
-
-class operator TBox<T>.GreaterThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
-begin
-  { we have LessThanOrEqual implementation already }
-  result := Right <= Left;
-end;
-
-class operator TBox<T>.GreaterThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
 begin
   { we have LessThanOrEqual implementation already }
   result := Right <= Left;
@@ -2745,16 +2711,6 @@ begin
   result := not (Left=Right);
 end;
 
-class operator TBox<T>.NotEqual(const Left: TBox<T>; const Right: T): Boolean;
-begin
-  result := not (Left=Right);
-end;
-
-class operator TBox<T>.NotEqual(const Left: T; const Right: TBox<T>): Boolean;
-begin
-  result := not (Left=Right);
-end;
-
 class operator TBox<T>.Implicit(const AValue: T): TBox<T>;
 begin
   result := TBox<T>.Create(AValue);
@@ -2764,22 +2720,6 @@ class operator TBox<T>.Implicit(const AValue: TBox<T>): T;
 begin
   result := AValue.Value;
 end;
-
-{class operator TBox<T>.Implicit(const AValue: Variant): TBox<T>;
-begin
-  if VarIsClear(AValue) then
-    Result.Clear
-  else
-    Result.Value := TBox<T>.Create( TValue.FromVariant(AValue).AsType<T> );
-end;}
-
-{class operator TBox<T>.Implicit(const AValue: PT): TBox<T>;
-begin
-  if AValue=nil then
-    result := TBox<T>.Create
-  else
-    result := TBox<T>.Create(AValue^);
-end;}
 
 class operator TBox<T>.LessThan(const Left, Right: TBox<T>): Boolean;
 var
@@ -2795,34 +2735,6 @@ begin
   begin
     C := TComparerUtils.DefaultComparer<T>;
     result := C.Compare(Left.Value, Right.Value) < 0;
-  end;
-end;
-
-class operator TBox<T>.LessThan(const Left: TBox<T>; Right: T): Boolean;
-var
-  C: IComparer<T>;
-begin
-  { Null < any real value }
-  if Left.Empty then
-    result := True
-  else
-  begin
-    C := TComparerUtils.DefaultComparer<T>;
-    result := C.Compare(Left.Value, Right) < 0;
-  end;
-end;
-
-class operator TBox<T>.LessThan(const Left: T; Right: TBox<T>): Boolean;
-var
-  C: IComparer<T>;
-begin
-  { Null < any real value }
-  if Right.Empty then
-    result := False
-  else
-  begin
-    C := TComparerUtils.DefaultComparer<T>;
-    result := C.Compare(Left, Right.Value) < 0;
   end;
 end;
 
@@ -2843,34 +2755,6 @@ begin
   end;
 end;
 
-class operator TBox<T>.LessThanOrEqual(const Left: TBox<T>; Right: T): Boolean;
-var
-  C: IComparer<T>;
-begin
-  { Null < any real value }
-  if Left.Empty then
-    Result := True
-  else
-  begin
-    C := TComparerUtils.DefaultComparer<T>;
-    result := C.Compare(Left.Value, Right) <= 0;
-  end;
-end;
-
-class operator TBox<T>.LessThanOrEqual(const Left: T; Right: TBox<T>): Boolean;
-var
-  C: IComparer<T>;
-begin
-  { Null < any real value }
-  if Right.Empty then
-    Result := False
-  else
-  begin
-    C := TComparerUtils.DefaultComparer<T>;
-    result := C.Compare(Left, Right.Value) <= 0;
-  end;
-end;
-
 class operator TBox<T>.Add(Left, Right: TBox<T>): TBox<T>;
 begin
   if Left.Empty or Right.Empty then
@@ -2883,6 +2767,11 @@ begin
   if Left.Empty or Right.Empty then
     raise Exception.Create('Bad operation');
   result := TArithmeticUtils<T>.DefaultArithmetic.Divide(Left, Right);
+end;
+
+class operator TBox<T>.IntDivide(Left, Right: TBox<T>): TBox<T>;
+begin
+  result := Left / Right;
 end;
 
 class operator TBox<T>.Subtract(Left, Right: TBox<T>): TBox<T>;
