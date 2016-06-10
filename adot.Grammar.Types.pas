@@ -88,8 +88,9 @@ type
     function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetChilds(ARoot: integer): TCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TFilteredCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetFirstChild(Node: integer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetNextSibling(Node: integer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetFirstChild(Node: integer): integer;
+    function GetNextSibling(Node: integer): integer;
+    function GetTotalSizeBytes: int64;
   public
     Tree: TVector<TParseTreeItem>;
     Root: integer;
@@ -115,10 +116,13 @@ type
 
     property FirstChild[Node: integer]: integer read GetFirstChild;
     property NextSibling[Node: integer]: integer read GetNextSibling;
+    property TotalSizeBytes: int64 read GetTotalSizeBytes;
   end;
 
   { grammar based parser }
   TGrammarParser = class abstract
+  private
+    function GetTotalSizeBytes: int64;
   protected
     function GetDataToken(const P: TTokenPos): string;
     function GetTreeToken(ParseTreeNode: integer): string;
@@ -143,6 +147,7 @@ type
     property DataToken[const P: TTokenPos]: string read GetDataToken;
     { returns string corresponding to element of ParseTree (position and length in bytes) }
     property TreeToken[ParseTreeNode: integer]: string read GetTreeToken;
+    property TotalSizeBytes: int64 read GetTotalSizeBytes;
   end;
 
   TGrammarType = (
@@ -476,6 +481,11 @@ begin
   Result.Tree.TrimExcess;
 end;
 
+function TParseTree.GetTotalSizeBytes: int64;
+begin
+  result := Tree.TotalSizeBytes + SizeOf(Root);
+end;
+
 procedure TParseTree.SetItem(n: integer; const Item: TParseTreeItem);
 begin
   Tree.Items[N] := Item;
@@ -785,6 +795,11 @@ begin
   end;
   Dst.TrimExcess;
   result := Dst.Count >= 0;
+end;
+
+function TGrammarParser.GetTotalSizeBytes: int64;
+begin
+  result := Data.Size + ParseTree.TotalSizeBytes;
 end;
 
 function TGrammarParser.GetTreeToken(ParseTreeNode: integer): string;

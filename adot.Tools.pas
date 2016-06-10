@@ -840,6 +840,58 @@ type
     class function IsSameHandler(const A,B: TActionEvent): Boolean; overload; static;
   end;
 
+  TDataSize = record
+  private
+    FSize: int64;
+
+    function GetGb: double;
+    function GetKb: double;
+    function GetMb: double;
+    function GetTb: double;
+    procedure SetGb(const Value: double);
+    procedure SetKb(const Value: double);
+    procedure SetMb(const Value: double);
+    procedure SetTb(const Value: double);
+    function GetAsString: string;
+
+  public
+    const
+      Kb = int64(1024);
+      Mb = int64(1024)*Kb;
+      Gb = int64(1024)*Mb;
+      Tb = int64(1024)*Gb;
+
+    constructor Create(const AValue: int64);
+    constructor CreateMb(const AValue: double);
+
+    class function SizeToString(const AValue: int64): string; static;
+
+    class operator Implicit(const AValue: TDataSize): int64;
+    class operator Implicit(const AValue: int64): TDataSize;
+
+    class operator Equal(const Left, Right: TDataSize): Boolean;
+    class operator NotEqual(const Left, Right: TDataSize): Boolean;
+    class operator LessThan(const Left,Right: TDataSize): Boolean;
+    class operator LessThanOrEqual(const Left,Right: TDataSize): Boolean;
+    class operator GreaterThan(const Left,Right: TDataSize): Boolean;
+    class operator GreaterThanOrEqual(const Left,Right: TDataSize): Boolean;
+
+    class operator Add(Left: TDataSize; Right: TDataSize): TDataSize;
+    class operator Subtract(Left: TDataSize; Right: TDataSize): TDataSize;
+    class operator Multiply(Left: TDataSize; Right: TDataSize): TDataSize;
+    class operator Divide(Left: TDataSize; Right: TDataSize): TDataSize;
+    class operator IntDivide(Left: TDataSize; Right: TDataSize): TDataSize;
+    class operator Negative(Value: TDataSize): TDataSize;
+
+    property SizeBytes: int64 read FSize write FSize;
+    property SizeKb: double read GetKb write SetKb;
+    property SizeMb: double read GetMb write SetMb;
+    property SizeGb: double read GetGb write SetGb;
+    property SizeTb: double read GetTb write SetTb;
+
+    property AsString: string read GetAsString;
+  end;
+
 function Min3(const A,B,C: integer): integer; overload;
 function Min3(const A,B,C: double): double; overload;
 function Max3(const A,B,C: integer): integer; overload;
@@ -3551,6 +3603,158 @@ var
 begin
   Comparer := TComparerUtils.DefaultComparer<T>;
   result := (Comparer.Compare(BTo, AFrom)>=0) and (Comparer.Compare(BFrom, ATo)<=0);
+end;
+
+{ TDataSize }
+
+class operator TDataSize.Add(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize+right.FSize;
+end;
+
+constructor TDataSize.Create(const AValue: int64);
+begin
+  FSize := AValue;
+end;
+
+constructor TDataSize.CreateMb(const AValue: double);
+begin
+  SizeMb := AValue;
+end;
+
+class operator TDataSize.Divide(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize div Right.FSize;
+end;
+
+class operator TDataSize.Equal(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize=Right.FSize;
+end;
+
+function TDataSize.GetAsString: string;
+begin
+
+  {case FSize of
+     0 .. Kb-1 : result := Format('%d', [FSize]);
+    Kb .. Mb-1 : result := Format('%.1f Kb', [FSize/Kb]);
+    Mb .. Gb-1 : result := Format('%.1f Mb', [FSize/Mb]);
+    Gb .. Tb-1 : result := Format('%.1f Gb', [FSize/Gb]);
+    else result := Format('%.1f Tb', [FSize/Tb]);
+  end;}
+  if FSize<Mb then
+    if FSize<Kb then
+      result := Format('%d', [FSize])
+    else
+      result := Format('%.2f Kb', [FSize/Kb])
+  else
+    if FSize<Gb then
+      result := Format('%.2f Mb', [FSize/Mb])
+    else
+      if FSize<Tb then
+        result := Format('%.2f Gb', [FSize/Gb])
+      else
+        result := Format('%.2f Tb', [FSize/Tb]);
+end;
+
+function TDataSize.GetGb: double;
+begin
+  result := FSIze / Gb;
+end;
+
+function TDataSize.GetKb: double;
+begin
+  result := FSIze / Kb;
+end;
+
+function TDataSize.GetMb: double;
+begin
+  result := FSIze / Mb;
+end;
+
+function TDataSize.GetTb: double;
+begin
+  result := FSIze / Tb;
+end;
+
+class operator TDataSize.GreaterThan(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize>Right.FSize;
+end;
+
+class operator TDataSize.GreaterThanOrEqual(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize>=Right.FSize;
+end;
+
+class operator TDataSize.Implicit(const AValue: int64): TDataSize;
+begin
+  result.FSize := AValue;
+end;
+
+class operator TDataSize.IntDivide(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize div Right.FSize;
+end;
+
+class operator TDataSize.LessThan(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize<Right.FSize;
+end;
+
+class operator TDataSize.LessThanOrEqual(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize<=Right.FSize;
+end;
+
+class operator TDataSize.Multiply(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize*Right.FSize;
+end;
+
+class operator TDataSize.Negative(Value: TDataSize): TDataSize;
+begin
+  result := -Value.FSize;
+end;
+
+class operator TDataSize.NotEqual(const Left, Right: TDataSize): Boolean;
+begin
+  result := Left.FSize<>Right.FSize;
+end;
+
+class operator TDataSize.Implicit(const AValue: TDataSize): int64;
+begin
+  result := AValue.FSize;
+end;
+
+procedure TDataSize.SetGb(const Value: double);
+begin
+  FSize := Trunc(Value*Gb);
+end;
+
+procedure TDataSize.SetKb(const Value: double);
+begin
+  FSize := Trunc(Value*Kb);
+end;
+
+procedure TDataSize.SetMb(const Value: double);
+begin
+  FSize := Trunc(Value*Mb);
+end;
+
+procedure TDataSize.SetTb(const Value: double);
+begin
+  FSize := Trunc(Value*Tb);
+end;
+
+class function TDataSize.SizeToString(const AValue: int64): string;
+begin
+  result := TDataSize.Create(AValue).AsString;
+end;
+
+class operator TDataSize.Subtract(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize-Right.FSize;
 end;
 
 end.

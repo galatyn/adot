@@ -847,7 +847,8 @@ type
     function GetLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetFirst(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetLast(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean;
+    function GetTotalSizeBytes: int64; {$IFNDEF DEBUG}inline;{$ENDIF}
 
   public
     type
@@ -909,6 +910,7 @@ type
     property Capacity: integer read GetCapacity write SetCapacity;
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
+    property TotalSizeBytes: int64 read GetTotalSizeBytes;
   end;
 
   { Low level heap operations on array.}
@@ -4860,6 +4862,11 @@ end;
 function TVector<T>.GetLast: T;
 begin
   Result := Items[Count-1];
+end;
+
+function TVector<T>.GetTotalSizeBytes: int64;
+begin
+  result := (High(Items)-Low(Length)+1)*SizeOf(T);
 end;
 
 procedure TVector<T>.SetLast(const Value: T);
