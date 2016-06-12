@@ -599,65 +599,6 @@ type
     property LastTokenType: TPasTokenType read FTokenType;
   end;
 
-  {!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  DEPRECATED! USE TTok* classes INSTEAD.
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! }
-  PTextWords = ^TTextWords;
-  TTextWords = record
-  public
-    type
-      TIsAlphaPredicate = reference to function(const C: Char):Boolean;
-      TWordPosRec = record
-        Start, Len: Integer;
-      end;
-    var
-      Text: String;
-      Position: integer;
-      IsAlphaChar: TIsAlphaPredicate;
-
-    { Set Text and IsAlpha predicate (default is IsLetterOrDigit). }
-    constructor Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate = nil);
-
-    { Find next word in the text. }
-    function FindNext(var AStart,ALen: integer):Boolean; overload;
-    function FindNext(var AWord: String):Boolean; overload;
-    function FindNext: String; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-
-    { Find all words in the text (from begin to end). }
-    procedure Get(ADst: TStrings); overload;
-    procedure Get(var ADst: TArray<String>); overload;
-    procedure Get(var ADst: TArray<TWordPosRec>); overload;
-
-    { Helpers }
-    class procedure Get(const AText: string; ADst: TStrings; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
-    class procedure Get(const AText: string; var ADst: TArray<String>; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
-    class procedure Get(const AText: string; var ADst: TArray<TWordPosRec>; AIsAlphaPredicate: TIsAlphaPredicate = nil); overload; static;
-
-    { Start search from begin of the text }
-    procedure Reset; {$IFNDEF DEBUG}inline;{$ENDIF}
-
-    { Get number of words in the text (doesn't change current position) }
-    function Count:Integer;
-
-    { Get substring from the assigned text (usually APos is result of FindNext or Get) }
-    function GetSubStr(const APos: TWordPosRec): String;
-
-    { Find subsequence in the sequence:
-       r := TTextWord.Create('word0 word1 it is test xxx xxx xxx');
-       r.Get( WordList );
-       Assert(r.Find(['it', 'is', 'test'], WordList) = 2); }
-    function Find(const ASubSequence: array of string; const ASequence: TArray<TWordPosRec>): integer;
-
-    { Most common TIsAlphaPredicate functions }
-    class function IsNonSpace(const C: Char): Boolean; static;
-    class function IsLetter(const C: Char): Boolean; static;
-    class function IsLetterOrDigit(const C: Char): Boolean; static;
-    class function IsDigit(const C: Char): Boolean; static;
-    class function IsPartOfNumber(const C: Char): Boolean; static; { digit or DecimalSeparator }
-
-    property Words[const APos: TWordPosRec]: string read GetSubStr; default;
-  end;
-
   { List of string edit commands (insert/delete/replace). Can be applied to any string.
     Any operation is applied to initial text (without changes made by other commands). }
   TStringEditor = record
@@ -700,6 +641,44 @@ type
     { Apply all commands to string Src and get result }
     function Apply(const Src: string): string;
   end;
+
+  { Wrapper for string type. Some advantages over string type:
+    1. Extendable list of helper functions.
+    2. Nice syntax for some overloaded operators:
+         - if S in T then (case insensitive search for substring)
+         - S := S*8 (repeat string several times)
+         - S := S div 3 (SetLength(S, Length(S) dov 3))
+         - S := S / 3 (SetLength(S, Length(S) dov 3))
+         - if S=Q then <> (case insensitive comparer)
+         - S := -S ("Test" -> "tEST")
+         - S := S - T (if S ends with T, then remove it from the S)
+    }
+ { TString = record
+  public
+    Value: string;
+
+    class operator Implicit(const AValue: TString): string;
+    class operator Implicit(const AValue: string): TString;
+    class operator Implicit(const AValue: int64): TString;
+    class operator Implicit(const AValue: TDateTime): TString;
+    class operator Implicit(const AValue: Double): TString;
+
+    class operator Equal(const Left, Right: TString): Boolean;
+    class operator NotEqual(const Left, Right: TString): Boolean;
+    class operator LessThan(const Left,Right: TString): Boolean;
+    class operator LessThanOrEqual(const Left,Right: TString): Boolean;
+    class operator GreaterThan(const Left,Right: TString): Boolean;
+    class operator GreaterThanOrEqual(const Left,Right: TString): Boolean;
+
+    class operator Add(const Left: TString; const Right: TString): TString;
+    class operator Subtract(const Left: TString; const Right: TString): TString;
+    class operator Multiply(const Left: TString; const Right: TString): TString;
+    class operator Divide(const Left: TString; const Right: TString): TString;
+    class operator IntDivide(const Left: TString; const Right: TString): TString;
+    class operator Negative(const Value: TString): TString;
+
+    class operator In(const Left: TString; const Right: TString): Boolean;
+  end; }
 
 implementation
 
@@ -1272,21 +1251,25 @@ end;
 
 class function TStr.SimilarWordInText(const AWord, AText: String; var dist: integer; AOptions: TSimilarityOptions): boolean;
 var
-  S: TTextWords;
+  Tok: TTokLettersOrDigits;
   W: String;
   D: integer;
 begin
   Result := False;
-  S := TTextWords.Create(AText);
-  while S.FindNext(W) do
-  begin
-    if not SimilarStrings(AWord, W, D, AOptions) then
-      Continue;
-    if not Result then
-      Dist := D
-    else
-      Dist := Min(Dist, D);
-    Result := True;
+  Tok := TTokLettersOrDigits.Create(AText);
+  try
+    while Tok.Next(W) do
+    begin
+      if not SimilarStrings(AWord, W, D, AOptions) then
+        Continue;
+      if not Result then
+        Dist := D
+      else
+        Dist := Min(Dist, D);
+      Result := True;
+    end;
+  finally
+    FreeAndNil(Tok);
   end;
 end;
 
@@ -1435,187 +1418,6 @@ begin
       Integer(AFrom) +
       System.Random(Integer(ATo)-Integer(AFrom)+1)
     );
-end;
-
-{ TTextWords }
-
-procedure TTextWords.Reset;
-begin
-  Position := Low(Text);
-end;
-
-function TTextWords.Count: Integer;
-var
-  OldPosition, Start, Len: Integer;
-begin
-  OldPosition := Position;
-  Reset;
-  Result := 0;
-  while FindNext(Start, Len) do
-    Inc(Result);
-  Position := OldPosition;
-end;
-
-function TTextWords.FindNext(var AStart, ALen: integer): Boolean;
-var
-  i, Finish: integer;
-begin
-  AStart := -1;
-  for i := Position to Length(Text) do
-    if IsAlphaChar(Text[i]) then
-    begin
-      AStart := i;
-      Break;
-    end;
-  Result := AStart>=Low(Text);
-  if not Result then
-  begin
-    ALen := 0;
-    Position := High(Text)+1;
-    Exit;
-  end;
-  Finish := High(Text);
-  for i := AStart+1 to High(Text) do
-    if not IsAlphaChar(Text[i]) then
-    begin
-      Finish := i-1;
-      Break;
-    end;
-  Position := Finish+1;
-  ALen := Finish-AStart+1;
-end;
-
-function TTextWords.FindNext(var AWord: String): Boolean;
-var
-  Start, Len: integer;
-begin
-  Result := FindNext(Start, Len);
-  if Result then
-    AWord := Copy(Text, Start, Len)
-  else
-    AWord := '';
-end;
-
-function TTextWords.FindNext: String;
-begin
-  FindNext(Result);
-end;
-
-constructor TTextWords.Create(const AText: string; AIsAlphaPredicate: TIsAlphaPredicate);
-begin
-  Text := AText;
-  if Assigned(AIsAlphaPredicate) then
-    IsAlphaChar := AIsAlphaPredicate
-  else
-    IsAlphaChar := IsLetterOrDigit;
-  Reset;
-end;
-
-function TTextWords.Find(const ASubSequence: array of string;
-  const ASequence: TArray<TWordPosRec>): integer;
-var
-  i,j: Integer;
-  b: Boolean;
-begin
-  for i := 0 to High(ASequence)-Length(ASubSequence)+1 do
-  begin
-    b := True;
-    for j := 0 to High(ASubSequence) do
-      if not AnsiSameText(GetSubStr(ASequence[i+j]), ASubSequence[j]) then
-      begin
-        b := False;
-        break;
-      end;
-    if b then
-    begin
-      result := i;
-      Exit;
-    end;
-  end;
-  result := -1;
-end;
-
-procedure TTextWords.Get(ADst: TStrings);
-var
-  w: string;
-begin
-  Reset;
-  while FindNext(w) do
-    ADst.Add(w);
-end;
-
-procedure TTextWords.Get(var ADst: TArray<String>);
-var
-  i: Integer;
-begin
-  SetLength(ADst, Count);
-  Reset;
-  for i := 0 to High(ADst) do
-    FindNext(ADst[i]);
-end;
-
-procedure TTextWords.Get(var ADst: TArray<TWordPosRec>);
-var
-  i: Integer;
-begin
-  SetLength(ADst, Count);
-  Reset;
-  for i := 0 to High(ADst) do
-    FindNext(ADst[i].Start, ADst[i].Len);
-end;
-
-class function TTextWords.IsNonSpace(const C: Char): Boolean;
-begin
-  result := C>' ';
-end;
-
-class function TTextWords.IsPartOfNumber(const C: Char): Boolean;
-begin
-  result := C.IsDigit or (C=FormatSettings.DecimalSeparator);
-end;
-
-class function TTextWords.IsLetter(const C: Char): Boolean;
-begin
-  Result := C.IsLetter;
-end;
-
-class function TTextWords.IsLetterOrDigit(const C: Char): Boolean;
-begin
-  Result := C.IsLetter or C.IsDigit;
-end;
-
-class function TTextWords.IsDigit(const C: Char): Boolean;
-begin
-  Result := C.IsDigit;
-end;
-
-function TTextWords.GetSubStr(const APos: TWordPosRec): String;
-begin
-  Result := Copy(Text, APos.Start, APos.Len);
-end;
-
-class procedure TTextWords.Get(const AText: string; ADst: TStrings; AIsAlphaPredicate: TIsAlphaPredicate);
-var
-  w: TTextWords;
-begin
-  w := TTextWords.Create(AText, AIsAlphaPredicate);
-  w.Get(ADst);
-end;
-
-class procedure TTextWords.Get(const AText: string; var ADst: TArray<String>; AIsAlphaPredicate: TIsAlphaPredicate);
-var
-  w: TTextWords;
-begin
-  w := TTextWords.Create(AText, AIsAlphaPredicate);
-  w.Get(ADst);
-end;
-
-class procedure TTextWords.Get(const AText: string; var ADst: TArray<TWordPosRec>; AIsAlphaPredicate: TIsAlphaPredicate);
-var
-  w: TTextWords;
-begin
-  w := TTextWords.Create(AText, AIsAlphaPredicate);
-  w.Get(ADst);
 end;
 
 { TTokenPos }

@@ -589,6 +589,10 @@ type
   { Class for map. Based on TDictionary and extends it with some features. }
   TMap<TKey,TValue> = record
   public
+    { Delphi 10.1 Seattle has issues with code generation for overloaded
+      operators if they are inlined. The issue reported here:
+        https://quality.embarcadero.com/browse/RSP-15196
+      For now we have to avoid of using "inline" methods here. }
     type
       TPairEnumerator  = TMapClass<TKey,TValue>.TPairEnumerator;
       TKeyEnumerator   = TMapClass<TKey,TValue>.TKeyEnumerator;
@@ -613,10 +617,10 @@ type
 
     function GetKeys: TKeyCollection;
     function GetValues: TValueCollection;
-    function GetItem(const Key: TKey): TValue; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetItem(const Key: TKey; const Value: TValue); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetItem(const Key: TKey): TValue;
+    procedure SetItem(const Key: TKey; const Value: TValue);
+    function GetCount: integer;
+    function GetEmpty: Boolean;
     function GetAsString: string;
 
   public
@@ -632,31 +636,31 @@ type
 
     function GetEnumerator: TPairEnumerator;
 
-    procedure Add(const Key: TKey; Value: TValue); overload;
-    procedure Add(const Pair: TPair<TKey, TValue>); overload;
+    procedure Add(const Key: TKey; Value: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const Pair: TPair<TKey, TValue>); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Add(const V: TEnumerable<TPair<TKey, TValue>>); overload;
     procedure Add(V: TMap<TKey,TValue>); overload;
     procedure Add(const V: array of TPair<TKey, TValue>); overload;
 
-    procedure AddOrSetValue(const Key: TKey; Value: TValue); overload;
-    procedure AddOrSetValue(const Pair: TPair<TKey, TValue>); overload;
+    procedure AddOrSetValue(const Key: TKey; Value: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure AddOrSetValue(const Pair: TPair<TKey, TValue>); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure AddOrSetValue(const V: TEnumerable<TPair<TKey, TValue>>); overload;
     procedure AddOrSetValue(V: TMap<TKey,TValue>); overload;
     procedure AddOrSetValue(const V: array of TPair<TKey, TValue>); overload;
 
-    procedure Remove(const V: TKey); overload;
+    procedure Remove(const V: TKey); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Remove(const V: TEnumerable<TKey>); overload;
     procedure Remove(const V: array of TKey); overload;
 
-    function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
-    function ExtractPair(const Key: TKey): TPair<TKey,TValue>;
-    procedure Clear;
-    procedure TrimExcess;
-    function ContainsKey(const Key: TKey): Boolean;
+    function TryGetValue(const Key: TKey; out Value: TValue): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function ExtractPair(const Key: TKey): TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function ContainsKey(const Key: TKey): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
     function ToArray: TArray<TPair<TKey,TValue>>;
 
     class operator Equal(A,B: TMap<TKey,TValue>): Boolean;
-    class operator NotEqual(A,B: TMap<TKey,TValue>): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator NotEqual(A,B: TMap<TKey,TValue>): Boolean;
 
     property Items[const Key: TKey]: TValue read GetItem write SetItem; default;
     property Count: Integer read GetCount;
@@ -1459,7 +1463,7 @@ type
     The tree is kept as array of nodes and thus there is no Delete/Remove functionality.
     The only way to delete a node (with subnodes) is call Rollback.
     As soon as Node is commited (Append + Commit or Add) the only way to delete it is Clear for whole tree. }
-  TTreeArray<T> = record
+  TTreeArrayClass<T> = class
   public
     type
       TNode = record
@@ -1469,17 +1473,59 @@ type
       end;
       PNode = ^TNode;
 
+      { Enumerates all nodes (by index) }
       TEnumerator = record
       private
-        FItems: TArray<TNode>;
-        FCount: integer;
-        FIndex: integer;
+        Nodes: TVector<TNode>;
+        Index: integer;
+
+        function GetCurrent: integer;
+      public
+        constructor Create(const ANodes: TVector<TNode>);
+        function MoveNext: Boolean;
+        property Current: integer read GetCurrent;
+      end;
+
+      { Same as TEnumerator but returns value instead of index }
+      TValuesEnumerator = record
+      private
+        Enum: TEnumerator;
 
         function GetCurrent: T;
       public
-        constructor Create(const Tree: TTreeArray<T>);
+        constructor Create(const ANodes: TVector<TNode>);
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
+      end;
+
+      { Enumerates all nodes (by index) starting from specified one }
+      TSubtreeEnumerator = record
+      private
+        Nodes: TVector<TNode>;
+        Stack: TVector<integer>;
+        CurrentNode: integer;
+
+      public
+        constructor Create(const ANodes: TVector<TNode>; ARoot: integer);
+        function MoveNext: Boolean;
+        property Current: integer read CurrentNode;
+      end;
+
+      { Enumerates all values }
+      TValuesCollection = record
+        Nodes: TVector<TNode>;
+
+        constructor Create(const ANodes: TVector<TNode>);
+        function GetEnumerator: TValuesEnumerator;
+      end;
+
+      { Enumerable subtree starting from specified node }
+      TSubtreeCollection = record
+        Nodes: TVector<TNode>;
+        Root: integer;
+
+        constructor Create(const ANodes: TVector<TNode>; ARoot: integer);
+        function GetEnumerator: TSubtreeEnumerator;
       end;
 
     var
@@ -1495,6 +1541,9 @@ type
     procedure SetNode(n: integer; const Value: TNode);
     procedure SetValue(n: integer; const Value: T);
     function GetValuesAsArray: TArray<T>;
+    function GetTotalSizeBytes: int64;
+    function GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
+    function GetValuesCollection: TValuesCollection;
 
   public
     { Empty Nodes and other structures. }
@@ -1509,17 +1558,21 @@ type
             Tree.Add('child 2.3');
           Tree.Commit;
           Tree.Add('child 3');
-        Tree.Commit; }
+        Tree.Commit;
+      No need to keep/handle pointers to nodes, no need to navigate directly
+      parent/child node etc. }
 
     { add new node (as child to CurParent) and make it CurParent }
-    function Append(const Value: T): integer;
+    function Append(const Value: T): integer; overload;
+    function Append: integer; overload;
     { Add = Append + Commit (add single child without own sibling/child nodes) }
-    function Add(const Value: T): integer;
+    function Add(const Value: T): integer; overload;
+    function Add: integer; overload;
     { all subchilds are added, assign parent node as CurParent }
-    procedure Commit; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Commit(ReverseOrderOfChildNodes: Boolean); overload;
+    function Commit: integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Commit(ReverseOrderOfChildNodes: Boolean): integer; overload;
     { remove CurParent with all childs and assign parent node as CurParent }
-    procedure Rollback;
+    function Rollback: integer;
 
     { Random add functions. Example:
         Tree.Clear;
@@ -1536,15 +1589,20 @@ type
     { Add sibling node. APrevSibling must be provided. }
     function AddSibling(const Value: T; APrevSibling: integer): integer;
 
-    { Example: for S in Tree do (*...*) ; }
-    { Enumerator of values (top-down,left-right). }
+    { Example: for I in Tree do (*...*) ; }
+    { Enumerator of all nodes (top-down,left-right). }
     function GetEnumerator: TEnumerator;
 
     property Empty: boolean read GetEmpty;
     property Count: integer read GetCount;
-    property Items[n: integer]: TNode read GetNode write SetNode;
     property Values[n: integer]: T read GetValue write SetValue; default;
     property AsArray: TArray<T> read GetValuesAsArray;
+    property TotalSizeBytes: int64 read GetTotalSizeBytes;
+
+    { Enumerator of all nodes from subtree (top-down,left-right). }
+    property Subtree[StaringNode: integer]: TSubtreeCollection read GetSubtreeCollection;
+
+    property ValuesCollection: TValuesCollection read GetValuesCollection;
   end;
 
 implementation
@@ -4714,6 +4772,7 @@ procedure TVector<T>.Delete(ItemIndex: integer);
 var
   I: Integer;
 begin
+  Assert((ItemIndex>=0) and (ItemIndex<FCount));
   for I := ItemIndex to Count-2 do
     Items[I] := Items[I+1];
   Dec(FCount);
@@ -4806,12 +4865,14 @@ end;
 
 procedure TVector<T>.DeleteLast;
 begin
+  Assert(FCount>=0);
   Dec(FCount);
   Items[FCount] := Default(T);
 end;
 
 function TVector<T>.ExtractLast: T;
 begin
+  Assert(FCount>=0);
   Dec(FCount);
   result := Items[FCount];
   Items[FCount] := Default(T);
@@ -4819,10 +4880,10 @@ end;
 
 procedure TVector<T>.Grow;
 begin
-  if Capacity<8 then
+  if Capacity < 4 then
     Capacity := Capacity+1
   else
-  if Capacity<64 then
+  if Capacity < 64 then
     Capacity := 64
   else
     Capacity := Capacity * 2;
@@ -6029,65 +6090,74 @@ begin
     NLast.Prev := NPrev;
 end;
 
-{ TTreeArray<T>.TEnumerator }
+{ TTreeArrayClass<T>.TEnumerator }
 
-constructor TTreeArray<T>.TEnumerator.Create(const Tree: TTreeArray<T>);
+constructor TTreeArrayClass<T>.TEnumerator.Create(const ANodes: TVector<TNode>);
 begin
-  FItems := Tree.Nodes.Items;
-  FCount := Tree.Nodes.Count;
-  FIndex := 0;
+  Nodes := ANodes;
+  Index := 0;
 end;
 
-function TTreeArray<T>.TEnumerator.GetCurrent: T;
+function TTreeArrayClass<T>.TEnumerator.GetCurrent: integer;
 begin
-  result := FItems[FIndex-1].Data;
+  result := Index-1;
 end;
 
-function TTreeArray<T>.TEnumerator.MoveNext: Boolean;
+function TTreeArrayClass<T>.TEnumerator.MoveNext: Boolean;
 begin
-  result := FIndex < FCount;
+  result := Index < Nodes.Count;
   if result then
-    inc(FIndex);
+    inc(Index);
 end;
 
-{ TTreeArray<T> }
+{ TTreeArrayClass<T> }
 
-function TTreeArray<T>.GetCount: integer;
+function TTreeArrayClass<T>.GetCount: integer;
 begin
   result := Nodes.Count;
 end;
 
-function TTreeArray<T>.GetEmpty: boolean;
+function TTreeArrayClass<T>.GetEmpty: boolean;
 begin
   result := Nodes.Empty;
 end;
 
-function TTreeArray<T>.GetEnumerator: TEnumerator;
+function TTreeArrayClass<T>.GetEnumerator: TEnumerator;
 begin
-  result := TEnumerator.Create(Self);
+  result := TEnumerator.Create(Nodes);
 end;
 
-function TTreeArray<T>.GetNode(n: integer): TNode;
+function TTreeArrayClass<T>.GetNode(n: integer): TNode;
 begin
   result := Nodes[n];
 end;
 
-function TTreeArray<T>.GetValue(n: integer): T;
+function TTreeArrayClass<T>.GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
+begin
+  result := TSubtreeCollection.Create(Nodes, StaringNode);
+end;
+
+function TTreeArrayClass<T>.GetTotalSizeBytes: int64;
+begin
+  result := Nodes.TotalSizeBytes + Stack.TotalSizeBytes + SizeOf(CurParent);
+end;
+
+function TTreeArrayClass<T>.GetValue(n: integer): T;
 begin
   result := Nodes.Items[n].Data;
 end;
 
-procedure TTreeArray<T>.SetNode(n: integer; const Value: TNode);
+procedure TTreeArrayClass<T>.SetNode(n: integer; const Value: TNode);
 begin
   Nodes[n] := Value;
 end;
 
-procedure TTreeArray<T>.SetValue(n: integer; const Value: T);
+procedure TTreeArrayClass<T>.SetValue(n: integer; const Value: T);
 begin
   Nodes.Items[n].Data := Value;
 end;
 
-function TTreeArray<T>.GetValuesAsArray: TArray<T>;
+function TTreeArrayClass<T>.GetValuesAsArray: TArray<T>;
 var
   I: Integer;
 begin
@@ -6096,14 +6166,19 @@ begin
     result[I] := Nodes.Items[I].Data;
 end;
 
-procedure TTreeArray<T>.Clear;
+function TTreeArrayClass<T>.GetValuesCollection: TValuesCollection;
+begin
+  result := TValuesCollection.Create(Nodes);
+end;
+
+procedure TTreeArrayClass<T>.Clear;
 begin
   Nodes.Clear;
   Stack.Clear;
   CurParent := -1;
 end;
 
-function TTreeArray<T>.Append(const Value: T): integer;
+function TTreeArrayClass<T>.Append(const Value: T): integer;
 var
   Node: PNode;
 begin
@@ -6125,12 +6200,17 @@ begin
       Node.NextSibling := FirstChild;
       FirstChild := result;
     end;
-  Stack.Add(result); { to be able rollback, we save CurParent Nodes.Count }
+  Stack.Add(result); { to be able rollback, we save Nodes.Count + CurParent  }
   Stack.Add(CurParent);
   CurParent := result;
 end;
 
-function TTreeArray<T>.Add(const Value: T): integer;
+function TTreeArrayClass<T>.Append: integer;
+begin
+  result := Append(Default(T));
+end;
+
+function TTreeArrayClass<T>.Add(const Value: T): integer;
 var
   Node: PNode;
 begin
@@ -6160,13 +6240,18 @@ begin
     end;
 end;
 
-procedure TTreeArray<T>.Commit(ReverseOrderOfChildNodes: Boolean);
+function TTreeArrayClass<T>.Add: integer;
+begin
+  result := Add(Default(T));
+end;
+
+function TTreeArrayClass<T>.Commit(ReverseOrderOfChildNodes: Boolean): integer;
 var
   FirstChild, C,I,J: Integer;
 begin
   C := CurParent;
   CurParent := Stack.ExtractLast; { stored CurParrent }
-  Stack.DeleteLast; { stored Count (used by rollback) }
+  Result := Stack.ExtractLast; { stored Count (used by rollback) = index of item to be commited }
   { we added items in reverse order, we restore normal order here }
   if ReverseOrderOfChildNodes then
     Exit;
@@ -6193,12 +6278,12 @@ begin
   Nodes.Items[C].FirstChild := FirstChild;
 end;
 
-procedure TTreeArray<T>.Commit;
+function TTreeArrayClass<T>.Commit: integer;
 begin
-  Commit(False);
+  Result := Commit(False);
 end;
 
-procedure TTreeArray<T>.Rollback;
+function TTreeArrayClass<T>.Rollback: integer;
 begin
   CurParent := Stack.ExtractLast;
 
@@ -6209,10 +6294,11 @@ begin
       FirstChild := Nodes.Items[FirstChild].NextSibling;
 
   { now we can delete the node with all subnodes }
-  Nodes.Count := Stack.ExtractLast;
+  Result := Stack.ExtractLast;
+  Nodes.Count := Result;
 end;
 
-function TTreeArray<T>.AddChild(const Value: T; AParent: integer): integer;
+function TTreeArrayClass<T>.AddChild(const Value: T; AParent: integer): integer;
 var
   Node: PNode;
 begin
@@ -6230,7 +6316,7 @@ begin
   end;
 end;
 
-function TTreeArray<T>.AddSibling(const Value: T; APrevSibling: integer): integer;
+function TTreeArrayClass<T>.AddSibling(const Value: T; APrevSibling: integer): integer;
 var
   Node: PNode;
 begin
@@ -6241,6 +6327,76 @@ begin
   Node.Data := Value;
   Node.FirstChild := -1;
   Node.NextSibling := -1;
+end;
+
+{ TTreeArrayClass<T>.TSubtreeEnumerator }
+
+constructor TTreeArrayClass<T>.TSubtreeEnumerator.Create(const ANodes: TVector<TNode>; ARoot: integer);
+begin
+  Nodes := ANodes;
+  Stack.Clear;
+  Stack.Add(ARoot);
+  CurrentNode := -1;
+end;
+
+function TTreeArrayClass<T>.TSubtreeEnumerator.MoveNext: Boolean;
+var
+  I,J: integer;
+begin
+  Result := not Stack.Empty;
+  if not Result then
+    Exit;
+  CurrentNode := Stack.ExtractLast;
+  J := Stack.Count;
+  I := Nodes[CurrentNode].FirstChild;
+  while I >= 0 do
+  begin
+    Stack.Add(I);
+    I := Nodes[I].NextSibling;
+  end;
+  TArrayUtils.Inverse<integer>(Stack.Items, J, Stack.Count-J);
+end;
+
+{ TTreeArrayClass<T>.TSubtreeCollection }
+
+constructor TTreeArrayClass<T>.TSubtreeCollection.Create(const ANodes: TVector<TNode>; ARoot: integer);
+begin
+  Nodes := ANodes;
+  Root := ARoot;
+end;
+
+function TTreeArrayClass<T>.TSubtreeCollection.GetEnumerator: TSubtreeEnumerator;
+begin
+  result := TSubtreeEnumerator.Create(Nodes, Root);
+end;
+
+{ TTreeArrayClass<T>.TValuesEnumerator }
+
+constructor TTreeArrayClass<T>.TValuesEnumerator.Create(const ANodes: TVector<TNode>);
+begin
+  Enum := TEnumerator.Create(ANodes);
+end;
+
+function TTreeArrayClass<T>.TValuesEnumerator.GetCurrent: T;
+begin
+  result := Enum.Nodes.Items[Enum.Current].Data;
+end;
+
+function TTreeArrayClass<T>.TValuesEnumerator.MoveNext: Boolean;
+begin
+  result := Enum.MoveNext;
+end;
+
+{ TTreeArrayClass<T>.TValuesCollection }
+
+constructor TTreeArrayClass<T>.TValuesCollection.Create(const ANodes: TVector<TNode>);
+begin
+  Nodes := ANodes;
+end;
+
+function TTreeArrayClass<T>.TValuesCollection.GetEnumerator: TValuesEnumerator;
+begin
+  result := TValuesEnumerator.Create(Nodes);
 end;
 
 end.

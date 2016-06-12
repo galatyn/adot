@@ -8,7 +8,9 @@ uses
   adot.Tools,
   adot.Tools.Rtti,
   adot.Strings,
+  adot.Log,
   System.Generics.Collections,
+  System.Character,
   System.SysUtils,
   System.StrUtils;
 
@@ -22,97 +24,90 @@ type
   TParseTreeItem = record
     Rule: TGrammarClass;
     Position: TTokenPos;
-    FirstChild: integer;
-    NextSibling: integer;
 
     procedure SetUp(ARule: TGrammarClass; AStart,ALen: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetUp(ARule: TGrammarClass; AStart,ALen,AFirstChild: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetUp(const ASrc: TParseTreeItem); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    constructor Create(ARule: TGrammarClass; AStart,ALen: integer);
   end;
 
   TEnumTreeProc = reference to procedure(TreeNode: integer; var Cancel: boolean);
-  TFilterTreeProc = reference to procedure(var Tree: TVector<TParseTreeItem>; Node: integer; var Accept: boolean);
+  TFilterTreeProc = reference to procedure(Tree: TTreeArrayClass<TParseTreeItem>; Node: integer; var Accept: boolean);
 
-  TParseTree = record
+  TParseTree = class
   public
     type
-      { recursively enumerates ParseTree starting from specified node }
-      TEnumerator = record
-      private
-        Tree: TVector<TParseTreeItem>;
-        Stack: TVector<integer>;
-        CurrentNode: integer;
+      { Enumerates subtree starting from specified node }
+      TSubtreeEnumerator = TTreeArrayClass<TParseTreeItem>.TSubtreeEnumerator;
+      TSubtreeCollection = TTreeArrayClass<TParseTreeItem>.TSubtreeCollection;
 
+      { Snumerates ParseTree starting from specified node, returns only matches of specified rule }
+      TRuleMatchesEnumerator = record
+      private
+        Enum: TSubtreeEnumerator;
+        Nodes: TTreeArrayClass<TParseTreeItem>;
+        RuleId: TruleId;
+
+        function CurrentNode: integer;
       public
-        constructor Create(const ATree: TVector<TParseTreeItem>; ARoot: integer);
+        constructor Create(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
         function MoveNext: Boolean;
         property Current: integer read CurrentNode;
       end;
 
-      { recursively enumerates ParseTree starting from specified node, returns only matches of specified rule }
-      TFilteredEnumerator = record
-      private
-        Tree: TVector<TParseTreeItem>;
-        Stack: TVector<integer>;
-        CurrentNode: integer;
-        RuleId: TruleId;
-
-      public
-        constructor Create(const ATree: TVector<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
-        function MoveNext: Boolean;
-        property Current: integer read CurrentNode;
-      end;
-
-      { subtree starting from specified node, mostly used for enumeration }
-      TCollection = record
-        Tree: TVector<TParseTreeItem>;
-        Root: integer;
-
-        constructor Create(const ATree: TVector<TParseTreeItem>; ARoot: integer);
-        function GetEnumerator: TEnumerator; {$IFNDEF DEBUG}inline;{$ENDIF}
-      end;
-
-      { subtree starting from specified node, returns only items matched by specified rule }
-      TFilteredCollection = record
-        Tree: TVector<TParseTreeItem>;
+      { collection for TRuleMatchesEnumerator }
+      TRuleMatchesCollection = record
+        Tree: TTreeArrayClass<TParseTreeItem>;
         Root: integer;
         RuleId: TruleId;
 
-        constructor Create(const ATree: TVector<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
-        function GetEnumerator: TFilteredEnumerator; {$IFNDEF DEBUG}inline;{$ENDIF}
+        constructor Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+        function GetEnumerator: TRuleMatchesEnumerator; {$IFNDEF DEBUG}inline;{$ENDIF}
       end;
 
   private
     function GetItem(n: integer): TParseTreeItem; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure SetItem(n: integer; const Item: TParseTreeItem); {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetChilds(ARoot: integer): TCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TFilteredCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetChilds(ARoot: integer): TSubtreeCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TRuleMatchesCollection;
     function GetFirstChild(Node: integer): integer;
     function GetNextSibling(Node: integer): integer;
     function GetTotalSizeBytes: int64;
   public
-    Tree: TVector<TParseTreeItem>;
+    Tree: TTreeArrayClass<TParseTreeItem>;
     Root: integer;
+
+    constructor Create;
+    destructor Destroy; override;
+
+    function Add(ARule: TGrammarClass; AStart, ALen: integer): integer;
+    function Append(ARule: TGrammarClass; AStart, ALen: integer): integer; overload;
+    function Append: integer; overload;
+    function Commit(ARule: TGrammarClass; AStart, ALen: integer): integer; overload;
+    function Commit: integer; overload;
+    procedure Rollback; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     { clear Tree and set Root=-1 }
     procedure Clear;
 
     { support for "for" syntax: for I in Tree do ... }
-    function GetEnumerator: TEnumerator;
+    function GetEnumerator: TSubtreeEnumerator;
 
     { build tree from subset of nodes according to the filter (original tree where filtered nodes are ommited) }
     function GetSubTree(StartNode: integer; FilterProc: TFilterTreeProc): TParseTree;
+
+    procedure LogTextInputParseTree(var InputData: TBuffer);
 
     { shortcuts to Tree.Items / Tree.Count }
     property TreeItems[RootNode: integer]:TParseTreeItem read GetItem write SetItem; default;
     property Count: integer read GetCount;
 
     { enumerable collection of child nodes (including specified Root) }
-    property Matches[Root: integer]: TCollection read GetChilds;
+    property Matches[Root: integer]: TSubtreeCollection read GetChilds;
 
     { enumerable collection of child nodes (including specified Root), only matched of specified rule returned }
-    property RuleMatches[RootNode: integer; const RuleId: TRuleId]:TFilteredCollection read GetRuleMatches;
+    property RuleMatches[RootNode: integer; const RuleId: TRuleId]:TRuleMatchesCollection read GetRuleMatches;
 
     property FirstChild[Node: integer]: integer read GetFirstChild;
     property NextSibling[Node: integer]: integer read GetNextSibling;
@@ -121,11 +116,10 @@ type
 
   { grammar based parser }
   TGrammarParser = class abstract
-  private
-    function GetTotalSizeBytes: int64;
   protected
     function GetDataToken(const P: TTokenPos): string;
     function GetTreeToken(ParseTreeNode: integer): string;
+    function GetTotalSizeBytes: int64;
   public
     Data: TBuffer;          { input data (text or bytes) }
     Grammar: TGrammarClass; { main rule of the grammar (class doesn't own that grammar) }
@@ -139,9 +133,6 @@ type
     function Accepted(const AData: TBuffer): Boolean; overload;
     function Accepted(const AData: string): Boolean; overload;
     procedure LogParseTree; virtual; abstract;
-
-    { Returns subtree of .Tree with rules assigned to TGRammar, skips all rules with IsIntermediate=True }
-    function GetParseTree(var Dst: TVector<TParseTreeItem>): Boolean;
 
     { for any TTokenPos (position and length in bytes) returns corresponding string from Data }
     property DataToken[const P: TTokenPos]: string read GetDataToken;
@@ -282,117 +273,102 @@ implementation
 
 { TParseTreeItem }
 
+constructor TParseTreeItem.Create(ARule: TGrammarClass; AStart, ALen: integer);
+begin
+  Rule := ARule;
+  Position.Start := AStart;
+  Position.Len := ALen;
+end;
+
 procedure TParseTreeItem.SetUp(ARule: TGrammarClass; AStart,ALen: integer);
 begin
   Rule := ARule;
   Position.SetPos(AStart, ALen);
-  FirstChild := -1;
-  NextSibling := -1;
-end;
-
-procedure TParseTreeItem.SetUp(ARule: TGrammarClass; AStart, ALen, AFirstChild: integer);
-begin
-  Rule := ARule;
-  Position.SetPos(AStart, ALen);
-  FirstChild := AFirstChild;
-  NextSibling := -1;
 end;
 
 procedure TParseTreeItem.SetUp(const ASrc: TParseTreeItem);
 begin
-  Rule        := ASrc.Rule;
-  Position    := ASrc.Position;
-  FirstChild  := -1;
-  NextSibling := -1;
+  Rule     := ASrc.Rule;
+  Position := ASrc.Position;
 end;
 
-{ TParseTree.TCollection }
+{ TParseTree.TRuleMatchesCollection }
 
-constructor TParseTree.TCollection.Create(const ATree: TVector<TParseTreeItem>; ARoot: integer);
-begin
-  Tree := ATree;
-  Root := ARoot;
-end;
-
-function TParseTree.TCollection.GetEnumerator: TEnumerator;
-begin
-  result := TEnumerator.Create(Tree, Root);
-end;
-
-{ TParseTree.TFilteredCollection }
-
-constructor TParseTree.TFilteredCollection.Create(const ATree: TVector<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+constructor TParseTree.TRuleMatchesCollection.Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
   Tree := ATree;
   Root := ARoot;
   RuleId := ARuleId;
 end;
 
-function TParseTree.TFilteredCollection.GetEnumerator: TFilteredEnumerator;
+function TParseTree.TRuleMatchesCollection.GetEnumerator: TRuleMatchesEnumerator;
 begin
-  result := TFilteredEnumerator.Create(Tree, Root, RuleId);
+  result := TRuleMatchesEnumerator.Create(Tree, Root, RuleId);
 end;
 
-{ TParseTree.TEnumerator }
+{ TParseTree.TRuleMatchesEnumerator }
 
-constructor TParseTree.TEnumerator.Create(const ATree: TVector<TParseTreeItem>; ARoot: integer);
+constructor TParseTree.TRuleMatchesEnumerator.Create(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
-  Tree := ATree;
-  Stack.Clear;
-  Stack.Add(ARoot);
-  CurrentNode := -1;
-end;
-
-function TParseTree.TEnumerator.MoveNext: Boolean;
-var
-  I,J: integer;
-begin
-  Result := not Stack.Empty;
-  if not Result then
-    Exit;
-  CurrentNode := Stack.ExtractLast;
-  J := Stack.Count;
-  I := Tree.Items[CurrentNode].FirstChild;
-  while I >= 0 do
-  begin
-    Stack.Add(I);
-    I := Tree.Items[I].NextSibling;
-  end;
-  TArrayUtils.Inverse<integer>(Stack.Items, J, Stack.Count-J);
-end;
-
-{ TParseTree.TFilteredEnumerator }
-
-constructor TParseTree.TFilteredEnumerator.Create(const ATree: TVector<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
-begin
-  Tree := ATree;
-  Stack.Clear;
-  Stack.Add(ARoot);
-  CurrentNode := -1;
+  Enum := TSubtreeEnumerator.Create(ANodes.Nodes, ARoot);
+  Nodes := ANodes;
   RuleId := ARuleId;
 end;
 
-function TParseTree.TFilteredEnumerator.MoveNext: Boolean;
-var
-  I,J: integer;
+function TParseTree.TRuleMatchesEnumerator.MoveNext: Boolean;
 begin
   repeat
-    if Stack.Empty then
-      Exit(False);
-    CurrentNode := Stack.ExtractLast;
-    J := Stack.Count;
-    I := Tree.Items[CurrentNode].FirstChild;
-    while I >= 0 do
-    begin
-      Stack.Add(I);
-      I := Tree.Items[I].NextSibling;
-    end;
-    TArrayUtils.Inverse<integer>(Stack.Items, J, Stack.Count-J);
-  until Tree.Items[CurrentNode].Rule.Id=RuleId;
-  Result := true;
+    result := Enum.MoveNext;
+  until not result or (Nodes[Enum.Current].Rule.Id=RuleId);
+end;
+
+function TParseTree.TRuleMatchesEnumerator.CurrentNode: integer;
+begin
+  result := Enum.Current;
 end;
 
 { TParseTree }
+
+function TParseTree.Add(ARule: TGrammarClass; AStart, ALen: integer): integer;
+var
+  Node: TParseTreeItem;
+begin
+  Node.Rule := ARule;
+  Node.Position.Start := AStart;
+  Node.Position.Len := ALen;
+  result := Tree.Add(Node);
+end;
+
+function TParseTree.Append(ARule: TGrammarClass; AStart, ALen: integer): integer;
+var
+  Node: TParseTreeItem;
+begin
+  Node.Rule := ARule;
+  Node.Position.Start := AStart;
+  Node.Position.Len := ALen;
+  result := Tree.Append(Node);
+end;
+
+function TParseTree.Append: integer;
+begin
+  result := Tree.Append;
+end;
+
+function TParseTree.Commit(ARule: TGrammarClass; AStart, ALen: integer): integer;
+begin
+  result := Tree.Commit;
+  Tree.Nodes.Items[result].Data.SetUp(ARule, AStart, ALen);
+end;
+
+function TParseTree.Commit: integer;
+begin
+  result := Tree.Commit(False);
+end;
+
+procedure TParseTree.Rollback;
+begin
+  Tree.Rollback;
+end;
 
 procedure TParseTree.Clear;
 begin
@@ -400,14 +376,26 @@ begin
   Root := -1;
 end;
 
-function TParseTree.GetChilds(ARoot: integer): TCollection;
+constructor TParseTree.Create;
 begin
-  result := TCollection.Create(Tree, ARoot);
+  inherited Create;
+  Tree := TTreeArrayClass<TParseTreeItem>.Create;
 end;
 
-function TParseTree.GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TFilteredCollection;
+destructor TParseTree.Destroy;
 begin
-  result := TFilteredCollection.Create(Tree, RootNode, RuleId);
+  FreeAndNil(Tree);
+  inherited;
+end;
+
+function TParseTree.GetChilds(ARoot: integer): TSubtreeCollection;
+begin
+  result := TSubtreeCollection.Create(Tree.Nodes, ARoot);
+end;
+
+function TParseTree.GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TRuleMatchesCollection;
+begin
+  result := TRuleMatchesCollection.Create(Tree, RootNode, RuleId);
 end;
 
 function TParseTree.GetCount: integer;
@@ -415,24 +403,24 @@ begin
   result := Tree.Count;
 end;
 
-function TParseTree.GetEnumerator: TEnumerator;
+function TParseTree.GetEnumerator: TSubtreeEnumerator;
 begin
-  Result := TEnumerator.Create(Tree, Root);
+  Result := TSubtreeEnumerator.Create(Tree.Nodes, Root);
 end;
 
 function TParseTree.GetItem(n: integer): TParseTreeItem;
 begin
-  result := Tree.Items[n];
+  result := Tree.Nodes[n].Data;
 end;
 
 function TParseTree.GetFirstChild(Node: integer): integer;
 begin
-  result := Tree.Items[Node].FirstChild;
+  result := Tree.Nodes[Node].FirstChild;
 end;
 
 function TParseTree.GetNextSibling(Node: integer): integer;
 begin
-  result := Tree.Items[Node].NextSibling;
+  result := Tree.Nodes[Node].NextSibling;
 end;
 
 function TParseTree.GetSubTree(StartNode: integer; FilterProc: TFilterTreeProc): TParseTree;
@@ -443,7 +431,7 @@ var
   J: integer;
   Accept: Boolean;
 begin
-  Result.Clear;
+  Result := TParseTree.Create;
   Stack.Clear;
   DstLastChild.Clear;
   if Root >= 0 then
@@ -456,29 +444,29 @@ begin
     if Accept then
     begin
       J := Result.Tree.Add;
-      Result.Tree.Items[J].SetUp(Tree.Items[I.A]);
+      Result.Tree.Nodes[J].Data.SetUp(Tree.Nodes[I.A].Data);
       DstLastChild.Add(-1);
       if I.B >= 0 then
       begin
-        if Result.Tree.Items[I.B].FirstChild < 0 then
-          Result.Tree.Items[I.B].FirstChild := J
+        if Result.Tree.Nodes[I.B].FirstChild < 0 then
+          Result.Tree.Nodes.Items[I.B].FirstChild := J
         else
-          Result.Tree.Items[DstLastChild[I.B]].NextSibling := J;
+          Result.Tree.Nodes.Items[DstLastChild[I.B]].NextSibling := J;
         DstLastChild[I.B] := J;
       end;
       I.B := J;
     end;
     J := Stack.Count;
-    I.A := Tree.Items[I.A].FirstChild;
+    I.A := Tree.Nodes[I.A].FirstChild;
     while I.A >= 0 do
     begin
       Stack.Add(I);
-      I.A := Tree.Items[I.A].NextSibling;
+      I.A := Tree.Nodes[I.A].NextSibling;
     end;
     if Stack.Count > J then
       TArrayUtils.Inverse<TCompound<integer,integer>>(Stack.Items, J, Stack.Count-J);
   end;
-  Result.Tree.TrimExcess;
+  Result.Tree.Nodes.TrimExcess;
 end;
 
 function TParseTree.GetTotalSizeBytes: int64;
@@ -486,9 +474,68 @@ begin
   result := Tree.TotalSizeBytes + SizeOf(Root);
 end;
 
+procedure TParseTree.LogTextInputParseTree(var InputData: TBuffer);
+
+  procedure L(const S: string; const Args: array of const; Margin: integer);
+  begin
+    AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
+  end;
+
+  function ShowWS(const S: string): String;
+  const
+    CWhiteSpace = #$2591  { shade char to show trailing spaces };
+    { arrows are not available for most of mono fonts, we use russian char instead }  //#$2B10; { arrow char to show empty string position }
+    CEmptyStrPos = 'Ã';
+  var
+    I: Integer;
+  begin
+    result := S;
+
+    { we replace trailing whitespaces to make them visible }
+    for I := Low(Result) to High(Result) do
+      if Result[I].IsWhiteSpace then Result[I] := CWhiteSpace else Break;
+    for I := High(Result) downto Low(Result) do
+      if Result[I].IsWhiteSpace then Result[I] := CWhiteSpace else Break;
+
+    { we replace empty string to indicate position }
+    if Result='' then
+      Result := CEmptyStrPos;
+  end;
+
+  procedure LogTree(ResIndex, Margin: integer);
+  var
+    R: TParseTreeItem;
+    S,T: string;
+  begin
+    while ResIndex>=0 do
+    begin
+      R := Tree.Nodes.Items[ResIndex].Data;
+
+      Assert(R.Position.Len mod SizeOf(Char)=0);
+      L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
+      InputData.Position := R.Position.Start;
+      InputData.Read(S, R.Position.Len div SizeOf(Char));
+      T := InputData.Text;
+      if T=S then
+        L('       %s', [TStr.GetPrintable(S)], Margin)
+      else
+      begin
+        L('       %s', [StringOfChar(' ', R.Position.Start div 2) + ShowWS(TStr.GetPrintable(S)) ], Margin);
+        L('       %s', [ShowWS(TStr.GetPrintable(T))], Margin);
+      end;
+
+      LogTree(Tree.Nodes.Items[ResIndex].FirstChild, Margin + 2);
+      ResIndex := Tree.Nodes.Items[ResIndex].NextSibling;
+    end;
+  end;
+
+begin
+  LogTree(0, 0);
+end;
+
 procedure TParseTree.SetItem(n: integer; const Item: TParseTreeItem);
 begin
-  Tree.Items[N] := Item;
+  Tree.Nodes.Items[N].Data := Item;
 end;
 
 { TGrammarClass.TCustomGrammarEnumerator }
@@ -737,8 +784,10 @@ end;
 
 constructor TGrammarParser.Create(AMainRule: TGrammarClass);
 begin
+  inherited Create;
   Grammar := AMainRule;
   Grammar.SetupMainRule;
+  ParseTree := TParseTree.Create;
 end;
 
 constructor TGrammarParser.Create(AMainRule: IInterfacedObject<TGrammarClass>);
@@ -750,51 +799,8 @@ destructor TGrammarParser.Destroy;
 begin
   if Grammar<>nil then
     Grammar.Release;
+  FreeAndNil(ParseTree);
   inherited;
-end;
-
-function TGrammarParser.GetParseTree(var Dst: TVector<TParseTreeItem>): Boolean;
-var
-  Stack: TVector<TCompound<integer,integer>>;  { Src, DstParent }
-  DstLastChild: TVector<integer>;              { indices in Dst }
-  I: TCompound<integer,integer>;
-  J: integer;
-begin
-  Dst.Clear;
-  Stack.Clear;
-  DstLastChild.Clear;
-  if ParseTree.Root >= 0 then
-    Stack.Add(TCompound<integer,integer>.Create(ParseTree.Root, -1));
-  while Stack.Count>0 do
-  begin
-    I := Stack.ExtractLast;
-    if ParseTree.Tree.Items[I.A].Rule.IncludeIntoParseTree then
-    begin
-      J := Dst.Add;
-      Dst.Items[J].SetUp(ParseTree.Tree.Items[I.A]);
-      DstLastChild.Add(-1);
-      if I.B >= 0 then
-      begin
-        if Dst.Items[I.B].FirstChild < 0 then
-          Dst.Items[I.B].FirstChild := J
-        else
-          Dst.Items[DstLastChild[I.B]].NextSibling := J;
-        DstLastChild[I.B] := J;
-      end;
-      I.B := J;
-    end;
-    J := Stack.Count;
-    I.A := ParseTree.Tree.Items[I.A].FirstChild;
-    while I.A >= 0 do
-    begin
-      Stack.Add(I);
-      I.A := ParseTree.Tree.Items[I.A].NextSibling;
-    end;
-    if Stack.Count > J then
-      TArrayUtils.Inverse<TCompound<integer,integer>>(Stack.Items, J, Stack.Count-J);
-  end;
-  Dst.TrimExcess;
-  result := Dst.Count >= 0;
 end;
 
 function TGrammarParser.GetTotalSizeBytes: int64;
@@ -804,7 +810,7 @@ end;
 
 function TGrammarParser.GetTreeToken(ParseTreeNode: integer): string;
 begin
-  Result := DataToken[ParseTree.Tree.Items[ParseTreeNode].Position];
+  Result := DataToken[ParseTree.Tree.Nodes[ParseTreeNode].Data.Position];
 end;
 
 function TGrammarParser.GetDataToken(const P: TTokenPos): string;

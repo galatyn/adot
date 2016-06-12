@@ -16,7 +16,9 @@ uses
   adot.Log,
   System.SysUtils,
   System.Classes,
-  System.Character;
+  System.Character,
+  System.Generics.Collections,
+  System.Generics.Defaults;
 
 type
 
@@ -27,16 +29,10 @@ type
       TCallStackItem = record
         Rule: TGrammarClass;
         Step: integer;
-        Start: integer;
         Len: integer;
-        ResIndex: integer;      { position of matching result in tree-like structure organized as array of TMatchingResult)}
-        ResLastChild: integer;
 
-        procedure SetUp(ARule: TGrammarClass); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-        procedure SetUp(ARule: TGrammarClass; AStart: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+        class function Create(ARule: TGrammarClass): TCallStackItem; static; inline;
       end;
-
-    procedure LogTextInputParseTree(const ParseTree: TVector<TParseTreeItem>; ResIndex, Margin: integer);
 
   public
     function Accepted: Boolean; override;
@@ -47,87 +43,24 @@ implementation
 
 { TPegParser.TCallStackItem }
 
-procedure TPegParser.TCallStackItem.SetUp(ARule: TGrammarClass);
+class function TPegParser.TCallStackItem.Create(ARule: TGrammarClass): TCallStackItem;
 begin
-  Rule := ARule;
-  Step := 0;
-end;
-
-procedure TPegParser.TCallStackItem.SetUp(ARule: TGrammarClass; AStart: integer);
-begin
-  Rule  := ARule;
-  Step  := 0;
-  Start := AStart;
+  with result do
+  begin
+    Rule := ARule;
+    Step := 0;
+  end;
 end;
 
 { TPegParser }
 
 procedure TPegParser.LogParseTree;
-var
-  Tree: TVector<TParseTreeItem>;
 begin
   AppLog.Log('');
   AppLog.Log('Input string:');
   AppLog.Log(TStr.GetPrintable(Data.Text));
   AppLog.Log('Parse tree:');
-  GetParseTree(Tree);
-  LogTextInputParseTree(Tree, 0,0);
-  AppLog.Log('Full parse tree:');
-  LogTextInputParseTree(ParseTree.Tree, ParseTree.Root,0);
-end;
-
-procedure TPegParser.LogTextInputParseTree(const ParseTree: TVector<TParseTreeItem>; ResIndex, Margin: integer);
-
-  procedure L(const S: string; const Args: array of const; Margin: integer);
-  begin
-    AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
-  end;
-
-  function ShowWS(const S: string): String;
-  const
-    CWhiteSpace = #$2591  { shade char to show trailing spaces };
-    { arrows are not available for most of mono fonts, we use russian char instead }  //#$2B10; { arrow char to show empty string position }
-    CEmptyStrPos = 'Ã';
-  var
-    I: Integer;
-  begin
-    result := S;
-
-    { we replace trailing whitespaces to make them visible }
-    for I := Low(Result) to High(Result) do
-      if Result[I].IsWhiteSpace then Result[I] := CWhiteSpace else Break;
-    for I := High(Result) downto Low(Result) do
-      if Result[I].IsWhiteSpace then Result[I] := CWhiteSpace else Break;
-
-    { we replace empty string to indicate position }
-    if Result='' then
-      Result := CEmptyStrPos;
-  end;
-
-var
-  R: TParseTreeItem;
-  S,T: string;
-begin
-  while ResIndex>=0 do
-  begin
-    R := ParseTree.Items[ResIndex];
-
-    Assert(R.Position.Len mod SizeOf(Char)=0);
-    L('%s Pos: %d Len: %d)', [R.Rule.Info, R.Position.Start, R.Position.Len], Margin);
-    Data.Position := R.Position.Start;
-    Data.Read(S, R.Position.Len div SizeOf(Char));
-    T := Data.Text;
-    if T=S then
-      L('       %s', [TStr.GetPrintable(S)], Margin)
-    else
-    begin
-      L('       %s', [StringOfChar(' ', R.Position.Start div 2) + ShowWS(TStr.GetPrintable(S)) ], Margin);
-      L('       %s', [ShowWS(TStr.GetPrintable(T))], Margin);
-    end;
-
-    LogTextInputParseTree(ParseTree, R.FirstChild, Margin + 2);
-    ResIndex := ParseTree.Items[ResIndex].NextSibling;
-  end;
+  ParseTree.LogTextInputParseTree(Data);
 end;
 
 function TPegParser.Accepted: Boolean;
@@ -138,11 +71,9 @@ var
 
   { result of last operation on stack:
     Accept   - input accepted
-    Len      - length of accepted block if Accept=True, undefined if Accept=False
-    ResIndex - index of parse tree element }
+    Len      - length of accepted block (undefined if Accept=False) }
   Len: integer;
   Accept: boolean;
-  ResIndex: integer;
 
   { pointer to current/new item on the stack (invalid after any modification of the stack) }
   Item: PCallStackItem;
@@ -151,8 +82,7 @@ begin
   ParseTree.Clear;
   Accept := False;
   Len := 0;
-  ResIndex := -1;
-  Stack.Items[Stack.Add].SetUp(Grammar);
+  Stack.Add(TCallStackItem.Create(Grammar));
   repeat
     Item := @Stack.Items[Stack.Count-1];
     case Item.Rule.GrammarType of
@@ -161,17 +91,14 @@ begin
         raise Exception.Create('rule is not initialized');
 
       gtLink:
-        Item.SetUp(TGrammarLink(Item.Rule).Op.Data);
+        Item.Rule := TGrammarLink(Item.Rule).Op.Data;
 
       gtString:
         begin
           Len    := TGrammarString(Item.Rule).GetAcceptedBlock(Data);
           Accept := Len >= 0;
-          if Accept then
-          begin
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
-          end;
+          if Accept and Item.Rule.IncludeIntoParseTree then
+            ParseTree.Add(Item.Rule, Data.Position, Len);
           Stack.DeleteLast;
         end;
 
@@ -179,11 +106,8 @@ begin
         begin
           Len    := TGrammarChar(Item.Rule).GetAcceptedBlock(Data);
           Accept := Len >= 0;
-          if Accept then
-          begin
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
-          end;
+          if Accept and Item.Rule.IncludeIntoParseTree then
+            ParseTree.Add(Item.Rule, Data.Position, Len);
           Stack.DeleteLast;
         end;
 
@@ -191,11 +115,8 @@ begin
         begin
           Len    := TGrammarCharClass(Item.Rule).GetAcceptedBlock(Data);
           Accept := Len >= 0;
-          if Accept then
-          begin
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
-          end;
+          if Accept and Item.Rule.IncludeIntoParseTree then
+            ParseTree.Add(Item.Rule, Data.Position, Len);
           Stack.DeleteLast;
         end;
 
@@ -203,11 +124,8 @@ begin
         begin
           Len    := TGrammarCharSetClass(Item.Rule).GetAcceptedBlock(Data);
           Accept := Len >= 0;
-          if Accept then
-          begin
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
-          end;
+          if Accept and Item.Rule.IncludeIntoParseTree then
+            ParseTree.Add(Item.Rule, Data.Position, Len);
           Stack.DeleteLast;
         end;
 
@@ -215,38 +133,42 @@ begin
         begin
           Len    := TGrammarBytesClass(Item.Rule).GetAcceptedBlock(Data);
           Accept := Len >= 0;
-          if Accept then
-          begin
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position, Len);
-          end;
+          if Accept and Item.Rule.IncludeIntoParseTree then
+            ParseTree.Add(Item.Rule, Data.Position, Len);
           Stack.DeleteLast;
         end;
 
       gtSequence:
         case Item.Step of
           0: begin
+               if Item.Rule.IncludeIntoParseTree then
+                 ParseTree.Append;
                Inc(Item.Step);
-               Stack.Items[Stack.Add].SetUp(TGrammarSequence(Item.Rule).Op1.Data);
+               Stack.Add(TCallStackItem.Create(TGrammarSequence(Item.Rule).Op1.Data));
              end;
           1: if not Accept then
-               Stack.DeleteLast
+             begin
+               if Item.Rule.IncludeIntoParseTree then
+                 ParseTree.Rollback;
+               Stack.DeleteLast;
+             end
              else begin
                Inc(Item.Step);
                Item.Len := Len;
                Data.Position := Data.Position + Len;
-               Item.ResIndex := ResIndex;
-               Stack.Items[Stack.Add].SetUp(TGrammarSequence(Item.Rule).Op2.Data);
+               Stack.Add(TCallStackItem.Create(TGrammarSequence(Item.Rule).Op2.Data));
              end;
           2: begin
                Data.Position := Data.Position - Item.Len;
                if Accept then
                begin
                  Inc(Len, Item.Len);
-                 ParseTree.Tree.Items[ParseTree.Tree.Add].SetUp(Item.Rule, Data.Position, Len, Item.ResIndex);
-                 ParseTree.Tree.Items[Item.ResIndex].NextSibling := ResIndex;
-                 ResIndex := ParseTree.Tree.Count-1;
-               end;
+                 if Item.Rule.IncludeIntoParseTree then
+                   ParseTree.Commit(Item.Rule, Data.Position, Len);
+               end
+               else
+                 if Item.Rule.IncludeIntoParseTree then
+                   ParseTree.Rollback;
                Stack.DeleteLast;
              end;
         end;
@@ -254,23 +176,25 @@ begin
       gtSelection:
         case Item.Step of
           0: begin
+               if Item.Rule.IncludeIntoParseTree then
+                 ParseTree.Append;
                Inc(Item.Step);
-               Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op1.Data);
+               Stack.Add(TCallStackItem.Create(TGrammarSelection(Item.Rule).Op1.Data));
              end;
           1: if Accept then begin
-               ParseTree.Tree.Items[ParseTree.Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
-               ResIndex := ParseTree.Tree.Count-1;
+               if Item.Rule.IncludeIntoParseTree then
+                 ParseTree.Commit(Item.Rule, Data.Position, Len);
                Stack.DeleteLast;
              end else begin
                Inc(Item.Step);
-               Stack.Items[Stack.Add].SetUp(TGrammarSelection(Item.Rule).Op2.Data);
+               Stack.Add(TCallStackItem.Create(TGrammarSelection(Item.Rule).Op2.Data));
              end;
           2: begin
-               if Accept then
-               begin
-                 ParseTree.Tree.Items[ParseTree.Tree.Add].SetUp(Item.Rule, Data.Position, Len, ResIndex);
-                 ResIndex := ParseTree.Tree.Count-1;
-               end;
+               if Item.Rule.IncludeIntoParseTree then
+                 if Accept then
+                   ParseTree.Commit(Item.Rule, Data.Position, Len)
+                 else
+                   ParseTree.Rollback;
                Stack.DeleteLast;
              end;
         end;
@@ -282,23 +206,17 @@ begin
             Stack.DeleteLast;
           end else begin
             Inc(Item.Step);
-            Item.Start := Data.Position;
             Item.Len := 0;
-            Item.ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[Item.ResIndex].SetUp(Item.Rule, Data.Position, 0);
-            Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
+            if Item.Rule.IncludeIntoParseTree then
+              ParseTree.Append;
+            Stack.Add(TCallStackItem.Create(TGrammarGreedyRepeater(Item.Rule).Op.Data));
           end
         else
         if Accept and (Item.Step < TGrammarGreedyRepeater(Item.Rule).MaxCount) then begin
           Inc(Item.Step);
           Inc(Item.Len, Len);
-          if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
-            ParseTree.Tree.Items[Item.ResIndex].FirstChild := ResIndex
-          else
-            ParseTree.Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
-          Item.ResLastChild := ResIndex;
           Data.Position := Data.Position + Len;
-          Stack.Items[Stack.Add].SetUp(TGrammarGreedyRepeater(Item.Rule).Op.Data);
+          Stack.Add(TCallStackItem.Create(TGrammarGreedyRepeater(Item.Rule).Op.Data));
         end
         else begin
           { add last iteration to the result (if accepted) }
@@ -306,23 +224,18 @@ begin
           begin
             Inc(Item.Step);
             Inc(Item.Len, Len);
-            if Item.Step=2 { we just incremented, 2 means that first accepted iteration } then
-              ParseTree.Tree.Items[Item.ResIndex].FirstChild := ResIndex
-            else
-              ParseTree.Tree.Items[Item.ResLastChild].NextSibling := ResIndex;
+            Data.Position := Data.Position + Len;
           end;
           { ">" because Step=AcceptedCount+1. No need to check MaxCount here. }
           Accept := (Item.Step > TGrammarGreedyRepeater(Item.Rule).MinCount);
           { assign or reset result }
-          if not Accept then
-            ParseTree.Tree.Count := Item.ResIndex
-          else
-          begin
-            ResIndex := Item.ResIndex;
-            Len := Item.Len;
-            ParseTree.Tree.Items[ResIndex].Position.Len := Len;
-          end;
-          Data.Position := Item.Start;
+          Len := Item.Len;
+          if Item.Rule.IncludeIntoParseTree then
+            if Accept then
+              ParseTree.Commit(Item.Rule, Data.Position - Len, Len)
+            else
+              ParseTree.Rollback;
+          Data.Position := Data.Position - Len;
           Stack.DeleteLast;
         end;
 
@@ -330,7 +243,7 @@ begin
         if Item.Step=0 then
         begin
           Inc(Item.Step);
-          Stack.Items[Stack.Add].SetUp(TGrammarNot(Item.Rule).Op.Data);
+          Stack.Add(TCallStackItem.Create(TGrammarNot(Item.Rule).Op.Data));
         end
         else
         begin
@@ -338,8 +251,8 @@ begin
           if Accept then
           begin
             Len := 0;
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
+            if Item.Rule.IncludeIntoParseTree then
+              ParseTree.Add(Item.Rule, Data.Position, 0);
           end;
           Stack.DeleteLast;
         end;
@@ -350,19 +263,19 @@ begin
           if Accept then
           begin
             Len := 0;
-            ResIndex := ParseTree.Tree.Add;
-            ParseTree.Tree.Items[ResIndex].SetUp(Item.Rule, Data.Position,0);
+            if Item.Rule.IncludeIntoParseTree then
+              ParseTree.Add(Item.Rule, Data.Position, 0);
           end;
           Stack.DeleteLast;
         end;
 
     end; { case Item.Rule.GrammarType of }
+
   until Stack.Count=0;
   result := Accept;
-  if result then
-    ParseTree.Root := ResIndex
-  else
-    ParseTree.Clear;
+  if result then ParseTree.Root := 0
+    else ParseTree.Clear;
+  ParseTree.Tree.Nodes.TrimExcess;
 end;
 
 end.
