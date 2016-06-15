@@ -1,5 +1,7 @@
 unit adot.Grammar.Peg;
 
+{$DEFINE adot}
+
 { Parser for grammar based on TGrammarClass:
   - recursive (similar to Recursive descent parser)
   - stops at first successfull choice (similar to "parsing expression grammars")
@@ -13,7 +15,11 @@ uses
   adot.Tools,
   adot.Collections,
   adot.Strings,
+  {$IF Defined(adot)}
   adot.Log,
+  {$ELSE}
+  msLog,
+  {$ENDIF}
   System.SysUtils,
   System.Classes,
   System.Character,

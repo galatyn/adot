@@ -1,5 +1,7 @@
 unit adot.Grammar.Types;
 
+{$DEFINE adot}
+
 interface
 
 uses
@@ -8,7 +10,11 @@ uses
   adot.Tools,
   adot.Tools.Rtti,
   adot.Strings,
+  {$IF Defined(adot)}
   adot.Log,
+  {$ELSE}
+  msLog,
+  {$ENDIF}
   System.Generics.Collections,
   System.Character,
   System.SysUtils,

@@ -140,6 +140,9 @@ type
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
+    { returns new string where all specified chars replaced by string }
+    class function Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string; static;
+
     { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
     class function SameText(const A: string; const B: array of string): Boolean; overload;
@@ -935,6 +938,20 @@ begin
       inc(j);
       result[j] := s[i];
     end;
+end;
+
+class function TStr.Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string;
+var
+  Buf: TBuffer;
+  I: Integer;
+begin
+  Buf.Clear;
+  for I := 0 to Src.Length-1 do
+    if Src.Chars[I] in CharsToReplace then
+      Buf.Write(CharReplacement)
+    else
+      Buf.Write(Src.Chars[I]);
+  result := Buf.Text;
 end;
 
 class function TStr.GetNumbers(const s: string): String;
