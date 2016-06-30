@@ -448,6 +448,7 @@ type
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
     function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCollection: TEnumerable<T>;
 
     property ReadOnly: TSetClass<T> read GetReadonly;
     property ReadWrite: TSetClass<T> read GetReadWrite;
@@ -547,6 +548,7 @@ type
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property Empty: Boolean read GetEmpty;
     property Count: integer read GetCount;
+    property Collection: TEnumerable<T> read GetCollection;
   end;
 
   { Class for map. Based on TDictionary and extends it with some features. }
@@ -611,6 +613,7 @@ type
     function GetOwnsValues: boolean;
     procedure SetOwnsKeys(const Value: boolean);
     procedure SetOwnsValues(const Value: boolean);
+    function GetCollection: TEnumerable<TPair<TKey, TValue>>;
 
     property ReadOnly: TMapClass<TKey,TValue> read GetReadonly;
     property ReadWrite: TMapClass<TKey,TValue> read GetReadWrite;
@@ -670,6 +673,7 @@ type
     property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property AsString:string read GetAsString;
+    property Collection: TEnumerable<TPair<TKey, TValue>> read GetCollection;
   end;
 
   TContainsCheckType = (cctAll, cctAnyOf);
@@ -2948,6 +2952,11 @@ begin
   ReadWrite.Clear;
 end;
 
+function TSet<T>.GetCollection: TEnumerable<T>;
+begin
+  result := Readonly;
+end;
+
 function TSet<T>.GetCount: integer;
 begin
   result := ReadOnly.Count;
@@ -3426,6 +3435,11 @@ end;
 function TMap<TKey, TValue>.GetAsString: string;
 begin
   result := ReadOnly.AsString;
+end;
+
+function TMap<TKey, TValue>.GetCollection: TEnumerable<TPair<TKey, TValue>>;
+begin
+  result := Readonly;
 end;
 
 function TMap<TKey, TValue>.GetCount: integer;

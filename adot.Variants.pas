@@ -33,8 +33,9 @@ type
     class function IsDateTime(const v: variant): boolean;
 
     { simple conversion (raises exception in case of errors) }
-    class function ToInteger(const Src: variant): integer; static;
+    class function ToInteger(const Src: variant): int64; static;
     class function ToFloat(const Src: variant): double; static;
+    class function ToCurrency(const Src: variant): Currency; static;
     class function ToChar(const Src: variant): char; static;
     class function ToGUID(const Src: variant): TGUID; overload; static;
     class function ToBoolean(const Src: variant): boolean; static;
@@ -42,8 +43,10 @@ type
     class function ToDateTime(const Src: variant): TDateTime; static;
 
     { same conversion but returns boolean instead of exceptions }
-    class function TryToInteger(const Src: variant; out Dst: integer): boolean; static;
+    class function TryToInteger(const Src: variant; out Dst: integer): boolean; overload; static;
+    class function TryToInteger(const Src: variant; out Dst: int64): boolean; overload; static;
     class function TryToFloat(const Src: variant; out Dst: double): boolean; static;
+    class function TryToCurrency(const Src: variant; out Dst: currency): boolean; static;
     class function TryToChar(const Src: variant; out Dst: char): boolean; static;
     class function TryToGUID(const Src: variant; out Dst: TGUID): boolean; static;
     class function TryToBoolean(const Src: variant; out Dst: boolean): boolean; static;
@@ -51,8 +54,9 @@ type
     class function TryToDateTime(const Src: variant; out Dst: TDateTime): boolean; static;
 
     { same conversion with default value instead of exception }
-    class function ToIntegerDef(const Src: variant; const Default: integer = 0): integer; static;
+    class function ToIntegerDef(const Src: variant; const Default: int64 = 0): int64; static;
     class function ToFloatDef(const Src: variant; const Default: double = 0): double; static;
+    class function ToCurrencyDef(const Src: variant; const Default: currency = 0): currency; static;
     class function ToCharDef(const Src: variant; const Default: char = #0): char; static;
     class function ToGUIDDef(const Src: variant; const Default: TGUID): TGUID; overload; static;
     class function ToGUIDDef(const Src: variant): TGUID; overload; static;
@@ -680,9 +684,20 @@ begin
   result := Src;
 end;
 
+class function TVar.ToCurrency(const Src: variant): currency;
+begin
+  result := Src;
+end;
+
 class function TVar.ToFloatDef(const Src: variant; const Default: double): double;
 begin
   if not TryToFloat(Src, result) then
+    result := Default;
+end;
+
+class function TVar.ToCurrencyDef(const Src: variant; const Default: currency): currency;
+begin
+  if not TryToCurrency(Src, result) then
     result := Default;
 end;
 
@@ -703,12 +718,12 @@ begin
     result := NullGUID;
 end;
 
-class function TVar.ToInteger(const Src: variant): integer;
+class function TVar.ToInteger(const Src: variant): int64;
 begin
   Result := Src;
 end;
 
-class function TVar.ToIntegerDef(const Src: variant; const Default: integer): integer;
+class function TVar.ToIntegerDef(const Src: variant; const Default: int64): int64;
 begin
   if not TryToInteger(Src, result) then
     result := Default;
@@ -802,6 +817,22 @@ begin
     end;
 end;
 
+class function TVar.TryToCurrency(const Src: variant; out Dst: currency): boolean;
+begin
+  Result := not IsEmpty(Src); { To avoid of exceptions in simple situations }
+  if Result then
+    try
+      { "Dst := Src" does same job, but we use extra check for
+        regular strings to avoid of exceptions (annoying in debug) }
+      if VarIsStr(Src) then
+        result := TryStrToCurr(Src, Dst)
+      else
+        Dst := Src; { Supports numeric/str/datetime etc }
+    except
+      result := False;
+    end;
+end;
+
 class function TVar.TryToGUID(const Src: variant; out Dst: TGUID): boolean;
 var
   S: string;
@@ -823,6 +854,17 @@ begin
 end;
 
 class function TVar.TryToInteger(const Src: variant; out Dst: integer): boolean;
+begin
+  Result := not IsEmpty(Src); { to avoid of exceptions in simple situations }
+  if Result then
+    try
+      Dst := Src; { Supports numeric/str/datetime etc, no need for manual check  }
+    except
+      result := False;
+    end;
+end;
+
+class function TVar.TryToInteger(const Src: variant; out Dst: int64): boolean;
 begin
   Result := not IsEmpty(Src); { to avoid of exceptions in simple situations }
   if Result then
