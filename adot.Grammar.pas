@@ -130,28 +130,39 @@ type
   end;
 
   TGrammarString = class(TGrammarClassOp0)
+  private
   protected
     FValue: String;
     FCaseSensitive: boolean;
+    FSkipCaseCheck: boolean;
 
     function GetInfo: string; override;
+    procedure SetCaseSensitive(const Value: boolean);
+    procedure SetValue(const Value: string);
+    procedure Update;
   public
-    constructor Create(Value: String; CaseSensitive: boolean);
+    constructor Create(const Value: String; CaseSensitive: boolean);
 
     { input accepted: return length of accepted block
       input rejected: -1}
     function GetAcceptedBlock(var Buffer: TBuffer): integer;
 
-    property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
-    property Value: string read FValue write FValue;
+    property CaseSensitive: boolean read FCaseSensitive write SetCaseSensitive;
+    property Value: string read FValue write SetValue;
   end;
 
   TGrammarChar = class(TGrammarClassOp0)
+  private
   protected
+    AFrom,ATo,BFrom,BTo: Char;
     FValueFrom,FValueTo: Char;
     FCaseSensitive: boolean;
 
+    procedure SetCaseSensitive(const Value: boolean);
+    procedure SetValueFrom(const Value: char);
+    procedure SetValueTo(const Value: char);
     function GetInfo: string; override;
+    procedure Update;
   public
     constructor Create(ValueFrom,ValueTo: Char; CaseSensitive: boolean);
 
@@ -159,9 +170,9 @@ type
       input rejected: -1}
     function GetAcceptedBlock(var Buffer: TBuffer): integer;
 
-    property CaseSensitive: boolean read FCaseSensitive write FCaseSensitive;
-    property ValueFrom: char read FValueFrom write FValueFrom;
-    property ValueTo: char read FValueTo write FValueTo;
+    property CaseSensitive: boolean read FCaseSensitive write SetCaseSensitive;
+    property ValueFrom: char read FValueFrom write SetValueFrom;
+    property ValueTo: char read FValueTo write SetValueTo;
   end;
 
   TCharClass = (ccControl, ccDigit, ccLetter, ccLetterOrDigit, ccLower, ccPunctuation, ccSeparator, ccSymbol, ccUpper, ccWhiteSpace, ccAny);
@@ -567,14 +578,12 @@ end;
 
 { TGrammarString }
 
-constructor TGrammarString.Create(Value: String; CaseSensitive: boolean);
+constructor TGrammarString.Create(const Value: String; CaseSensitive: boolean);
 begin
   inherited Create(gtString);
   FValue := Value;
   FCaseSensitive := CaseSensitive;
-  { FCaseSensitive is faster, so we use FCaseSensitive=true as much as possible }
-  if not FCaseSensitive and (Value.ToUpper=Value.ToLower) then
-    FCaseSensitive := True;
+  Update;
 end;
 
 function TGrammarString.GetAcceptedBlock(var Buffer: TBuffer): integer;
@@ -590,8 +599,12 @@ begin
     Exit(-1);
 
   { we have enough of data, it is safe to compare }
-  if CaseSensitive then
+  if FSkipCaseCheck then
+    {$IF Defined(MSWindows)}
+    if not CompareMem(Pointer(Value), Buffer.CurrentData, result) then
+    {$ELSE}
     if not CompareMem(@Value[Low(Value)], Buffer.CurrentData, result) then
+    {$ENDIF}
       result := -1
     else
   else
@@ -604,6 +617,24 @@ begin
   result := inherited + Format(' Value:"%s", CaseSensitive:%s', [TStr.GetPrintable(FValue), TValueUtils.BoolToStr(FCaseSensitive)]);
 end;
 
+procedure TGrammarString.SetCaseSensitive(const Value: boolean);
+begin
+  FCaseSensitive := Value;
+  Update;
+end;
+
+procedure TGrammarString.SetValue(const Value: string);
+begin
+  FValue := Value;
+  Update;
+end;
+
+procedure TGrammarString.Update;
+begin
+  { we try to use case sensitive check when possible (faster). }
+  FSkipCaseCheck := FCaseSensitive or (TStr.LowerCase(FValue)=TStr.UpperCase(FValue));
+end;
+
 { TGrammarChar }
 
 constructor TGrammarChar.Create(ValueFrom, ValueTo: Char; CaseSensitive: boolean);
@@ -612,6 +643,7 @@ begin
   FValueFrom := ValueFrom;
   FValueTo := ValueTo;
   FCaseSensitive := CaseSensitive;
+  Update;
 end;
 
 function TGrammarChar.GetAcceptedBlock(var Buffer: TBuffer): integer;
@@ -623,18 +655,11 @@ begin
   if Buffer.Left < SizeOf(Char) then
     Exit(-1);
 
-  if CaseSensitive then
-  begin
-    C := Char(Buffer.CurrentData^);
-    if (C >= FValueFrom) and (C <= FValueTo) then result := SizeOF(Char)
-      else result := -1;
-  end
+  C := Char(Buffer.CurrentData^);
+  if (C >= AFrom) and (C <= ATo) or (C >= BFrom) and (C <= BTo) then
+    result := SizeOF(Char)
   else
-  begin
-    C := TStr.LowerCaseChar(Char(Buffer.CurrentData^));
-    if (C >= TStr.LowerCaseChar(FValueFrom)) and (C <= TStr.LowerCaseChar(FValueTo)) then result := SizeOF(Char)
-      else result := -1;
-  end;
+    result := -1;
 
 end;
 
@@ -644,6 +669,43 @@ begin
     TStr.GetPrintable(IfThen(FValueFrom=FValueTo, FValueFrom, '['+FValueFrom+'..'+FValueFrom+']')),
     TValueUtils.BoolToStr(FCaseSensitive)
   ]);
+end;
+
+procedure TGrammarChar.SetCaseSensitive(const Value: boolean);
+begin
+  FCaseSensitive := Value;
+  Update;
+end;
+
+procedure TGrammarChar.SetValueFrom(const Value: char);
+begin
+  FValueFrom := Value;
+  Update;
+end;
+
+procedure TGrammarChar.SetValueTo(const Value: char);
+begin
+  FValueTo := Value;
+  Update;
+end;
+
+procedure TGrammarChar.Update;
+begin
+  if FCaseSensitive then
+  begin
+    AFrom := FValueFrom;
+    ATo   := FValueTo;
+    BFrom := AFrom;
+    BTo   := ATo;
+  end
+  else
+  begin
+    AFrom := TStr.LowerCaseChar(FValueFrom);
+    ATo   := TStr.LowerCaseChar(FValueTo);
+    BFrom := TStr.UpperCaseChar(FValueFrom);
+    BTo   := TStr.UpperCaseChar(FValueTo);
+  end
+
 end;
 
 { TGrammarCharClass }

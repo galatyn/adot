@@ -182,12 +182,16 @@ type
     class function NativeIntToHex(s: NativeInt): string; static;
     class function NativeUIntToHex(s: NativeUInt): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function PointerToHex(s: Pointer): string; static;
+    class function CardinalToHex(s: cardinal): string; static;
+    class function WordToHex(s: word): string; static;
 
     class function HexToInt64(const HexEncodedInt: String):Int64; static;
     class function HexToUInt64(const HexEncodedInt: String):UInt64; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function HexToNativeInt(const HexEncodedInt: String):NativeInt; static;
     class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function HexToPointer(const HexEncodedPointer: String):Pointer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function HexToCardinal(const HexEncodedCardinal: String):Cardinal; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function HexToWord(const HexEncodedWord: String):Word; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   { Conversion routines etc. to be available in THashes and internal classes (THashes.DataHash etc) }
@@ -1101,6 +1105,21 @@ begin
   result := Pointer(HexToNativeUInt(HexEncodedPointer));
 end;
 
+class function THex.HexToCardinal(const HexEncodedCardinal: String):Cardinal;
+var
+  i: Integer;
+begin
+  assert(IsValid(HexEncodedCardinal));
+  result := 0;
+  for i := Low(HexEncodedCardinal) to High(HexEncodedCardinal) do
+    result := (result shl 4) or H2B[HexEncodedCardinal[i]];
+end;
+
+class function THex.HexToWord(const HexEncodedWord: String):Word;
+begin
+  result := Word(HexToCardinal(HexEncodedWord));
+end;
+
 class function THex.Int64ToHex(s: Int64): string;
 var
   i,j: Integer;
@@ -1142,6 +1161,34 @@ end;
 class function THex.PointerToHex(s: Pointer): string;
 begin
   result := NativeIntToHex(NativeInt(s));
+end;
+
+class function THex.CardinalToHex(s: cardinal): string;
+var
+  i,j: Integer;
+begin
+  SetLength(result, SizeOf(s)*2);
+  for i := SizeOf(s)-1 downto 0 do
+  begin
+    J := S and $FF;
+    S := S shr 8;
+    Result[i*2 + Low(result)    ] := TwoHexLookup[J][0];
+    Result[i*2 + Low(result) + 1] := TwoHexLookup[J][1];
+  end;
+end;
+
+class function THex.WordToHex(s: word): string;
+var
+  i,j: Integer;
+begin
+  SetLength(result, SizeOf(s)*2);
+  for i := SizeOf(s)-1 downto 0 do
+  begin
+    J := S and $FF;
+    S := S shr 8;
+    Result[i*2 + Low(result)    ] := TwoHexLookup[J][0];
+    Result[i*2 + Low(result) + 1] := TwoHexLookup[J][1];
+  end;
 end;
 
 { TInvertedComparer<TValue> }

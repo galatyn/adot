@@ -872,10 +872,12 @@ type
     constructor Create(ACapacity: integer); overload;
     constructor Create(ADst: TArray<T>); overload;
 
-    function Add: integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Add: integer; overload;
     function Add(const Value: T): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Add(const Value: TArray<T>); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
+
+    function Insert(Index: integer; const Value: T): integer;
 
     procedure Delete(ItemIndex: integer); overload;
     procedure Delete(StartIndex,FinishIndex: integer); overload;
@@ -4887,6 +4889,14 @@ begin
     Capacity := 64
   else
     Capacity := Capacity * 2;
+end;
+
+function TVector<T>.Insert(Index: integer; const Value: T): integer;
+begin
+  for result := Add downto Index+1 do
+    Items[result] := Items[result-1];
+  result := Index;
+  Items[result] := Value;
 end;
 
 function TVector<T>.GetCapacity: integer;

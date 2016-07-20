@@ -16,9 +16,7 @@ uses
   adot.Log,
   System.SysUtils,
   System.Classes,
-  System.Character,
-  System.Generics.Collections,
-  System.Generics.Defaults;
+  System.Character;
 
 type
 
