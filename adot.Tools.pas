@@ -2185,23 +2185,37 @@ const
 var
   i: Integer;
   c: Char;
+  Path,Name: string;
 begin
-  { http://stackoverflow.com/questions/960772/how-can-i-sanitize-a-string-for-use-as-a-filename }
+
+  { Trailing spaces.
+    Windows allows filenames with spaces: " 1.txt", " 1 .txt", " 1 . txt" and even " .txt"
+    but does not allow "1.txt ", so only trailing spaces are not allowed
+    http://msdn.microsoft.com/en-us/library/windows/desktop/aa365247%28v=vs.85%29.aspx
+    "Do not end a file or directory name with a space or a period." }
+  Path := ExtractFilePath(AStr);
+  Name := TrimRight(ExtractFileName(AStr));
+
+  { Disabled chars: http://stackoverflow.com/questions/960772/how-can-i-sanitize-a-string-for-use-as-a-filename }
   result := '';
-  for i := Low(AStr) to High(AStr) do
+  for i := Low(Name) to High(Name) do
   begin
-    c := AStr[i];
-    if (c<#127) and (AnsiChar(c) in DisabledChars) then
+    c := Name[i];
+    if (c<#127) and (AnsiChar(Byte(c)) in DisabledChars) then
       result := result + '%' + THex.Encode(c, SizeOf(c))
     else
       result := result + c;
   end;
+
+  { Disabled names }
   for i := Low(DisabledNames) to High(DisabledNames) do
     if AnsiSameText(result, DisabledNames[i]) then
     begin
       result := result + '_';
       Break;
     end;
+
+  result := Path + Name;
 end;
 
 procedure FindOpenFiles(
