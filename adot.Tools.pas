@@ -896,6 +896,29 @@ type
     property AsString: string read GetAsString;
   end;
 
+  { Summed area table. Precalculates sums for very fast calculation of SUM of any area [x1,y1,x2,y2].
+    https://en.wikipedia.org/wiki/Summed_area_table}
+  TIntegralImageInt64 = record
+  private
+    procedure BuildLine(ADst: PInt64Array);
+    function GetLine(y: integer): PInt64Array;
+    function GetSum(x1, y1, x2, y2: integer): Integer;
+  public
+    Image: array of int64;
+    Width,Height: integer;
+
+    constructor Create(AWidth,AHeight: integer);
+    procedure SetSize(AWidth,AHeight: integer);
+
+    procedure Build;
+
+    { usefull to fill with initial values }
+    property Lines[y: integer]: PInt64Array read GetLine;
+
+    { Fastest, no range checks etc }
+    property Sum[x1,y1,x2,y2: integer]:Integer read GetSum; default;
+  end;
+
 function Min3(const A,B,C: integer): integer; overload;
 function Min3(const A,B,C: double): double; overload;
 function Max3(const A,B,C: integer): integer; overload;
@@ -3816,6 +3839,64 @@ end;
 class operator TDataSize.Subtract(Left, Right: TDataSize): TDataSize;
 begin
   result := Left.FSize-Right.FSize;
+end;
+
+{ TIntegralImageInt64 }
+
+constructor TIntegralImageInt64.Create(AWidth, AHeight: integer);
+begin
+  SetSize(AWidth, AHeight);
+end;
+
+procedure TIntegralImageInt64.SetSize(AWidth, AHeight: integer);
+begin
+  Width := AWidth;
+  Height := AHeight;
+  SetLength(Image, 0);
+  SetLength(Image, Width*Height);
+end;
+
+procedure TIntegralImageInt64.Build;
+var
+  x,y: Integer;
+begin
+  for x := 1 to Width-1 do
+    Inc(Image[x],Image[x-1]);
+  for y := 1 to Height-1 do
+    Inc(Image[y*Width],Image[(y-1)*Width]);
+  for y := 1 to Height-1 do
+    BuildLine(@Image[y*Width+1]);
+end;
+
+(*
+  #####
+  #   #
+  ####?
+*)
+procedure TIntegralImageInt64.BuildLine(ADst: PInt64Array);
+var
+  x: Integer;
+begin
+  for x := 0 to Width-2 do
+    inc(ADst[x], ADst[x-1]+ADst[x-Width]-ADst[x-Width-1]);
+end;
+
+function TIntegralImageInt64.GetLine(y: integer): PInt64Array;
+begin
+  result := @Image[y*Width];
+end;
+
+function TIntegralImageInt64.GetSum(x1, y1, x2, y2: integer): Integer;
+begin
+  Result := Image[x2+y2*Width];
+  if x1>0 then
+  begin
+    if y1>0 then
+      Inc(Result, Image[x1-1+(y1-1)*Width]);
+    dec(Result, Image[x1-1+y2*Width]);
+  end;
+  if y1>0 then
+    dec(Result, Image[x2+(y1-1)*Width]);
 end;
 
 end.
