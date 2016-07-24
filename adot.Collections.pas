@@ -1542,9 +1542,9 @@ type
   private
     function GetEmpty: boolean;
     function GetCount: integer;
-    function GetNode(n: integer): TNode;
     function GetValue(n: integer): T;
-    procedure SetNode(n: integer; const Value: TNode);
+//    function GetNode(n: integer): TNode;
+//    procedure SetNode(n: integer; const Value: TNode);
     procedure SetValue(n: integer; const Value: T);
     function GetValuesAsArray: TArray<T>;
     function GetTotalSizeBytes: int64;
@@ -5896,8 +5896,8 @@ end;
 
 procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem);
 begin
-  TValueUtils.Exchange(Item1.Prev, Item2.Prev);
-  TValueUtils.Exchange(Item1.Next, Item2.Next);
+  TFun.Exchange(Item1.Prev, Item2.Prev);
+  TFun.Exchange(Item1.Next, Item2.Next);
   if Item1.Prev=nil then
     FFirst := Item1
   else
@@ -5959,8 +5959,8 @@ end;
 
 class procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem; List1, List2: TDoublyLinkedListClass<T>);
 begin
-  TValueUtils.Exchange(Item1.Prev, Item2.Prev);
-  TValueUtils.Exchange(Item1.Next, Item2.Next);
+  TFun.Exchange(Item1.Prev, Item2.Prev);
+  TFun.Exchange(Item1.Next, Item2.Next);
   if Item1.Prev=nil then
     List2.FFirst := Item1
   else
@@ -6151,10 +6151,10 @@ begin
   result := TEnumerator.Create(Nodes);
 end;
 
-function TTreeArrayClass<T>.GetNode(n: integer): TNode;
-begin
-  result := Nodes[n];
-end;
+//function TTreeArrayClass<T>.GetNode(n: integer): TNode;
+//begin
+//  result := Nodes[n];
+//end;
 
 function TTreeArrayClass<T>.GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
 begin
@@ -6171,10 +6171,10 @@ begin
   result := Nodes.Items[n].Data;
 end;
 
-procedure TTreeArrayClass<T>.SetNode(n: integer; const Value: TNode);
-begin
-  Nodes[n] := Value;
-end;
+//procedure TTreeArrayClass<T>.SetNode(n: integer; const Value: TNode);
+//begin
+//  Nodes[n] := Value;
+//end;
 
 procedure TTreeArrayClass<T>.SetValue(n: integer; const Value: T);
 begin

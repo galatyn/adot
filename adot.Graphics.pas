@@ -9,8 +9,10 @@
 interface
 
 uses
+  adot.Tools,
   System.UITypes,
-  System.Math;
+  System.Math,
+  System.SysUtils;
 
 type
   { Find similar standard color, change brightness etc }
@@ -73,7 +75,9 @@ type
     class function GetBasicColorName(C: TColor; ADistType: TDistanceType = TDefDist): String; static;
 
     { find brightness of the color 0..255 }
-    class function GetBrightness(c: TColor): byte; static;
+    class function GetBrightness(c: TColor): byte; overload; static;
+    class function GetBrightness(r,g,b: byte): byte; overload; static;
+    class function GetBrightnessBGRA(c: cardinal): byte; static;
     { result has brightness = N% from brightness of C }
     class function AdjustComponentBrightness(c: byte; BrightnessPercent: cardinal): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
     class function AdjustBrightness(c: TColor; BrightnessPercent: cardinal): TColor; static;
@@ -92,6 +96,61 @@ type
     class function GetB(C: TColor): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
   TColorTools = TColorUtils;
+
+  { Pixel format is automatically translated to standard TAlphaColor form System.UITypes.pas:
+      ARGB (4 bytes) = (A shl 24) or (R shl 16) or (G shl 8) or B.
+    Check TBitmapDirectAccess from adot.FMX.Graphics. }
+  TBitmapDirectAccessCustom = class abstract
+  protected
+    function DoGetLine(y: integer): PAlphaColor; virtual; abstract;
+    function DoGetWidth: integer; virtual; abstract;
+    function DoGetHeight: integer; virtual; abstract;
+    procedure DoLock; virtual; abstract;
+    procedure DoUnlock; virtual; abstract;
+
+    function GetPixel(x,y: integer): TAlphaColor;
+    procedure SetPixel(x,y: integer; colors: TAlphaColor);
+  public
+    procedure Lock;
+    procedure Unlock;
+
+    property Lines[y: integer]: PAlphaColor read DoGetLine;
+    property Pixels[x,y: integer]: TAlphaColor read GetPixel write SetPixel;
+    property Width: integer read DoGetWidth;
+    property Height: integer read DoGetHeight;
+  end;
+
+  { Class to perform gamma correction for raster image }
+  TGammaCorrection = class
+  protected
+    FGamma: double;
+    FMap: array[byte] of TAlphaColor;
+
+    procedure SetGamma(const Value: double);
+  public
+    constructor Create(Gamma: double);
+
+    procedure Correct(Dst: PAlphaColor; Count: integer); overload;
+    procedure Correct(Bmp: TBitmapDirectAccessCustom); overload;
+
+    property Gamma: double read FGamma write SetGamma;
+  end;
+
+  { Record type for efficient calculation of luminance for any area of raster image }
+  TIntegralLuminance = record
+  private
+    FIntegralImage: TIntegralImageInt64; { record type, no need to free }
+
+    function GetAvgLuminance(x1,y1,x2,y2: integer): byte;
+
+  public
+    procedure Build(Bmp: TBitmapDirectAccessCustom);
+
+    { usually there is no need to call it, call it to free allocated memory imediately }
+    procedure Clear;
+
+    property AvgLuminance[x1,y1,x2,y2: integer]: byte read GetAvgLuminance; default;
+  end;
 
 implementation
 
@@ -188,6 +247,16 @@ begin
   result := (cardinal(GetR(C))*kRed + cardinal(GetG(C))*kGreen + cardinal(GetB(C))*kBlue) div 1000;
 end;
 
+class function TColorUtils.GetBrightness(r, g, b: byte): byte;
+begin
+  result := (cardinal(r)*kRed + cardinal(g)*kGreen + cardinal(b)*kBlue) div 1000;
+end;
+
+class function TColorUtils.GetBrightnessBGRA(c: cardinal): byte;
+begin
+  result := (((c shr 24) and $FF)*kRed + ((c shr 16) and $FF)*kGreen + cardinal(c and $FF)*kBlue) div 1000;
+end;
+
 class function TColorUtils.SetBrightness(c: TColor; BrightnessPercent: byte): TColor;
 var
   BrCur,BrNew: byte;
@@ -258,6 +327,111 @@ end;
 class function TColorUtils.RecognizeBaseColor(ASample: TColor; ADistType: TDistanceType): TColorClass;
 begin
   result := BaseColorToColorClass[RecognizeColor(ASample, BaseColors, ADistType)];
+end;
+
+{ TBitmapDirectAccessCustom }
+
+function TBitmapDirectAccessCustom.GetPixel(x, y: integer): TAlphaColor;
+var p: PAlphaColor;
+begin
+  p := Lines[y];
+  inc(p, x);
+  result := p^;;
+end;
+
+procedure TBitmapDirectAccessCustom.SetPixel(x, y: integer; colors: TAlphaColor);
+var p: PAlphaColor;
+begin
+  p := Lines[y];
+  inc(p, x);
+  p^ := colors;
+end;
+
+procedure TBitmapDirectAccessCustom.Lock;
+begin
+  DoLock;
+end;
+
+procedure TBitmapDirectAccessCustom.Unlock;
+begin
+  DoUnlock;
+end;
+
+{ TGammaCorrection }
+
+constructor TGammaCorrection.Create(Gamma: double);
+begin
+  SetGamma(Gamma);
+end;
+
+procedure TGammaCorrection.SetGamma(const Value: double);
+var
+  I: Integer;
+begin
+  FGamma := Value;
+  for I := 0 to 255 do
+    FMap[I] := Trunc(255*Power(I/255, 1/Value));
+end;
+
+procedure TGammaCorrection.Correct(Dst: PAlphaColor; Count: integer);
+var
+  C: TAlphaColor;
+begin
+  while Count > 0 do
+  begin
+    dec(Count);
+    C := Dst^;
+    C := (C and $FF000000) or
+      (FMap[(C shr 16) and $FF] shl 16) or
+      (FMap[(C shr  8) and $FF] shl  8) or
+      (FMap[ C         and $FF]       );
+    Dst^ := C;
+  end;
+end;
+
+procedure TGammaCorrection.Correct(Bmp: TBitmapDirectAccessCustom);
+var
+  y: Integer;
+begin
+  Bmp.Lock;
+  try
+    for y := 0 to Bmp.Height-1 do
+      Correct(Bmp.Lines[y], Bmp.Width);
+  finally
+    Bmp.Unlock;
+  end;
+end;
+
+{ TIntegralLuminance }
+
+procedure TIntegralLuminance.Build(Bmp: TBitmapDirectAccessCustom);
+var
+  X,Y: Integer;
+  Src: PAlphaColor;
+  Dst: PInt64Array;
+begin
+  FIntegralImage.SetSize(Bmp.Width, Bmp.Height);
+  for Y := 0 to Bmp.Height-1 do
+  begin
+    Src := Bmp.Lines[Y];
+    Dst := FIntegralImage.Lines[Y];
+    for X := 0 to Bmp.Width-1 do
+    begin
+      Dst[X] := TColorUtils.GetBrightnessBGRA(Src^);
+      inc(Src);
+    end;
+  end;
+  FIntegralImage.Build;
+end;
+
+procedure TIntegralLuminance.Clear;
+begin
+  FIntegralImage.Clear;
+end;
+
+function TIntegralLuminance.GetAvgLuminance(x1, y1, x2, y2: integer): byte;
+begin
+  result := FIntegralImage.Avg[x1,y1,x2,y2];
 end;
 
 end.

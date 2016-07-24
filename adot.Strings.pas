@@ -1349,11 +1349,11 @@ begin
         else
           cost := 1;
         if flip then
-          buf[j] := min3((buf[cuthalf + j] + 1),
+          buf[j] := TFun.min3((buf[cuthalf + j] + 1),
             (buf[j - 1] + 1),
             (buf[cuthalf + j - 1] + cost))
         else
-          buf[cuthalf + j] := min3((buf[j] + 1),
+          buf[cuthalf + j] := TFun.min3((buf[j] + 1),
             (buf[cuthalf + j - 1] + 1),
             (buf[j - 1] + cost));
       end;

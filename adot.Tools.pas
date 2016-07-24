@@ -512,6 +512,13 @@ type
     class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
     class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static;
     class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
+    class procedure Exchange<T>(var A,B: T); static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function BoolToStr(Value: boolean): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    class function Min3(const A,B,C: integer): integer; overload; static;
+    class function Min3(const A,B,C: double): double; overload; static;
+    class function Max3(const A,B,C: integer): integer; overload; static;
+    class function Max3(const A,B,C: double): double; overload; static;
   end;
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
@@ -756,6 +763,34 @@ type
     class function GetAll<T: class>(AStart: TComponent): TArray<T>; overload; static;
   end;
 
+  { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
+  TOutOfScopeAction = record
+  private
+    FProc: IInterfacedObject<TObject>;
+  public
+    constructor Create(AProc: TProc);
+  end;
+
+  { Executes custom action (procedure/method) with specific parameter when last instance goes out of scope. }
+  TOutOfScopeAction<T> = record
+  private
+    type
+      TRunOnDestroy = class
+      private
+        FProc: TProc<T>;
+        FValue: T;
+
+      public
+        constructor Create(AProc: TProc<T>; AValue: T);
+        destructor Destroy; override;
+      end;
+
+    var
+      FProc: IInterfacedObject<TRunOnDestroy>;
+  public
+    constructor Create(AProc: TProc<T>; AValue: T);
+  end;
+
   { Lightweight and managed analog of TMemoryStream }
   TBuffer = record
   public
@@ -802,40 +837,6 @@ type
     property EOF: boolean read GetEOF;
     property Text: string read GetText write SetText;
     property Empty: boolean read GetEmpty;
-  end;
-
-  { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
-  TOutOfScopeAction = record
-  private
-    FProc: IInterfacedObject<TObject>;
-  public
-    constructor Create(AProc: TProc);
-  end;
-
-  { Executes custom action (procedure/method) with specific parameter when last instance goes out of scope. }
-  TOutOfScopeAction<T> = record
-  private
-    type
-      TRunOnDestroy = class
-      private
-        FProc: TProc<T>;
-        FValue: T;
-
-      public
-        constructor Create(AProc: TProc<T>; AValue: T);
-        destructor Destroy; override;
-      end;
-
-    var
-      FProc: IInterfacedObject<TRunOnDestroy>;
-  public
-    constructor Create(AProc: TProc<T>; AValue: T);
-  end;
-
-  TValueUtils = class
-  public
-    class procedure Exchange<T>(var A,B: T); static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function BoolToStr(Value: boolean): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
   end;
 
   TEventUtils = class
@@ -902,27 +903,65 @@ type
   private
     procedure BuildLine(ADst: PInt64Array);
     function GetLine(y: integer): PInt64Array;
-    function GetSum(x1, y1, x2, y2: integer): Integer;
+    function GetSum(x1, y1, x2, y2: integer): int64;
+    function GetAvg(x1, y1, x2, y2: integer): int64;
   public
     Image: array of int64;
     Width,Height: integer;
 
-    constructor Create(AWidth,AHeight: integer);
     procedure SetSize(AWidth,AHeight: integer);
 
     procedure Build;
+
+    { release memory etc }
+    procedure Clear;
 
     { usefull to fill with initial values }
     property Lines[y: integer]: PInt64Array read GetLine;
 
     { Fastest, no range checks etc }
-    property Sum[x1,y1,x2,y2: integer]:Integer read GetSum; default;
+    property Sum[x1,y1,x2,y2: integer]:int64 read GetSum;
+
+    { positions are adjusted to be inside of the image }
+    property Avg[x1,y1,x2,y2: integer]:int64 read GetAvg; default;
   end;
 
-function Min3(const A,B,C: integer): integer; overload;
-function Min3(const A,B,C: double): double; overload;
-function Max3(const A,B,C: integer): integer; overload;
-function Max3(const A,B,C: double): double; overload;
+  TInterpolation_Int64Custom = class
+  public
+    type
+      TPt = record
+        X,Y: int64;
+      end;
+
+  protected
+    FPoints: TArray<TPt>;
+    FUpdateCnt: integer;
+    FComparer: IComparer<TPt>;
+
+    procedure DoBeginUpdate; virtual;
+    procedure DoEndUpdate; virtual;
+    function DoGetValue(const X: int64):int64; virtual; abstract;
+
+    function GetPointCount: integer;
+    function GetPoint(i: integer): TPt;
+    procedure SetPoint(i: integer; const Value: TPt);
+
+  public
+    constructor Create(PointCount: integer); virtual;
+
+    procedure BeginUpdate;
+    procedure EndUpdate;
+
+    property PointCount: integer read GetPointCount;
+    property Points[i: integer]: TPt read GetPoint write SetPoint;
+
+    property Values[const x: int64]: int64 read DoGetValue; default;
+  end;
+
+  TLinearInterpolation_Int64 = class(TInterpolation_Int64Custom)
+  protected
+    function DoGetValue(const X: int64):int64; override;
+  end;
 
 implementation
 
@@ -1135,7 +1174,7 @@ begin
   assert(IsValid(HexEncodedCardinal));
   result := 0;
   for i := Low(HexEncodedCardinal) to High(HexEncodedCardinal) do
-    result := (result shl 4) or H2B[HexEncodedCardinal[i]];
+    result := (result shl 4) or Cardinal(H2B[HexEncodedCardinal[i]]);
 end;
 
 class function THex.HexToWord(const HexEncodedWord: String):Word;
@@ -1800,42 +1839,6 @@ begin
   SetLength(Result, Count);
   for i := 0 to Count-1 do
     Result[i] := Count-1 + StartIndex - i;
-end;
-
-function Min3(const A,B,C: integer): integer;
-begin
-  Result := A;
-  if B < Result then
-    Result := B;
-  if C < Result then
-    Result := C;
-end;
-
-function Min3(const A,B,C: double): double;
-begin
-  Result := A;
-  if B < Result then
-    Result := B;
-  if C < Result then
-    Result := C;
-end;
-
-function Max3(const A,B,C: integer): integer;
-begin
-  Result := A;
-  if B > Result then
-    Result := B;
-  if C > Result then
-    Result := C;
-end;
-
-function Max3(const A,B,C: double): double;
-begin
-  Result := A;
-  if B > Result then
-    Result := B;
-  if C > Result then
-    Result := C;
 end;
 
 { TGUIDUtils }
@@ -3638,22 +3641,6 @@ begin
   inherited;
 end;
 
-{ TValueUtils }
-
-class function TValueUtils.BoolToStr(Value: boolean): string;
-begin
-  if Value then result := 'True'
-    else result := 'False';
-end;
-
-class procedure TValueUtils.Exchange<T>(var A, B: T);
-var C: T;
-begin
-  C := A;
-  A := B;
-  B := C;
-end;
-
 { TEventUtils }
 
 class function TEventUtils.IsSameHandler(const A, B: TNotifyEvent): Boolean;
@@ -3668,6 +3655,20 @@ end;
 
 { TFun }
 
+class function TFun.BoolToStr(Value: boolean): string;
+begin
+  if Value then result := 'True'
+    else result := 'False';
+end;
+
+class procedure TFun.Exchange<T>(var A, B: T);
+var C: T;
+begin
+  C := A;
+  A := B;
+  B := C;
+end;
+
 class function TFun.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
 begin
   if ACondition then result := AValueTrue else result := AValueFalse;
@@ -3679,6 +3680,42 @@ var
 begin
   Comparer := TComparerUtils.DefaultComparer<T>;
   Result := (Comparer.Compare(AValue, AValueMin) >= 0) and (Comparer.Compare(AValue, AValueMax) <= 0);
+end;
+
+class function TFun.Max3(const A, B, C: double): double;
+begin
+  Result := A;
+  if B > Result then
+    Result := B;
+  if C > Result then
+    Result := C;
+end;
+
+class function TFun.Max3(const A, B, C: integer): integer;
+begin
+  Result := A;
+  if B > Result then
+    Result := B;
+  if C > Result then
+    Result := C;
+end;
+
+class function TFun.Min3(const A, B, C: double): double;
+begin
+  Result := A;
+  if B < Result then
+    Result := B;
+  if C < Result then
+    Result := C;
+end;
+
+class function TFun.Min3(const A, B, C: integer): integer;
+begin
+  Result := A;
+  if B < Result then
+    Result := B;
+  if C < Result then
+    Result := C;
 end;
 
 class function TFun.Overlapped<T>(AFrom, ATo, BFrom, BTo: T): boolean;
@@ -3843,11 +3880,6 @@ end;
 
 { TIntegralImageInt64 }
 
-constructor TIntegralImageInt64.Create(AWidth, AHeight: integer);
-begin
-  SetSize(AWidth, AHeight);
-end;
-
 procedure TIntegralImageInt64.SetSize(AWidth, AHeight: integer);
 begin
   Width := AWidth;
@@ -3881,12 +3913,17 @@ begin
     inc(ADst[x], ADst[x-1]+ADst[x-Width]-ADst[x-Width-1]);
 end;
 
+procedure TIntegralImageInt64.Clear;
+begin
+  SetSize(0,0);
+end;
+
 function TIntegralImageInt64.GetLine(y: integer): PInt64Array;
 begin
   result := @Image[y*Width];
 end;
 
-function TIntegralImageInt64.GetSum(x1, y1, x2, y2: integer): Integer;
+function TIntegralImageInt64.GetSum(x1, y1, x2, y2: integer): int64;
 begin
   Result := Image[x2+y2*Width];
   if x1>0 then
@@ -3897,6 +3934,127 @@ begin
   end;
   if y1>0 then
     dec(Result, Image[x2+(y1-1)*Width]);
+end;
+
+function TIntegralImageInt64.GetAvg(x1, y1, x2, y2: integer): int64;
+begin
+  assert((x2>=x1) and (y2>=y1));
+  if x2-x1+1>width then
+    x2 := x1+width-1;
+  if y2-y1+1>height then
+    y2 := y1+height-1;
+  if x1<0 then
+  begin
+    dec(x2, x1);
+    x1 := 0;
+  end;
+  if y1<0 then
+  begin
+    dec(y2, y1);
+    y1 := 0;
+  end;
+  if x2>=width then
+  begin
+    dec(x1,x2-width+1);
+    x2 := width-1;
+  end;
+  if y2>=height then
+  begin
+    dec(y1,y2-height+1);
+    y2 := height-1;
+  end;
+  result := Sum[x1,y1,x2,y2] div ((x2-x1+1)*(y2-y1+1));
+end;
+
+{ TInterpolation_Int64Custom }
+
+constructor TInterpolation_Int64Custom.Create(PointCount: integer);
+begin
+  SetLength(FPoints, PointCount);
+  FComparer := TDelegatedComparer<TPt>.Create(
+    function (const A, B: TPt): integer
+    begin
+      if A.X < B.X then result := -1 else
+        if A.X = B.X then result := 0 else
+          result := 1;
+    end);
+end;
+
+procedure TInterpolation_Int64Custom.BeginUpdate;
+begin
+  inc(FUpdateCnt);
+  if FUpdateCnt=1 then
+    DoBeginUpdate;
+end;
+
+procedure TInterpolation_Int64Custom.EndUpdate;
+begin
+  dec(FUpdateCnt);
+  if FUpdateCnt=0 then
+    DoEndUpdate;
+end;
+
+procedure TInterpolation_Int64Custom.DoBeginUpdate;
+begin
+end;
+
+procedure TInterpolation_Int64Custom.DoEndUpdate;
+var
+  I: Integer;
+begin
+
+  { reorder if necessary }
+  for I := 0 to High(FPoints)-1 do
+    if FPoints[I].X > FPoints[I+1].X then
+    begin
+      TArray.Sort<TPt>(FPoints, FComparer);
+      Break;
+    end;
+
+  { It is not allowed to have Xi=Xj for any i<>j,
+    items are ordered, so we can check it eficiently. }
+  for I := 0 to High(FPoints)-1 do
+    if FPoints[I].X=FPoints[I+1].X then
+      raise Exception.Create('Error');
+end;
+
+function TInterpolation_Int64Custom.GetPoint(i: integer): TPt;
+begin
+  result := FPoints[i];
+end;
+
+procedure TInterpolation_Int64Custom.SetPoint(i: integer; const Value: TPt);
+begin
+  Assert((FUpdateCnt>0) and (i>=0) and (i<=High(FPoints)));
+  FPoints[i] := Value;
+end;
+
+function TInterpolation_Int64Custom.GetPointCount: integer;
+begin
+  result := Length(FPoints);
+end;
+
+{ TLinearInterpolation_Int64 }
+
+function TLinearInterpolation_Int64.DoGetValue(const X: int64): int64;
+var
+  Item: TPt;
+  FoundIndex: Integer;
+begin
+  Assert(Length(FPoints)>0);
+  Item.X := X;
+  Item.Y := 0;
+  if TArray.BinarySearch<TPt>(FPoints, Item, FoundIndex, FComparer) then
+    result := FPoints[FoundIndex].Y
+  else
+    { If not found, FoundIndex contains the index of the first entry larger than Item }
+    if FoundIndex = 0 then result := FPoints[0].Y else
+      if FoundIndex > High(FPoints) then result := FPoints[High(FPoints)].Y else
+        { Xi<>Xj for any i<>j (check DoEndUpdate), so div by zero is not possible here. }
+        result := FPoints[FoundIndex-1].Y +
+          (X-FPoints[FoundIndex-1].X) *
+          (FPoints[FoundIndex].Y-FPoints[FoundIndex-1].Y) div
+          (FPoints[FoundIndex].X-FPoints[FoundIndex-1].X);
 end;
 
 end.
