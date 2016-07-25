@@ -227,7 +227,7 @@ type
     class function TruncToWord(const Src: string; MaxCharLen: integer): string; static;
 
     { Replaces any sequence of any space/control chars by single space. }
-    class function TruncSpaces(const Src: string): string; static;
+    class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
   end;
 
   { Position of token in the text. Starts from zero. }
@@ -627,12 +627,12 @@ type
     var
       Instructions: TVector<TReplace>;
 
-    procedure Add(const Instr: TReplace); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const Instr: TReplace);
     procedure Sort;
 
   public
 
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear;
 
     procedure Delete(const Start,Len: integer); overload;
     procedure Delete(const Pos: TTokenPos); overload;
@@ -699,7 +699,7 @@ end;
 class function TStr.Escape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
 var
   S: TSet<Char>;
-  B: TBuffer;
+  B: TStringBuffer;
   I: Integer;
 begin
   S.Clear;
@@ -715,12 +715,12 @@ begin
       B.Write(Value, I,1)
     else
       B.Write(EscapeChar + THex.Encode(Value.Chars[I]) );
-  B.ReadAllData(result);
+  result := B.Text;
 end;
 
 class function TStr.Unescape(const Value: string; const EscapeChar: Char): string;
 var
-  B: TBuffer;
+  B: TStringBuffer;
   I: Integer;
 begin
   B.Clear;
@@ -736,7 +736,7 @@ begin
     end;
     inc(I);
   end;
-  B.ReadAllData(result);
+  result := B.Text;
 end;
 
 class function TStr.UpperCase(const S: string; Chars: TStrCharsPos): string;
@@ -910,7 +910,7 @@ end;
 
 class function TStr.Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string;
 var
-  Buf: TBuffer;
+  Buf: TStringBuffer;
   I: Integer;
 begin
   Buf.Clear;
@@ -1282,26 +1282,43 @@ begin
   end;
 end;
 
-class function TStr.TruncSpaces(const Src: string): string;
+class function TStr.TruncSpaces(const Src: string; TrimRes: boolean = True): string;
+type
+  TState = (sStart, sWord, sSpace);
 var
-  I: Integer;
-  S: boolean;
+  I,WordStart: Integer;
+  State: TState;
 begin
-  Result := '';
-  S := False;
-  for I := Low(Src) to High(Src) do
-    if Src[I].IsWhiteSpace or Src[I].IsControl then
-      if S then
-      else
-      begin
-        S := True;
-        result := result + ' ';
-      end
-    else
+  result := '';
+  State := sStart;
+  WordStart := 0;
+  for I := 0 to Length(Src)-1 do
+    if Src.Chars[I].IsWhiteSpace or Src.Chars[I].IsControl then
     begin
-      S := False;
-      result := result + Src[I];
-    end;
+      case State of
+        sStart:
+          begin
+            result := result + ' ';
+            State := sSpace;
+          end;
+        sWord:
+          begin
+            result := result + Src.Substring(WordStart, I-WordStart) + ' ';
+            State := sSpace;
+          end;
+        sSpace:;
+      end;
+    end
+    else
+      if State<>sWord then
+      begin
+        WordStart := I;
+        State := sWord;
+      end;
+  if State=sWord then
+    result := result + Src.Substring(WordStart, Length(Src)-WordStart);
+  if TrimRes then
+    result := Trim(result);
 end;
 
 class function TStr.TruncToWord(const Src: string; MaxCharLen: integer): string;
@@ -3010,7 +3027,7 @@ function TStringEditor.Apply(const Src: string): string;
 var
   L,I,SrcPos: Integer;
   P: PReplace;
-  Buffer: TBuffer;
+  Buffer: TStringBuffer;
 begin
   Buffer.Clear;
   Sort;
@@ -3028,8 +3045,8 @@ begin
     SrcPos := Min(Max(P.DstPos.Start + P.DstPos.Len, SrcPos), L);
   end;
   if SrcPos < L then
-    Buffer.Write(Src[SrcPos+Low(Src)], (L-SrcPos)*SizeOf(Char));
-  Buffer.ReadAllData(result);
+    Buffer.Write(Src, SrcPos, L-SrcPos);
+  result := Buffer.Text;
 end;
 
 initialization

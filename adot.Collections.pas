@@ -1949,7 +1949,7 @@ function TSetClass<TValue>.GetAsString: string;
 var
   Arr: TArray<TValue>;
   Value: TValue;
-  Buf: TBuffer;
+  Buf: TStringBuffer;
 begin
   Arr := AsArray;
   TArray.Sort<TValue>(Arr);
@@ -2165,7 +2165,7 @@ var
   ValueComparer: IComparer<TValue>;
   Pair: TPair<TKey, TValue>;
   i: Integer;
-  Buf: TBuffer;
+  Buf: TStringBuffer;
 begin
   Arr := ToArray;
   KeyComparer := TComparer<TKey>.Default;

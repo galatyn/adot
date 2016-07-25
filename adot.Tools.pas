@@ -492,10 +492,9 @@ type
     class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean; overload;
     class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string): boolean; overload;
 
-    class function Load<T: record>(const FileName: string; var Dst: TArray<T>; var ErrMsg: string): boolean; overload;
     class procedure Load<T: record>(const FileName: string; var Dst: TArray<T>); overload;
-    class function Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer; var ErrMsg: string): boolean; overload;
-    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>; ItemCount: integer); overload;
+    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>; Index,Count: integer); overload;
+    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>); overload;
 
     { Encode disabled chars (hex), check disabled names ("COM1", "PRN", "NUL" etc). }
     class function StringToFilename(const AStr: string): string; static;
@@ -791,7 +790,8 @@ type
     constructor Create(AProc: TProc<T>; AValue: T);
   end;
 
-  { Lightweight and managed analog of TMemoryStream }
+  { Lightweight and managed analog of TMemoryStream.
+    Has mixed set of methods - byte and string-compatible. }
   TBuffer = record
   public
     Data: TArray<Byte>;
@@ -820,9 +820,6 @@ type
     procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
     procedure Read(var Dst: string; CharCount: integer); overload;
 
-    procedure ReadAllData(var Dst); overload;
-    procedure ReadAllData(var Dst: string); overload;
-
     procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
 
@@ -835,8 +832,57 @@ type
     property Left: integer read GetLeft write SetLeft;
     property CurrentData: pointer read GetCurrentData;
     property EOF: boolean read GetEOF;
-    property Text: string read GetText write SetText;
     property Empty: boolean read GetEmpty;
+    property Text: string read GetText write SetText;
+  end;
+
+  { Lightweight and managed analog of TStringStream. }
+  TStringBuffer = record
+  public
+    Data: string;
+  private
+    FSize: integer;
+    FPosition: integer;
+
+    procedure SetSize(Value: integer);
+    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetText: string;
+    procedure SetText(const Value: string);
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+  public
+
+    procedure Clear;
+
+    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
+    procedure Write(const Src: string); overload;
+    procedure Write(const Src: char); overload;
+
+    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
+      Dst should be preallocated to fit require amount of characters. }
+    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
+    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
+    procedure Read(var Dst: string; CharCount: integer); overload;
+    { Reads one character from current position of the buffer to Dst. }
+    procedure Read(var Dst: char); overload;
+
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { default encoding is UTF8 }
+    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
+
+    property Size: integer read FSize write SetSize;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Position: integer read FPosition write FPosition;
+    property Left: integer read GetLeft write SetLeft;
+    property EOF: boolean read GetEOF;
+    property Empty: boolean read GetEmpty;
+    property Text: string read GetText write SetText;
   end;
 
   TEventUtils = class
@@ -2146,58 +2192,35 @@ begin
   end;
 end;
 
-class function TFileUtils.Load<T>(const FileName: string; var Dst: TArray<T>; var ErrMsg: string): boolean;
-begin
-  try
-    Load<T>(FileName, Dst);
-    result := True;
-  except
-    on e: Exception do
-    begin
-      SetLength(Dst, 0);
-      ErrMsg := e.Message;
-      result := False;
-    end;
-  end;
-end;
-
 class procedure TFileUtils.Load<T>(const FileName: string; var Dst: TArray<T>);
 var
-  s: TFileStream;
+  Stream: TFileStream;
 begin
-  s := TFileStream.Create(FileName, fmOpenRead);
+  Stream := TFileStream.Create(FileName, fmOpenRead);
   try
-    SetLength(Dst, s.Size div SizeOf(T));
+    SetLength(Dst, Stream.Size div SizeOf(T));
     if Length(Dst)>0 then
-      s.ReadBuffer(Dst[0], Length(Dst)*SizeOf(T));
+      Stream.ReadBuffer(Dst[0], Length(Dst)*SizeOf(T));
   finally
-    s.Free;
+    Stream.Free;
   end;
 end;
 
-class function TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; ItemCount: integer; var ErrMsg: string): boolean;
-begin
-  try
-    Save<T>(FileName, Src, ItemCount);
-  except
-    on e: exception do
-    begin
-      result := False;
-      ErrMsg := e.Message;
-    end;
-  end;
-end;
-
-class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; ItemCount: integer);
+class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; Index,Count: integer);
 var
-  s: TFileStream;
+  Stream: TFileStream;
 begin
-  s := TFileStream.Create(FileName, fmCreate);
+  Stream := TFileStream.Create(FileName, fmCreate);
   try
-    s.WriteBuffer(Src[0], ItemCount*SizeOf(T));
+    Stream.WriteBuffer(Src[Index], Count*SizeOf(T));
   finally
-    s.Free;
+    Stream.Free;
   end;
+end;
+
+class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>);
+begin
+  Save<T>(FileName, Src, 0, Length(Src));
 end;
 
 class function TFileUtils.StringToFilename(const AStr: string): string;
@@ -3503,7 +3526,7 @@ end;
 
 procedure TBuffer.SaveToFile(const FileName: string);
 begin
-  TFileUtils.Save<Byte>(FileName, Data, Size);
+  TFileUtils.Save<Byte>(FileName, Data, 0,Size);
 end;
 
 procedure TBuffer.SetLeft(Value: integer);
@@ -3520,7 +3543,7 @@ end;
 procedure TBuffer.CheckCapacity(MinCapacity: integer);
 begin
   if Capacity < MinCapacity then
-    Capacity := Max(MinCapacity, Capacity shl 1);
+    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 16);
 end;
 
 procedure TBuffer.SetSize(Value: integer);
@@ -3542,13 +3565,6 @@ begin
   inc(FPosition, ByteCount);
 end;
 
-procedure TBuffer.ReadAllData(var Dst);
-begin
-  if Size > 0 then
-    System.Move(Data[0], Dst, Size);
-  Position := Size;
-end;
-
 procedure TBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
 begin
   Read(Dst[DstCharOffset+Low(Dst)], CharCount*SizeOf(Char));
@@ -3558,15 +3574,6 @@ procedure TBuffer.Read(var Dst: string; CharCount: integer);
 begin
   SetLength(Dst, CharCount);
   Read(Dst[Low(Dst)], CharCount*SizeOf(Char));
-end;
-
-procedure TBuffer.ReadAllData(var Dst: string);
-begin
-  Assert(Size mod SizeOf(Char)=0);
-  SetLength(Dst, Size div SizeOf(Char));
-  if Size > 0 then
-    System.Move(Data[0], Dst[Low(Dst)], Size);
-  Position := Size;
 end;
 
 procedure TBuffer.Write(const Src; ByteCount: integer);
@@ -4055,6 +4062,154 @@ begin
           (X-FPoints[FoundIndex-1].X) *
           (FPoints[FoundIndex].Y-FPoints[FoundIndex-1].Y) div
           (FPoints[FoundIndex].X-FPoints[FoundIndex-1].X);
+end;
+
+{ TStringBuffer }
+
+procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
+begin
+  if Capacity < MinCapacity then
+    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 32);
+end;
+
+procedure TStringBuffer.Clear;
+begin
+  Size := 0;
+  Capacity := 0;
+  Position := 0;
+end;
+
+function TStringBuffer.GetCapacity: integer;
+begin
+  result := Length(Data);
+end;
+
+function TStringBuffer.GetEmpty: Boolean;
+begin
+  result := Size=0;
+end;
+
+function TStringBuffer.GetEOF: boolean;
+begin
+  result := Position >= Size;
+end;
+
+function TStringBuffer.GetLeft: integer;
+begin
+  result := Size-Position;
+end;
+
+function TStringBuffer.GetText: string;
+begin
+  if Size=Capacity then
+    result := Data
+  else
+  begin
+    SetLength(result, Size);
+    System.Move(Data[Low(Data)], result[Low(result)], Size*SizeOf(Char));
+  end;
+end;
+
+procedure TStringBuffer.SaveToFile(const FileName: string; Encoding: TEncoding = nil);
+var
+  Bytes: TArray<Byte>;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  SetLength(Bytes, Encoding.GetByteCount(Data, 0,Size));
+  Encoding.GetBytes(Data, 0,Size, Bytes,0);
+  TFileUtils.Save<Byte>(FileName, Bytes, 0,Length(Bytes));
+end;
+
+procedure TStringBuffer.LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
+var
+  Bytes: TArray<byte>;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  TFileUtils.Load<Byte>(FileName, Bytes);
+  Data := Encoding.GetString(Bytes);
+  FSize := Length(Data);
+  FPosition := 0;
+end;
+
+procedure TStringBuffer.Read(var Dst: char);
+begin
+  Assert(Position + 1 <= Size);
+  Dst := Data.Chars[Position];
+  inc(FPosition);
+end;
+
+procedure TStringBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
+begin
+  Assert(Position + CharCount <= Size);
+  System.Move(Data[Position+Low(Data)], Dst[DstCharOffset+Low(Data)], CharCount*SizeOf(Char));
+  inc(FPosition, CharCount);
+end;
+
+procedure TStringBuffer.Read(var Dst: string; CharCount: integer);
+begin
+  SetLength(Dst, CharCount);
+  Read(Dst, 0, CharCount);
+end;
+
+procedure TStringBuffer.SetCapacity(Value: integer);
+begin
+  Assert(Value >= Size);
+  SetLength(Data, Value);
+end;
+
+procedure TStringBuffer.SetLeft(Value: integer);
+begin
+  Size := Position + Value;
+end;
+
+procedure TStringBuffer.SetSize(Value: integer);
+begin
+  CheckCapacity(Value);
+  FSize := Value;
+  FPosition := Max(Min(FPosition, FSize), 0);
+end;
+
+procedure TStringBuffer.SetText(const Value: string);
+begin
+  Clear;
+  Write(Value);
+  Position := 0;
+end;
+
+procedure TStringBuffer.TrimExcess;
+begin
+  Capacity := Size;
+end;
+
+procedure TStringBuffer.Write(const Src: char);
+begin
+  CheckCapacity(Position + 1);
+  Data[Position+Low(Data)] := Src;
+  inc(FPosition);
+  if FPosition > FSize then
+    FSize := FPosition;
+end;
+
+procedure TStringBuffer.Write(const Src: string);
+begin
+  Write(Src, 0, Length(Src));
+end;
+
+procedure TStringBuffer.Write(const Src: string; CharOffset, CharCount: integer);
+begin
+  {$IFOPT R+}
+  Assert((CharOffset>=0) and (CharOffset+CharCount<=Length(Src)));
+  {$ENDIF}
+  if CharCount>0 then
+  begin
+    CheckCapacity(Position + CharCount);
+    System.Move(Src[CharOffset+Low(Src)], Data[Position+Low(Src)], CharCount*SizeOf(Char));
+    inc(FPosition, CharCount);
+    if FPosition > FSize then
+      FSize := FPosition;
+  end;
 end;
 
 end.

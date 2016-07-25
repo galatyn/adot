@@ -614,7 +614,7 @@ end;
 
 function TGrammarString.GetInfo: string;
 begin
-  result := inherited + Format(' Value:"%s", CaseSensitive:%s', [TStr.GetPrintable(FValue), TValueUtils.BoolToStr(FCaseSensitive)]);
+  result := inherited + Format(' Value:"%s", CaseSensitive:%s', [TStr.GetPrintable(FValue), TFun.BoolToStr(FCaseSensitive)]);
 end;
 
 procedure TGrammarString.SetCaseSensitive(const Value: boolean);
@@ -667,7 +667,7 @@ function TGrammarChar.GetInfo: string;
 begin
   result := inherited + Format(' Value:"%s", CaseSensitive:%s', [
     TStr.GetPrintable(IfThen(FValueFrom=FValueTo, FValueFrom, '['+FValueFrom+'..'+FValueFrom+']')),
-    TValueUtils.BoolToStr(FCaseSensitive)
+    TFun.BoolToStr(FCaseSensitive)
   ]);
 end;
 
