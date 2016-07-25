@@ -222,6 +222,12 @@ type
       end; }
     class function StringToBuf(const S: string; var Buf; BufSizeBytes: integer; Encoding: TEncoding = nil): integer; static;
     class function BufToString(const Buf; CountBytes: integer; Encoding: TEncoding = nil): string; static;
+
+    { Trancates string without breakig a words. }
+    class function TruncToWord(const Src: string; MaxCharLen: integer): string; static;
+
+    { Replaces any sequence of any space/control chars by single space. }
+    class function TruncSpaces(const Src: string): string; static;
   end;
 
   { Position of token in the text. Starts from zero. }
@@ -644,44 +650,6 @@ type
     { Apply all commands to string Src and get result }
     function Apply(const Src: string): string;
   end;
-
-  { Wrapper for string type. Some advantages over string type:
-    1. Extendable list of helper functions.
-    2. Nice syntax for some overloaded operators:
-         - if S in T then (case insensitive search for substring)
-         - S := S*8 (repeat string several times)
-         - S := S div 3 (SetLength(S, Length(S) dov 3))
-         - S := S / 3 (SetLength(S, Length(S) dov 3))
-         - if S=Q then <> (case insensitive comparer)
-         - S := -S ("Test" -> "tEST")
-         - S := S - T (if S ends with T, then remove it from the S)
-    }
- { TString = record
-  public
-    Value: string;
-
-    class operator Implicit(const AValue: TString): string;
-    class operator Implicit(const AValue: string): TString;
-    class operator Implicit(const AValue: int64): TString;
-    class operator Implicit(const AValue: TDateTime): TString;
-    class operator Implicit(const AValue: Double): TString;
-
-    class operator Equal(const Left, Right: TString): Boolean;
-    class operator NotEqual(const Left, Right: TString): Boolean;
-    class operator LessThan(const Left,Right: TString): Boolean;
-    class operator LessThanOrEqual(const Left,Right: TString): Boolean;
-    class operator GreaterThan(const Left,Right: TString): Boolean;
-    class operator GreaterThanOrEqual(const Left,Right: TString): Boolean;
-
-    class operator Add(const Left: TString; const Right: TString): TString;
-    class operator Subtract(const Left: TString; const Right: TString): TString;
-    class operator Multiply(const Left: TString; const Right: TString): TString;
-    class operator Divide(const Left: TString; const Right: TString): TString;
-    class operator IntDivide(const Left: TString; const Right: TString): TString;
-    class operator Negative(const Value: TString): TString;
-
-    class operator In(const Left: TString; const Right: TString): Boolean;
-  end; }
 
 implementation
 
@@ -1311,6 +1279,43 @@ begin
     T.GetTokens(Dst);
   finally
     T.Free;
+  end;
+end;
+
+class function TStr.TruncSpaces(const Src: string): string;
+var
+  I: Integer;
+  S: boolean;
+begin
+  Result := '';
+  S := False;
+  for I := Low(Src) to High(Src) do
+    if Src[I].IsWhiteSpace or Src[I].IsControl then
+      if S then
+      else
+      begin
+        S := True;
+        result := result + ' ';
+      end
+    else
+    begin
+      S := False;
+      result := result + Src[I];
+    end;
+end;
+
+class function TStr.TruncToWord(const Src: string; MaxCharLen: integer): string;
+var
+  I: Integer;
+begin
+  if (MaxCharLen >= Length(Src)) or (Src = '') then
+    result := Src
+  else
+  begin
+    for I := MaxCharLen downto 0 do
+      if (Src.Chars[I] <= ' ') or (Src.Chars[I]={Non-breaking space}#160) then
+        Exit(Src.Substring(0,I));
+    result := '';
   end;
 end;
 

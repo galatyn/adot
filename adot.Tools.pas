@@ -1112,7 +1112,7 @@ begin
   assert(IsValid(HexEncodedCardinal));
   result := 0;
   for i := Low(HexEncodedCardinal) to High(HexEncodedCardinal) do
-    result := (result shl 4) or H2B[HexEncodedCardinal[i]];
+    result := (result shl 4) or Cardinal(H2B[HexEncodedCardinal[i]]);
 end;
 
 class function THex.HexToWord(const HexEncodedWord: String):Word;
