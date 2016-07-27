@@ -23,7 +23,7 @@
   TBinarySearchTree<TKey,TValue> = Class
     Binary search tree.
 
-  TCache<TKey,TValue> = class
+  TCacheClass<TKey,TValue> = class
     Based on TDictionary, but automatically deletes data if it take more space than allowed.
 
   TComparerUtils = class
@@ -1150,7 +1150,7 @@ type
   end;
 
   { Based on TDictionary, but automatically deletes data if it take more space than allowed. }
-  TCache<TKey,TValue> = class
+  TCacheClass<TKey,TValue> = class
   protected
     const
       DefaultSize = 1024*1024;
@@ -1614,6 +1614,7 @@ type
 implementation
 
 uses
+  adot.Strings,
   adot.Tools;
 
 { TCompound<TypeA, TypeB> }
@@ -3690,25 +3691,25 @@ begin
   FGuard := TAutofree<T>.TAutoFreeImpl.Create(FValue);
 end;
 
-{ TCache<TKey, TValue> }
+{ TCacheClass<TKey, TValue> }
 
-constructor TCache<TKey, TValue>.Create;
+constructor TCacheClass<TKey, TValue>.Create;
 begin
   Create(DefaultSize);
 end;
 
-constructor TCache<TKey, TValue>.Create(AMaxSize: Integer);
+constructor TCacheClass<TKey, TValue>.Create(AMaxSize: Integer);
 begin
   MaxSize := AMaxSize;
   Cache := TDictionary<TKey,TValue>.Create;
 end;
 
-destructor TCache<TKey, TValue>.Destroy;
+destructor TCacheClass<TKey, TValue>.Destroy;
 begin
   FreeAndNil(Cache);
 end;
 
-procedure TCache<TKey, TValue>.Add(K: TKey; V: TValue; ASize: longint);
+procedure TCacheClass<TKey, TValue>.Add(K: TKey; V: TValue; ASize: longint);
 begin
   if Size>=MaxSize then
   begin
@@ -3719,7 +3720,7 @@ begin
   inc(Size, ASize);
 end;
 
-function TCache<TKey, TValue>.TryGetValue(K: TKey; var V: TValue): boolean;
+function TCacheClass<TKey, TValue>.TryGetValue(K: TKey; var V: TValue): boolean;
 begin
   result := Cache.TryGetValue(K,V);
 end;

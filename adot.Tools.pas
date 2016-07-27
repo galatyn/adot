@@ -95,6 +95,7 @@ uses
   adot.Types,
   adot.Collections,
   adot.Arithmetic,
+  adot.Tools.Rtti,
 {$IFDEF MSWINDOWS}
   { Preventing from "Inline has not been expanded" }
   Winapi.Windows,
@@ -110,6 +111,7 @@ uses
   System.Classes,
   System.SysUtils,
   System.StrUtils,
+  System.Character,
   System.TimeSpan,
   System.Diagnostics,  { TStopwatch }
   System.SyncObjs,     { TInterlocked.* }
@@ -289,10 +291,10 @@ type
   TDateTimeRec = record
     Year, Month, Day, Hour, Minute, Second, Millisecond : Word;
 
-    class operator implicit(const ADateTime : TDateTimeRec): TDateTime;
-    class operator implicit(const ADateTime : TDateTime): TDateTimeRec;
-    class operator implicit(const ADateTime : TDateTimeRec): String;
-    class operator implicit(const ADateTime : String): TDateTimeRec;
+    class operator Implicit(const ADateTime : TDateTimeRec): TDateTime;
+    class operator Implicit(const ADateTime : TDateTime): TDateTimeRec;
+    class operator Implicit(const ADateTime : TDateTimeRec): String;
+    class operator Implicit(const ADateTime : String): TDateTimeRec;
   end;
 
   { Extensions of TStream }
@@ -364,6 +366,10 @@ type
     class procedure Fill(var Dst: TArray<integer>; Count: integer; AValueStart,AValueInc: integer); overload; static;
     class procedure Fill(var Dst: TArray<double>; Count: integer; AValueStart,AValueInc: double); overload; static;
     class procedure StableSort<T>(var Dst: TArray<T>; StartIndex,Count: integer; Comparer: IComparer<T>); static;
+    class function Cut<T>(var Dst: TArray<T>; Capacity,StartIndex,Count: integer): integer; overload; static;
+    class function Cut<T>(var Dst: TArray<T>; StartIndex,Count: integer): integer; overload; static;
+    class function Slice<T>(const Src: TArray<T>; Capacity,StartIndex,Count: integer): TArray<T>; overload; static;
+    class function Slice<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -760,6 +766,8 @@ type
     class function GetAll(AStart: TComponent): TArray<TComponent>; overload; static;
     { Get all child components of type T recursively }
     class function GetAll<T: class>(AStart: TComponent): TArray<T>; overload; static;
+    { Generates unique component name }
+    class function GetUniqueName: string; static;
   end;
 
   { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
@@ -790,12 +798,12 @@ type
     constructor Create(AProc: TProc<T>; AValue: T);
   end;
 
-  { Lightweight and managed analog of TMemoryStream.
-    Has mixed set of methods - byte and string-compatible. }
+  { Lightweight and managed analog of TBytesStream.
+    Has mixed set of methods - byte and string-compatible.
+    Check also TStringBuffer from *.Strings unit. }
   TBuffer = record
-  public
-    Data: TArray<Byte>;
   private
+    FData: TArray<Byte>;
     FSize: integer;
     FPosition: integer;
 
@@ -810,16 +818,29 @@ type
     function GetText: string;
     procedure SetText(const Value: string);
     function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetData(AData: TArray<Byte>);
   public
 
+    { writes bytes from Src to current position. }
     procedure Write(const Src; ByteCount: integer); overload;
+    { writes characters from Src to the buffer (usually 1 char = 2 bytes). }
     procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
+    { writes all characters from Src to the buffer (usually 1 char = 2 bytes). }
     procedure Write(const Src: string); overload;
 
+    { Reads bytes from the buffer to Dst. }
     procedure Read(var Dst; ByteCount: integer); overload;
+    { Reads characters from the buffer to specific position of Dst (usually 1 char = 2 bytes). }
     procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
+    { Reads characters from the buffer to Dst (usually 1 char = 2 bytes). }
     procedure Read(var Dst: string; CharCount: integer); overload;
 
+    { Removes part of data from the buffer. }
+    procedure Cut(Start,Len: integer);
+    { Returns range of the buffer as array of bytes. }
+    function Slice(Start,Len: integer): TArray<byte>;
+
+    { Makes sure that Capacity is equal to Size. After that Data field can be used directly. }
     procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
 
@@ -834,55 +855,7 @@ type
     property EOF: boolean read GetEOF;
     property Empty: boolean read GetEmpty;
     property Text: string read GetText write SetText;
-  end;
-
-  { Lightweight and managed analog of TStringStream. }
-  TStringBuffer = record
-  public
-    Data: string;
-  private
-    FSize: integer;
-    FPosition: integer;
-
-    procedure SetSize(Value: integer);
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetText: string;
-    procedure SetText(const Value: string);
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-  public
-
-    procedure Clear;
-
-    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
-    procedure Write(const Src: string); overload;
-    procedure Write(const Src: char); overload;
-
-    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
-      Dst should be preallocated to fit require amount of characters. }
-    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
-    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
-    procedure Read(var Dst: string; CharCount: integer); overload;
-    { Reads one character from current position of the buffer to Dst. }
-    procedure Read(var Dst: char); overload;
-
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
-
-    { default encoding is UTF8 }
-    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
-    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
-
-    property Size: integer read FSize write SetSize;
-    property Capacity: integer read GetCapacity write SetCapacity;
-    property Position: integer read FPosition write FPosition;
-    property Left: integer read GetLeft write SetLeft;
-    property EOF: boolean read GetEOF;
-    property Empty: boolean read GetEmpty;
-    property Text: string read GetText write SetText;
+    property Data: TArray<Byte> read FData write SetData;
   end;
 
   TEventUtils = class
@@ -1316,24 +1289,24 @@ end;
 
 { TDateTimeRec }
 
-class operator TDateTimeRec.implicit(const ADateTime: TDateTime): TDateTimeRec;
+class operator TDateTimeRec.Implicit(const ADateTime: TDateTime): TDateTimeRec;
 begin
   with Result do
     DecodeDateTime(ADateTime, Year, Month, Day, Hour, Minute, Second, Millisecond);
 end;
 
-class operator TDateTimeRec.implicit(const ADateTime: TDateTimeRec): TDateTime;
+class operator TDateTimeRec.Implicit(const ADateTime: TDateTimeRec): TDateTime;
 begin
   with ADateTime do
     Result := EncodeDateTime(Year, Month, Day, Hour, Minute, Second, Millisecond);
 end;
 
-class operator TDateTimeRec.implicit(const ADateTime: String): TDateTimeRec;
+class operator TDateTimeRec.Implicit(const ADateTime: String): TDateTimeRec;
 begin
   Result := StrToDateTime(ADateTime);
 end;
 
-class operator TDateTimeRec.implicit(const ADateTime: TDateTimeRec): String;
+class operator TDateTimeRec.Implicit(const ADateTime: TDateTimeRec): String;
 begin
   Result := DateTimeToStr(ADateTime);
 end;
@@ -1607,14 +1580,17 @@ var
   i: Integer;
 begin
   result := Length(A)=Length(B);
-  if result then
-  begin
-    if AComparer=nil then
-      AComparer := TEqualityComparer<T>.Default;
-    for i := 0 to High(A) do
-      if not AComparer.Equals(A[i], B[i]) then
-        Exit(False);
-  end;
+  if result and (Length(A) > 0) then
+    if TRttiUtils.IsOrdinal<T> and (AComparer=nil) then
+      result := CompareMem(@A[0], @B[0], Length(A)*SizeOF(T))
+    else
+    begin
+      if AComparer=nil then
+        AComparer := TEqualityComparer<T>.Default;
+      for i := 0 to High(A) do
+        if not AComparer.Equals(A[i], B[i]) then
+          Exit(False);
+    end;
 end;
 
 class procedure TArrayUtils.Fill(var Dst: TArray<byte>; Count, AValueStart, AValueInc: integer);
@@ -1680,6 +1656,8 @@ class procedure TArrayUtils.FillRandom(var Dst: TArray<string>; Count, ValMaxLen
 var
   i: Integer;
 begin
+  if Count >=0 then
+    SetLength(Dst, Count);
   if ValMaxLen <= 0 then
     ValMaxLen := 10;
   for i := 0 to High(Dst) do
@@ -1791,6 +1769,66 @@ begin
     Tmp[I] := Dst[Idx[I]];
   for I := 0 to High(Tmp) do
     Dst[I+StartIndex] := Tmp[I];
+end;
+
+class function TArrayUtils.Cut<T>(var Dst: TArray<T>; Capacity,StartIndex,Count: integer): integer;
+var
+  I: Integer;
+begin
+  if StartIndex >= Capacity then
+    Exit(0);
+  result := Count;
+  if StartIndex < 0 then
+  begin
+    inc(result, StartIndex);
+    StartIndex := 0;
+  end;
+  result := Max(Min(result, Capacity-StartIndex), 0);
+  if result = 0 then
+    Exit;
+  if TRttiUtils.IsOrdinal<T> then
+    System.Move(Dst[StartIndex+result], Dst[StartIndex], (Capacity-StartIndex-result)*SizeOf(T))
+  else
+    for I := 0 to result-1 do
+      Dst[I+StartIndex] := Dst[I+StartIndex+result];
+end;
+
+class function TArrayUtils.Cut<T>(var Dst: TArray<T>; StartIndex,Count: integer): integer;
+begin
+  result := Cut<T>(Dst, Length(Dst), StartIndex, Count);
+end;
+
+class function TArrayUtils.Slice<T>(const Src: TArray<T>; Capacity,StartIndex,Count: integer): TArray<T>;
+var
+  I: Integer;
+begin
+  if StartIndex >= Capacity then
+    Count := 0
+  else
+  begin
+    if StartIndex < 0 then
+    begin
+      inc(Count, StartIndex);
+      StartIndex := 0;
+    end;
+    Count := Min(Count, Capacity-StartIndex);
+  end;
+  if Count <= 0 then
+    SetLength(result, 0)
+  else
+  begin
+    SetLength(result, Count);
+    if TRttiUtils.IsOrdinal<T> then
+      System.Move(Src[StartIndex], result[0], Count*SizeOf(T))
+    else
+      for I := 0 to Count-1 do
+        result[I] := Src[I+StartIndex];
+  end;
+end;
+
+class function TArrayUtils.Slice<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>;
+begin
+  result := Slice<T>(Src, Length(Src), StartIndex, Count);
 end;
 
 { TDateTimeUtils }
@@ -3241,6 +3279,12 @@ begin
   result := V.Items;
 end;
 
+class function TComponentUtils.GetUniqueName: string;
+begin
+  result := GuidToString(TGUIDUtils.GetNew).Replace('-','', [rfReplaceAll]);
+  result := 'G' + result.Substring(1, Length(result)-2);
+end;
+
 { THashHelperFunctions }
 
 class function THashHelperFunctions.HashToCardinal(const AHash: TBytes): Cardinal;
@@ -3472,17 +3516,16 @@ procedure TBuffer.Clear;
 begin
   Size := 0;
   Capacity := Size;
-  FPosition := 0;
 end;
 
 function TBuffer.GetCapacity: integer;
 begin
-  result := Length(Data);
+  result := Length(FData);
 end;
 
 function TBuffer.GetCurrentData: pointer;
 begin
-  result := @Data[Position];
+  result := @FData[Position];
 end;
 
 function TBuffer.GetEmpty: Boolean;
@@ -3519,14 +3562,14 @@ end;
 
 procedure TBuffer.LoadFromFile(const FileName: string);
 begin
-  TFileUtils.Load<Byte>(FileName, Data);
-  FSize := Length(Data);
+  TFileUtils.Load<Byte>(FileName, FData);
+  FSize := Length(FData);
   FPosition := 0;
 end;
 
 procedure TBuffer.SaveToFile(const FileName: string);
 begin
-  TFileUtils.Save<Byte>(FileName, Data, 0,Size);
+  TFileUtils.Save<Byte>(FileName, FData, 0,Size);
 end;
 
 procedure TBuffer.SetLeft(Value: integer);
@@ -3537,7 +3580,7 @@ end;
 procedure TBuffer.SetCapacity(Value: integer);
 begin
   Assert(Value >= Size);
-  SetLength(Data, Value);
+  SetLength(FData, Value);
 end;
 
 procedure TBuffer.CheckCapacity(MinCapacity: integer);
@@ -3561,7 +3604,7 @@ end;
 procedure TBuffer.Read(var Dst; ByteCount: integer);
 begin
   Assert(Position + ByteCount <= Size);
-  System.Move(Data[Position], Dst, ByteCount);
+  System.Move(FData[Position], Dst, ByteCount);
   inc(FPosition, ByteCount);
 end;
 
@@ -3579,7 +3622,7 @@ end;
 procedure TBuffer.Write(const Src; ByteCount: integer);
 begin
   CheckCapacity(Position + ByteCount);
-  System.Move(Src, Data[Position], ByteCount);
+  System.Move(Src, FData[Position], ByteCount);
   inc(FPosition, ByteCount);
   if FPosition > FSize then
     FSize := FPosition;
@@ -3595,6 +3638,26 @@ procedure TBuffer.Write(const Src: string);
 begin
   if Src<>'' then
     Write(Src[Low(Src)], Length(Src)*SizeOf(Char));
+end;
+
+procedure TBuffer.Cut(Start, Len: integer);
+begin
+  Len := TArrayUtils.Cut<byte>(FData, Size, Start, Len);
+  dec(FSize, Len);
+  if Position > Size then
+    Position := Size;
+end;
+
+function TBuffer.Slice(Start, Len: integer): TArray<byte>;
+begin
+  result := TArrayUtils.Slice<byte>(FData, Size, Start, Len);
+end;
+
+procedure TBuffer.SetData(AData: TArray<Byte>);
+begin
+  FData := AData;
+  FSize := Length(FData);
+  FPosition := 0;
 end;
 
 { TOutOfScopeAction.TOnDestroyRunner }
@@ -4062,154 +4125,6 @@ begin
           (X-FPoints[FoundIndex-1].X) *
           (FPoints[FoundIndex].Y-FPoints[FoundIndex-1].Y) div
           (FPoints[FoundIndex].X-FPoints[FoundIndex-1].X);
-end;
-
-{ TStringBuffer }
-
-procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
-begin
-  if Capacity < MinCapacity then
-    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 32);
-end;
-
-procedure TStringBuffer.Clear;
-begin
-  Size := 0;
-  Capacity := 0;
-  Position := 0;
-end;
-
-function TStringBuffer.GetCapacity: integer;
-begin
-  result := Length(Data);
-end;
-
-function TStringBuffer.GetEmpty: Boolean;
-begin
-  result := Size=0;
-end;
-
-function TStringBuffer.GetEOF: boolean;
-begin
-  result := Position >= Size;
-end;
-
-function TStringBuffer.GetLeft: integer;
-begin
-  result := Size-Position;
-end;
-
-function TStringBuffer.GetText: string;
-begin
-  if Size=Capacity then
-    result := Data
-  else
-  begin
-    SetLength(result, Size);
-    System.Move(Data[Low(Data)], result[Low(result)], Size*SizeOf(Char));
-  end;
-end;
-
-procedure TStringBuffer.SaveToFile(const FileName: string; Encoding: TEncoding = nil);
-var
-  Bytes: TArray<Byte>;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  SetLength(Bytes, Encoding.GetByteCount(Data, 0,Size));
-  Encoding.GetBytes(Data, 0,Size, Bytes,0);
-  TFileUtils.Save<Byte>(FileName, Bytes, 0,Length(Bytes));
-end;
-
-procedure TStringBuffer.LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
-var
-  Bytes: TArray<byte>;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  TFileUtils.Load<Byte>(FileName, Bytes);
-  Data := Encoding.GetString(Bytes);
-  FSize := Length(Data);
-  FPosition := 0;
-end;
-
-procedure TStringBuffer.Read(var Dst: char);
-begin
-  Assert(Position + 1 <= Size);
-  Dst := Data.Chars[Position];
-  inc(FPosition);
-end;
-
-procedure TStringBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
-begin
-  Assert(Position + CharCount <= Size);
-  System.Move(Data[Position+Low(Data)], Dst[DstCharOffset+Low(Data)], CharCount*SizeOf(Char));
-  inc(FPosition, CharCount);
-end;
-
-procedure TStringBuffer.Read(var Dst: string; CharCount: integer);
-begin
-  SetLength(Dst, CharCount);
-  Read(Dst, 0, CharCount);
-end;
-
-procedure TStringBuffer.SetCapacity(Value: integer);
-begin
-  Assert(Value >= Size);
-  SetLength(Data, Value);
-end;
-
-procedure TStringBuffer.SetLeft(Value: integer);
-begin
-  Size := Position + Value;
-end;
-
-procedure TStringBuffer.SetSize(Value: integer);
-begin
-  CheckCapacity(Value);
-  FSize := Value;
-  FPosition := Max(Min(FPosition, FSize), 0);
-end;
-
-procedure TStringBuffer.SetText(const Value: string);
-begin
-  Clear;
-  Write(Value);
-  Position := 0;
-end;
-
-procedure TStringBuffer.TrimExcess;
-begin
-  Capacity := Size;
-end;
-
-procedure TStringBuffer.Write(const Src: char);
-begin
-  CheckCapacity(Position + 1);
-  Data[Position+Low(Data)] := Src;
-  inc(FPosition);
-  if FPosition > FSize then
-    FSize := FPosition;
-end;
-
-procedure TStringBuffer.Write(const Src: string);
-begin
-  Write(Src, 0, Length(Src));
-end;
-
-procedure TStringBuffer.Write(const Src: string; CharOffset, CharCount: integer);
-begin
-  {$IFOPT R+}
-  Assert((CharOffset>=0) and (CharOffset+CharCount<=Length(Src)));
-  {$ENDIF}
-  if CharCount>0 then
-  begin
-    CheckCapacity(Position + CharCount);
-    System.Move(Src[CharOffset+Low(Src)], Data[Position+Low(Src)], CharCount*SizeOf(Char));
-    inc(FPosition, CharCount);
-    if FPosition > FSize then
-      FSize := FPosition;
-  end;
 end;
 
 end.

@@ -25,6 +25,7 @@ type
 
     { Returns True if T is class (instance can be created) }
     class function IsInstance<T>: boolean; static;
+    class function IsOrdinal<T>: boolean; static;
 
     { Convert value of type T to string }
     class function ValueAsString<T>(const Value: T): string; static;
@@ -186,8 +187,19 @@ var
   RttiContext: TRttiContext;
   RttiType: TRttiType;
 begin
+  RttiContext := TRttiContext.Create;
   RttiType := RttiContext.GetType(TypeInfo(T));
   result := (RttiType<>nil) and RttiType.IsInstance;
+end;
+
+class function TRttiUtils.IsOrdinal<T>: boolean;
+var
+  RttiContext: TRttiContext;
+  RttiType: TRttiType;
+begin
+  RttiContext := TRttiContext.Create;
+  RttiType := RttiContext.GetType(TypeInfo(T));
+  result := (RttiType<>nil) and RttiType.IsOrdinal;
 end;
 
 class function TRttiUtils.ValueAsString<T>(const Value: T): string;

@@ -140,6 +140,8 @@ type
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
+    class function Reverse(const S: string): string; static;
+
     { returns new string where all specified chars replaced by string }
     class function Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string; static;
 
@@ -173,6 +175,7 @@ type
 
     { System.SysUtils.TextPos doesn't work with international chars "Æ","Å" etc (XE5 at least). }
     class function TextPosition(const ASubStr, AText: string; AOffset: integer = 0): Integer; static;
+    class function Contains(const ASubStr, AText: string): boolean; static;
 
     { file-string }
     class function Load(Src: TStream; Encoding: TEncoding = nil): string; overload; static;
@@ -224,7 +227,7 @@ type
     class function BufToString(const Buf; CountBytes: integer; Encoding: TEncoding = nil): string; static;
 
     { Trancates string without breakig a words. }
-    class function TruncToWord(const Src: string; MaxCharLen: integer): string; static;
+    class function TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string; static;
 
     { Replaces any sequence of any space/control chars by single space. }
     class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
@@ -608,6 +611,90 @@ type
     property LastTokenType: TPasTokenType read FTokenType;
   end;
 
+  { Lightweight and managed analog of TStringStream:
+    - write operations are faster on large input in comparing with regular string concatenation
+    - supports stream-like read/write operations
+    - lighter/faster than TStringStream }
+  TStringBuffer = record
+  public
+  private
+    FData: string;
+    FSize: integer;
+    FPosition: integer;
+
+    procedure SetSize(Value: integer);
+    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetText: string;
+    procedure SetText(const Value: string);
+    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+  public
+
+    procedure Clear;
+
+    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
+    procedure Write(const Src: string); overload;
+    procedure Write(const Src: char); overload;
+
+    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
+      Dst should be preallocated to fit all requested characters. }
+    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
+    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
+    procedure Read(var Dst: string; CharCount: integer); overload;
+    { Reads one character from current position of the buffer to Dst. }
+    procedure Read(var Dst: char); overload;
+
+    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    { default encoding is UTF8 }
+    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
+
+    { assign as string }
+    class operator Implicit(const Buffer: TStringBuffer): String; static;
+    class operator Implicit(const Data: string): TStringBuffer; static;
+    class operator Implicit(const Data: integer): TStringBuffer; static;
+    class operator Implicit(const Data: double): TStringBuffer; static;
+
+    { case insensitive compare: AnsiSameText(ALeft.Text,ARight.Text) }
+    class operator Equal(const ALeft, ARight: TStringBuffer): Boolean; overload;
+    class operator Equal(const ALeft: TStringBuffer; const ARight: string): Boolean; overload;
+    class operator Equal(const ALeft: string; const ARight: TStringBuffer): Boolean; overload;
+    class operator NotEqual(const Left, Right: TStringBuffer): Boolean;
+
+    { Concatenation. Position will be set behind last char of ARight. }
+    class operator Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
+    class operator Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
+    class operator Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
+
+    { 'tests'-'s'='test', 'c:\1\2\'-'\'='c:\1\2', ...}
+    class operator Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
+
+    { -'123'='321' }
+    class operator Negative(Value: TStringBuffer): TStringBuffer;
+
+    { 'test'*3='testtesttest'}
+    class operator Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
+    class operator Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
+
+    class operator In(const Left,Right: TStringBuffer): Boolean; overload;
+    class operator In(const Left: TStringBuffer; const Right: string): Boolean; overload;
+
+    property Size: integer read FSize write SetSize;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Position: integer read FPosition write FPosition;
+    property Left: integer read GetLeft write SetLeft;
+    property EOF: boolean read GetEOF;
+    property Empty: boolean read GetEmpty;
+    property Text: string read GetText write SetText;
+    { Returns dirty buffer (capacity can be larger than size). }
+    property Data: string read FData;
+  end;
+
   { List of string edit commands (insert/delete/replace). Can be applied to any string.
     Any operation is applied to initial text (without changes made by other commands). }
   TStringEditor = record
@@ -699,7 +786,6 @@ end;
 class function TStr.Escape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
 var
   S: TSet<Char>;
-  B: TStringBuffer;
   I: Integer;
 begin
   S.Clear;
@@ -709,34 +795,31 @@ begin
     S.Add(CharsToEscape[I]);
   end;
   S.Add(EscapeChar);
-  B.Clear;
+  result := '';
   for I := 0 to Length(Value)-1 do
     if not (Value.Chars[I] in S) then
-      B.Write(Value, I,1)
+      result := result + Value.Chars[I]
     else
-      B.Write(EscapeChar + THex.Encode(Value.Chars[I]) );
-  result := B.Text;
+      result := result + EscapeChar + THex.Encode(Value.Chars[I]);
 end;
 
 class function TStr.Unescape(const Value: string; const EscapeChar: Char): string;
 var
-  B: TStringBuffer;
   I: Integer;
 begin
-  B.Clear;
+  result := '';
   I := 0;
   while I < Length(Value) do
   begin
     if Value.Chars[I] <> EscapeChar then
-      B.Write(Value, I,1)
+      result := result + Value.Chars[I]
     else
     begin
-      B.Write(THex.DecodeString(Value.SubString(I+1, SizeOf(Char)*2)));
+      result := result + THex.DecodeString(Value.SubString(I+1, SizeOf(Char)*2));
       Inc(I, SizeOf(Char)*2);
     end;
     inc(I);
   end;
-  result := B.Text;
 end;
 
 class function TStr.UpperCase(const S: string; Chars: TStrCharsPos): string;
@@ -748,13 +831,13 @@ begin
       begin
         result := S;
         if result<>'' then
-          result[Low(result)] := result[Low(result)].ToUpper;
+          result[Low(result)] := result.Chars[0].ToUpper;
       end;
     scLast:
       begin
         result := S;
         if result<>'' then
-          result[High(result)] := result[High(result)].ToUpper;
+          result[High(result)] := result.Chars[Length(result)-1].ToUpper;
       end;
   end;
 end;
@@ -920,6 +1003,24 @@ begin
     else
       Buf.Write(Src.Chars[I]);
   result := Buf.Text;
+end;
+
+class function TStr.Reverse(const S: string): string;
+var
+  L,R,I: Integer;
+  C: Char;
+begin
+  result := S;
+  L := Low(result);
+  R := High(result);
+  for I := 0 to Length(result) div 2-1 do
+  begin
+    C         := result[L];
+    result[L] := result[R];
+    result[R] := C;
+    inc(L);
+    dec(R);
+  end;
 end;
 
 class function TStr.GetNumbers(const s: string): String;
@@ -1321,18 +1422,22 @@ begin
     result := Trim(result);
 end;
 
-class function TStr.TruncToWord(const Src: string; MaxCharLen: integer): string;
+class function TStr.TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string;
 var
   I: Integer;
 begin
-  if (MaxCharLen >= Length(Src)) or (Src = '') then
-    result := Src
-  else
+  result := Trim(Src);
+  if (MaxCharLen < Length(Src)) and (Src <> '') then
   begin
+    result := '';
     for I := MaxCharLen downto 0 do
       if (Src.Chars[I] <= ' ') or (Src.Chars[I]={Non-breaking space}#160) then
-        Exit(Src.Substring(0,I));
-    result := '';
+      begin
+        result := Src.Substring(0,I);
+        break;
+      end;
+    if AddDots then
+      result := result + '...';
   end;
 end;
 
@@ -1445,6 +1550,11 @@ end;
 class function TStr.TextPosition(const ASubStr, AText: string; AOffset: integer): Integer;
 begin
   Result := AText.ToUpper.IndexOf(ASubStr.ToUpper, AOffset);
+end;
+
+class function TStr.Contains(const ASubStr, AText: string): boolean;
+begin
+  result := TextPosition(ASubStr, AText) >= 0;
 end;
 
 class function TStr.Random(ALen: integer; AFrom, ATo: Char): string;
@@ -3047,6 +3157,255 @@ begin
   if SrcPos < L then
     Buffer.Write(Src, SrcPos, L-SrcPos);
   result := Buffer.Text;
+end;
+
+{ TStringBuffer }
+
+class operator TStringBuffer.Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
+begin
+  result.Text := ALeft.Text + ARight;
+  result.Position := result.Size;
+end;
+
+class operator TStringBuffer.Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
+begin
+  result.Text := ALeft.Text + ARight.Text;
+  result.Position := result.Size;
+end;
+
+class operator TStringBuffer.In(const Left, Right: TStringBuffer): Boolean;
+begin
+  result := TStr.Contains(Left.Text, Right.Text);
+end;
+
+class operator TStringBuffer.In(const Left: TStringBuffer; const Right: string): Boolean;
+begin
+  result := TStr.Contains(Left.Text, Right);
+end;
+
+class operator TStringBuffer.Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
+begin
+  result.Text := ALeft + ARight.Text;
+  result.Position := result.Size;
+end;
+
+procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
+begin
+  if Capacity < MinCapacity then
+    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 32);
+end;
+
+procedure TStringBuffer.Clear;
+begin
+  Size := 0;
+  Capacity := 0;
+  Position := 0;
+end;
+
+class operator TStringBuffer.Equal(const ALeft: string; const ARight: TStringBuffer): Boolean;
+begin
+  result := AnsiSameText(ALeft, ARight.Text);
+end;
+
+class operator TStringBuffer.Equal(const ALeft: TStringBuffer; const ARight: string): Boolean;
+begin
+  result := AnsiSameText(ALeft.Text, ARight);
+end;
+
+class operator TStringBuffer.Equal(const ALeft, ARight: TStringBuffer): Boolean;
+begin
+  result := AnsiSameText(ALeft.Text, ARight.Text);
+end;
+
+function TStringBuffer.GetCapacity: integer;
+begin
+  result := Length(FData);
+end;
+
+function TStringBuffer.GetEmpty: Boolean;
+begin
+  result := Size=0;
+end;
+
+function TStringBuffer.GetEOF: boolean;
+begin
+  result := Position >= Size;
+end;
+
+function TStringBuffer.GetLeft: integer;
+begin
+  result := Size-Position;
+end;
+
+function TStringBuffer.GetText: string;
+begin
+  if Size=Capacity then
+    result := FData
+  else
+  begin
+    SetLength(result, Size);
+    System.Move(FData[Low(FData)], result[Low(result)], Size*SizeOf(Char));
+  end;
+end;
+
+class operator TStringBuffer.Implicit(const Buffer: TStringBuffer): String;
+begin
+  result := Buffer.Text;
+end;
+
+class operator TStringBuffer.Implicit(const Data: string): TStringBuffer;
+begin
+  result.Text := Data;
+end;
+
+class operator TStringBuffer.Implicit(const Data: integer): TStringBuffer;
+begin
+  result.Text := Data.ToString;
+end;
+
+class operator TStringBuffer.Implicit(const Data: double): TStringBuffer;
+begin
+  result.Text := Data.ToString;
+end;
+
+procedure TStringBuffer.SaveToFile(const FileName: string; Encoding: TEncoding = nil);
+var
+  Bytes: TArray<Byte>;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  SetLength(Bytes, Encoding.GetByteCount(FData, 0,Size));
+  Encoding.GetBytes(FData, 0,Size, Bytes,0);
+  TFileUtils.Save<Byte>(FileName, Bytes, 0,Length(Bytes));
+end;
+
+procedure TStringBuffer.LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
+var
+  Bytes: TArray<byte>;
+begin
+  if Encoding=nil then
+    Encoding := TEncoding.UTF8;
+  TFileUtils.Load<Byte>(FileName, Bytes);
+  FData := Encoding.GetString(Bytes);
+  FSize := Length(FData);
+  FPosition := 0;
+end;
+
+class operator TStringBuffer.Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
+var
+  S: string;
+  I: Integer;
+begin
+  result.Clear;
+  S := ALeft.Text;
+  for I := 0 to ARight-1 do
+    result.Write(S);
+end;
+
+class operator TStringBuffer.Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
+begin
+  result := ARight*ALeft;
+end;
+
+class operator TStringBuffer.Negative(Value: TStringBuffer): TStringBuffer;
+begin
+  result.Text := TStr.Reverse(Value.Text);
+end;
+
+class operator TStringBuffer.NotEqual(const Left, Right: TStringBuffer): Boolean;
+begin
+  result := not (Left=Right);
+end;
+
+procedure TStringBuffer.Read(var Dst: char);
+begin
+  Assert(Position + 1 <= Size);
+  Dst := FData.Chars[Position];
+  inc(FPosition);
+end;
+
+procedure TStringBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
+begin
+  Assert(Position + CharCount <= Size);
+  System.Move(FData[Position+Low(FData)], Dst[DstCharOffset+Low(FData)], CharCount*SizeOf(Char));
+  inc(FPosition, CharCount);
+end;
+
+procedure TStringBuffer.Read(var Dst: string; CharCount: integer);
+begin
+  SetLength(Dst, CharCount);
+  Read(Dst, 0, CharCount);
+end;
+
+procedure TStringBuffer.SetCapacity(Value: integer);
+begin
+  Assert(Value >= Size);
+  SetLength(FData, Value);
+end;
+
+procedure TStringBuffer.SetLeft(Value: integer);
+begin
+  Size := Position + Value;
+end;
+
+procedure TStringBuffer.SetSize(Value: integer);
+begin
+  CheckCapacity(Value);
+  FSize := Value;
+  FPosition := Max(Min(FPosition, FSize), 0);
+end;
+
+procedure TStringBuffer.SetText(const Value: string);
+begin
+  Clear;
+  Write(Value);
+  Position := 0;
+end;
+
+class operator TStringBuffer.Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
+var
+  L,R: string;
+begin
+  L := ALeft.Text;
+  R := ARight.Text;
+  if L.EndsWith(R, True) then
+    result.Text := L.Substring(0, Length(L)-Length(R))
+  else
+    result.Text := L;
+end;
+
+procedure TStringBuffer.TrimExcess;
+begin
+  Capacity := Size;
+end;
+
+procedure TStringBuffer.Write(const Src: char);
+begin
+  CheckCapacity(Position + 1);
+  FData[Position+Low(FData)] := Src;
+  inc(FPosition);
+  if FPosition > FSize then
+    FSize := FPosition;
+end;
+
+procedure TStringBuffer.Write(const Src: string);
+begin
+  Write(Src, 0, Length(Src));
+end;
+
+procedure TStringBuffer.Write(const Src: string; CharOffset, CharCount: integer);
+begin
+  {$IFOPT R+}
+  Assert((CharOffset>=0) and (CharOffset+CharCount<=Length(Src)));
+  {$ENDIF}
+  if CharCount>0 then
+  begin
+    CheckCapacity(Position + CharCount);
+    System.Move(Src[CharOffset+Low(Src)], FData[Position+Low(Src)], CharCount*SizeOf(Char));
+    inc(FPosition, CharCount);
+    if FPosition > FSize then
+      FSize := FPosition;
+  end;
 end;
 
 initialization
