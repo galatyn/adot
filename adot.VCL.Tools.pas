@@ -44,6 +44,30 @@ uses
 
 type
 
+  {
+    Screen object has event OnActiveControlChange, but it doesn't support multiple handlers.
+    Chaining of handlers for such event is not safe.
+    Objects can install handlers in one sequence and then uninstall it in different sequence, restoring
+    "dead" handlers as active.
+    To avoid of errors we use list for chaining of handlers.
+  }
+  TActiveControlListeners = class
+  private
+    class var
+      FList: TList<TNotifyEvent>;
+      FOldOnActiveControlChange: TNotifyEvent;
+
+    class property List: TList<TNotifyEvent> read FList;
+    class procedure ActiveControlChange(Data, Sender: TObject); static;
+  public
+    class constructor Create;
+    class destructor Destroy;
+
+    class function Add(AHandler: TNotifyEvent): boolean; static;
+    class function Exists(AHandler: TNotifyEvent): boolean; static;
+    class function Remove(AHandler: TNotifyEvent): boolean; static;
+  end;
+
   {  Simple interface to search for MDI form of specific type. Example:
      var
        MVA: TMVAAvstemmingForm;
@@ -864,6 +888,57 @@ class function TVCLFileUtils.CopyFile(
     out ErrorMessage             : string): boolean;
 begin
   result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
+end;
+
+{ TActiveControlListeners }
+
+class constructor TActiveControlListeners.Create;
+var
+  NotifyEvent: TNotifyEvent;
+begin
+  FList := TList<TNotifyEvent>.Create;
+  TMethod(NotifyEvent).Code := @ActiveControlChange;
+  TMethod(NotifyEvent).Data := nil;
+  FOldOnActiveControlChange := Screen.OnActiveControlChange;
+  Screen.OnActiveControlChange := NotifyEvent;
+end;
+
+class destructor TActiveControlListeners.Destroy;
+begin
+  FList.Free;
+  FList := nil;
+  Screen.OnActiveControlChange := FOldOnActiveControlChange;
+  FOldOnActiveControlChange := nil;
+end;
+
+class procedure TActiveControlListeners.ActiveControlChange(Data, Sender: TObject);
+var
+  I: Integer;
+begin
+  if Assigned(FOldOnActiveControlChange) then
+    FOldOnActiveControlChange(Sender);
+  if List <> nil then
+    for I := 0 to List.Count-1 do
+      List[I](Sender);
+end;
+
+class function TActiveControlListeners.Add(AHandler: TNotifyEvent): boolean;
+begin
+  result := (List <> nil) and not Exists(AHandler);
+  if result then
+    List.Add(AHandler);
+end;
+
+class function TActiveControlListeners.Exists(AHandler: TNotifyEvent): boolean;
+begin
+  result := (List <> nil) and List.Contains(AHandler);
+end;
+
+class function TActiveControlListeners.Remove(AHandler: TNotifyEvent): boolean;
+begin
+  result := (List <> nil) and Exists(AHandler);
+  if result then
+    List.Remove(AHandler);
 end;
 
 end.
