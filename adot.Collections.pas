@@ -880,34 +880,74 @@ type
     function Add(const Value: T): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Add(const Value: TArray<T>); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
+    procedure Add(const Value: TVector<T>); overload;
 
     function Insert(Index: integer; const Value: T): integer;
 
     procedure Delete(ItemIndex: integer); overload;
     procedure Delete(StartIndex,FinishIndex: integer); overload;
 
-    property First: T read GetFirst write SetFirst;
-    property Last: T read GetLast write SetLast;
+    procedure Move(SrcIndex, DstIndex: integer);
+
+    function IndexOf(const Value: T): integer; overload;
+    function IndexOf(const Value: T; Comparer: IEqualityComparer<T>): integer; overload;
+    function IndexOf(const Value: T; Comparer: IComparer<T>): integer; overload;
+    function FindFirst(const Value: T; var Index: integer): boolean; overload;
+    function FindFirst(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean; overload;
+    function FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+    function FindNext(const Value: T; var Index: integer): boolean; overload;
+    function FindNext(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean; overload;
+    function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+
+    procedure Exchange(Index1,Index2: integer);
+    { Exchange=Swap }
+    procedure Swap(Index1,Index2: integer);
+    { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
+    procedure Reverse(Index1,Index2: integer);
+    { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
+      RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
+    procedure RotateLeft(Index1,Index2,Shift: integer);
+    { RotateRight( [1,2,3,4,5], 1, 3, 1 ) = [1, 4,2,3, 5]
+      RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
+    procedure RotateRight(Index1,Index2,Shift: integer);
+    { Shuffle items of the range in random order }
+    procedure Shuffle(Index1,Index2: integer);
+    { Generate all permutations. Permutations of [2,1,3]:
+      1,2,3
+      1,3,2
+      2,1,3
+      2,3,1
+      3,1,2
+      3,2,1 }
+    procedure FirstPermutation;
+    function NextPermutation: boolean;
+    function PrevPermutation: boolean;
+
+    { Delete(Count-1) }
     procedure DeleteLast; {$IFNDEF DEBUG}inline;{$ENDIF}
+    { Get last item and delete from the vector }
     function ExtractLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
 
-    { Extract deletes the item, but doesn't free (even if OwnsValues=True) }
+    { Get item and delete from the vector }
     function Extract(ItemIndex: integer): T;
     function ExtractAll: TArray<T>;
+    function ToArray: TArray<T>;
 
     function GetEnumerator: TEnumerator; reintroduce; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
 
     procedure Sort; overload;
-    procedure Sort(const Comparer: IComparer<T>); overload;
-    procedure Sort(const Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
+    procedure Sort(Comparer: IComparer<T>); overload;
+    procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
+
     function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
-    procedure Copy(var Destination: array of T); overload;
-    procedure Copy(var Destination: array of T; Count: NativeInt); overload;
-    procedure Copy(var Destination: array of T; SourceIndex, DestIndex, Count: NativeInt); overload;
+
+    class operator Implicit(const AValue: T): TVector<T>;
+    class operator Implicit(const AValue: TArray<T>): TVector<T>;
+    class operator Implicit(AValue: TEnumerable<T>): TVector<T>;
 
     class operator Equal(ALeft, ARight: TVector<T>): Boolean; overload;
     class operator Equal(ALeft: TVector<T>; ARight: TEnumerable<T>): Boolean; overload;
@@ -915,6 +955,14 @@ type
     class operator Equal(ALeft: TVector<T>; const ARight: TArray<T>): Boolean; overload;
     class operator Equal(const ALeft: TArray<T>; ARight: TVector<T>): Boolean; overload;
 
+    class operator NotEqual(ALeft, ARight: TVector<T>): Boolean; overload;
+    class operator NotEqual(ALeft: TVector<T>; ARight: TEnumerable<T>): Boolean; overload;
+    class operator NotEqual(ALeft: TEnumerable<T>; ARight:TVector<T>): Boolean; overload;
+    class operator NotEqual(ALeft: TVector<T>; const ARight: TArray<T>): Boolean; overload;
+    class operator NotEqual(const ALeft: TArray<T>; ARight: TVector<T>): Boolean; overload;
+
+    property First: T read GetFirst write SetFirst;
+    property Last: T read GetLast write SetLast;
     property Count: integer read FCount write SetCount;
     property Length: integer read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
@@ -4800,6 +4848,12 @@ procedure TVector<T>.Delete(StartIndex, FinishIndex: integer);
 var
   I,C: Integer;
  begin
+  if FinishIndex < StartIndex then
+  begin
+    I := StartIndex;
+    StartIndex := FinishIndex;
+    FinishIndex := I;
+  end;
   C := Count-(FinishIndex-StartIndex+1); { new Count }
   for I := StartIndex to C-1 do
     Items[I] := Items[FinishIndex + (I-StartIndex+1)];
@@ -4836,6 +4890,7 @@ begin
       Exit(False)
     else
       inc(I);
+  result := True;
 end;
 
 class operator TVector<T>.Equal(ALeft: TEnumerable<T>; ARight: TVector<T>): Boolean;
@@ -4864,6 +4919,19 @@ begin
   result := ARight=ALeft;
 end;
 
+procedure TVector<T>.Exchange(Index1, Index2: integer);
+var Value: T;
+begin
+  Value := Items[Index1];
+  Items[Index1] := Items[Index2];
+  Items[Index2] := Value;
+end;
+
+procedure TVector<T>.Swap(Index1, Index2: integer);
+begin
+  Exchange(Index1, Index2);
+end;
+
 function TVector<T>.Extract(ItemIndex: integer): T;
 begin
   result := Items[ItemIndex];
@@ -4871,13 +4939,15 @@ begin
 end;
 
 function TVector<T>.ExtractAll: TArray<T>;
-var
-  n: TArray<T>;
 begin
+  result := ToArray;
+  Clear;
+end;
+
+function TVector<T>.ToArray: TArray<T>;
+begin
+  TrimExcess;
   result := Items;
-  SetLength(n, 0);
-  Items := n;
-  FCount := 0;
 end;
 
 procedure TVector<T>.DeleteLast;
@@ -4895,6 +4965,108 @@ begin
   Items[FCount] := Default(T);
 end;
 
+procedure TVector<T>.FirstPermutation;
+begin
+  Sort;
+end;
+
+function TVector<T>.NextPermutation: boolean;
+var
+  i,x,n: integer;
+  Comparer: IComparer<T>;
+begin
+
+  Comparer := TComparerUtils.DefaultComparer<T>;
+
+  { find max N where A[N] < A[N+1] }
+  n := -1;
+  for i := Count-2 downto 0 do
+    if Comparer.Compare(Items[i], Items[i+1]) < 0 then
+    begin
+      n := i;
+      break;
+    end;
+
+  { if A[N] > A[N+1] for any N then there is no more permutations }
+  result := n<>-1;
+  if not result then
+    exit;
+
+  { let's order range [N+1; FCoun-1]
+    now it has reverse order so just call .reverse }
+  Reverse(n+1,Count-1);
+
+  { find value next to A[N] in range [N+1; Count-1]
+    such value exists because at least original A[N+1] > A[N] }
+  x := -1;
+  for i := N+1 to Count-1 do
+    if Comparer.Compare(Items[i], Items[N]) > 0 then
+    begin
+      x := i;
+      break;
+    end;
+
+  { swap A[N] and A[X] }
+  Exchange(n, x);
+
+  { change position of A[X] to make range [N+1; FCoun-1] ordered again }
+  i := x;
+  while (i > n+1) and (Comparer.Compare(Items[i-1], Items[x]) > 0) do
+    dec(i);
+  while (i < Count-1) and (Comparer.Compare(Items[x], Items[i+1]) > 0) do
+    inc(i);
+  if i<>x then
+    Move(x,i);
+end;
+
+function TVector<T>.PrevPermutation: boolean;
+var
+  i,x,n: integer;
+  Comparer: IComparer<T>;
+begin
+  Comparer := TComparerUtils.DefaultComparer<T>;
+
+  { find max N where A[N] > A[N+1] }
+  n := -1;
+  for i := FCount-2 downto 0 do
+    if Comparer.Compare(Items[i], Items[i+1]) > 0 then
+    begin
+      n := i;
+      break;
+    end;
+
+  { if A[N] > A[N+1] for any N then there is no more permutations }
+  result := n<>-1;
+  if not result then
+    exit;
+
+  { let's order range [N+1; FCoun-1]
+    now it has reverse order so just call .reverse }
+  reverse(n+1,FCount-1);
+
+  { find value previous to A[N] in range [N+1; FCount-1]
+    such value exists because at least original A[N+1] < A[N] }
+  x := -1;
+  for i := N+1 to FCount-1 do
+    if Comparer.Compare(Items[i], Items[N]) < 0 then
+    begin
+      x := i;
+      break;
+    end;
+
+  { swap A[N] and A[X] }
+  Exchange(n,x);
+
+  { change position of A[X] to make range [N+1; FCoun-1] back ordered again }
+  i := x;
+  while (i > n+1) and (Comparer.Compare(Items[i-1], Items[x]) < 0) do
+    dec(i);
+  while (i < FCount-1) and (Comparer.Compare(Items[x], Items[i+1]) < 0) do
+    inc(i);
+  if i<>x then
+    Move(x,i);
+end;
+
 procedure TVector<T>.Grow;
 begin
   if Capacity < 4 then
@@ -4906,12 +5078,231 @@ begin
     Capacity := Capacity * 2;
 end;
 
+function TVector<T>.IndexOf(const Value: T; Comparer: IEqualityComparer<T>): integer;
+begin
+  if not FindFirst(Value, Result, Comparer) then
+    result := -1;
+end;
+
+function TVector<T>.IndexOf(const Value: T; Comparer: IComparer<T>): integer;
+begin
+  if not FindFirst(Value, Result, Comparer) then
+    result := -1;
+end;
+
+function TVector<T>.IndexOf(const Value: T): integer;
+begin
+  if not FindFirst(Value, Result) then
+    result := -1;
+end;
+
+function TVector<T>.FindFirst(const Value: T; var Index: integer): boolean;
+begin
+  Index := -1;
+  result := FindNext(Value, Index, TComparerUtils.DefaultEqualityComparer<T>);
+end;
+
+function TVector<T>.FindFirst(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean;
+begin
+  Index := -1;
+  result := FindNext(Value, Index, Comparer);
+end;
+
+function TVector<T>.FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
+begin
+  Index := -1;
+  result := FindNext(Value, Index, Comparer);
+end;
+
+function TVector<T>.FindNext(const Value: T; var Index: integer): boolean;
+begin
+  result := FindNext(Value, Index, TComparerUtils.DefaultEqualityComparer<T>);
+end;
+
+function TVector<T>.FindNext(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean;
+var
+  I: Integer;
+begin
+  if Comparer = nil then
+    Comparer := TComparerUtils.DefaultEqualityComparer<T>;
+  for I := Index+1 to Count-1 do
+    if Comparer.Equals(Items[I], Value) then
+    begin
+      Index := I;
+      Exit(True);
+    end;
+  result := False;
+end;
+
+function TVector<T>.FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
+var
+  I: Integer;
+begin
+  if Comparer = nil then
+    Comparer := TComparerUtils.DefaultComparer<T>;
+  for I := Index+1 to Count-1 do
+    if Comparer.Compare(Items[I], Value)=0 then
+    begin
+      Index := I;
+      Exit(True);
+    end;
+  result := False;
+end;
+
+class operator TVector<T>.Implicit(const AValue: T): TVector<T>;
+begin
+  result.Clear;
+  result.Add(AValue);
+end;
+
+class operator TVector<T>.Implicit(AValue: TEnumerable<T>): TVector<T>;
+begin
+  result.Clear;
+  result.Add(AValue);
+end;
+
+class operator TVector<T>.Implicit(const AValue: TArray<T>): TVector<T>;
+begin
+  result.Clear;
+  result.Add(AValue);
+end;
+
 function TVector<T>.Insert(Index: integer; const Value: T): integer;
 begin
   for result := Add downto Index+1 do
     Items[result] := Items[result-1];
   result := Index;
   Items[result] := Value;
+end;
+
+procedure TVector<T>.Move(SrcIndex, DstIndex: integer);
+var
+  I: integer;
+  Value: T;
+begin
+  if SrcIndex < DstIndex then
+  begin
+    {      src   dst
+      1 2 [3] 4 [5] 6 7 }
+    Value := Items[SrcIndex];
+    for I := SrcIndex to DstIndex-1 do
+      Items[I] := Items[I+1];
+    Items[DstIndex] := Value;
+  end
+  else
+  if SrcIndex > DstIndex then
+  begin
+    {      dst   src
+      1 2 [3] 4 [5] 6 7 }
+    Value := Items[SrcIndex];
+    for I := SrcIndex downto DstIndex+1 do
+      Items[I] := Items[I-1];
+    Items[DstIndex] := Value;
+  end;
+end;
+
+class operator TVector<T>.NotEqual(ALeft: TVector<T>; ARight: TEnumerable<T>): Boolean;
+begin
+  result := not (ALeft = ARight);
+end;
+
+class operator TVector<T>.NotEqual(ALeft, ARight: TVector<T>): Boolean;
+begin
+  result := not (ALeft = ARight);
+end;
+
+class operator TVector<T>.NotEqual(ALeft: TEnumerable<T>; ARight: TVector<T>): Boolean;
+begin
+  result := not (ALeft = ARight);
+end;
+
+class operator TVector<T>.NotEqual(const ALeft: TArray<T>; ARight: TVector<T>): Boolean;
+begin
+  result := not (ALeft = ARight);
+end;
+
+class operator TVector<T>.NotEqual(ALeft: TVector<T>; const ARight: TArray<T>): Boolean;
+begin
+  result := not (ALeft = ARight);
+end;
+
+procedure TVector<T>.Shuffle(Index1, Index2: integer);
+var
+  I: Integer;
+begin
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  for I := Index1 to Index2 do
+    Exchange(I, Index1 + Random(Index2-Index1+1));
+end;
+
+procedure TVector<T>.Reverse(Index1, Index2: integer);
+var
+  I: Integer;
+  Value: T;
+begin
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  for I := 0 to ((Index2-Index1+1) shr 1) - 1 do
+  begin
+    Value := Items[Index1];
+    Items[Index1] := Items[Index2];
+    Items[Index2] := Value;
+    inc(Index1);
+    dec(Index2);
+  end;
+end;
+
+procedure TVector<T>.RotateRight(Index1, Index2, Shift: integer);
+var
+  I: integer;
+begin
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  I := Index2-Index1+1;
+  Shift := Shift mod I;
+  if Shift <= 0 then
+    if Shift < 0 then
+      Inc(Shift, I)
+    else
+      Exit;
+  Reverse(Index1, Index2);
+  Reverse(Index1, Index1+Shift-1);
+  Reverse(Index1+Shift, Index2);
+end;
+
+procedure TVector<T>.RotateLeft(Index1, Index2, Shift: integer);
+var
+  I: integer;
+begin
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  I := Index2-Index1+1;
+  Shift := (I - (Shift mod I)) mod I;
+  if Shift <= 0 then
+    if Shift < 0 then
+      Inc(Shift, I)
+    else
+      Exit;
+  Reverse(Index1, Index2);
+  Reverse(Index1, Index1+Shift-1);
+  Reverse(Index1+Shift, Index2);
 end;
 
 function TVector<T>.GetCapacity: integer;
@@ -4992,45 +5383,41 @@ begin
   TArray.Sort<T>(Items, TComparerUtils.DefaultComparer<T>, 0,Count);
 end;
 
-procedure TVector<T>.Sort(const Comparer: IComparer<T>);
+procedure TVector<T>.Sort(Comparer: IComparer<T>);
 begin
+  if Comparer=nil then
+    Comparer := TComparerUtils.DefaultComparer<T>;
   TArray.Sort<T>(Items, Comparer, 0, Count);
 end;
 
-procedure TVector<T>.Sort(const Comparer: IComparer<T>; AIndex, ACount: Integer);
+procedure TVector<T>.Sort(Comparer: IComparer<T>; AIndex, ACount: Integer);
 begin
+  if Comparer=nil then
+    Comparer := TComparerUtils.DefaultComparer<T>;
   TArray.Sort<T>(Items, Comparer, AIndex, ACount);
 end;
 
 function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer): Boolean;
 begin
-  TArray.BinarySearch<T>(Items, Item, FoundIndex, TComparerUtils.DefaultComparer<T>, 0, Count);
+  result := TArray.BinarySearch<T>(Items, Item, FoundIndex, TComparerUtils.DefaultComparer<T>, 0, Count);
 end;
 
 function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean;
 begin
-  TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, 0, Count);
+  result := TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, 0, Count);
 end;
 
 function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean;
 begin
-  TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, AIndex,ACount);
+  result := TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, AIndex,ACount);
 end;
 
-procedure TVector<T>.Copy(var Destination: array of T);
+procedure TVector<T>.Add(const Value: TVector<T>);
+var
+  I: Integer;
 begin
-  //SetLength(Destination, Count);
-  TArray.Copy<T>(Items, Destination, 0, 0, Count);
-end;
-
-procedure TVector<T>.Copy(var Destination: array of T; Count: NativeInt);
-begin
-  TArray.Copy<T>(Items, Destination, 0, 0, Count);
-end;
-
-procedure TVector<T>.Copy(var Destination: array of T; SourceIndex, DestIndex, Count: NativeInt);
-begin
-  TArray.Copy<T>(Items, Destination, SourceIndex, DestIndex, Count);
+  for I := 0 to Value.Count-1 do
+    Items[Add] := Value[I];
 end;
 
 { TBHeap<TKey, TValue> }
@@ -6071,7 +6458,7 @@ begin
   if FirstItem=LastItem then
     Exit;
 
-  { find W and make SHIFT positive and less than W }
+  { find W and make Shift positive and less than W }
   w := 1;
   p := FirstItem;
   while (p<>LastItem) and (p<>nil) do
@@ -6084,15 +6471,15 @@ begin
     Rotate(LastItem, FirstItem, Shift);
     exit;
   end;
-  shift := shift mod w;
-  if shift=0 then
+  Shift := Shift mod w;
+  if Shift=0 then
     exit;
-  if shift<0 then
-    inc(shift, w);
+  if Shift<0 then
+    inc(Shift, w);
 
-  { number of left shifts = w-shift }
+  { number of left shifts = w-Shift }
   p := FirstItem;
-  for i := 0 to w-shift-1 do
+  for i := 0 to w-Shift-1 do
     p := p.Next;
 
   { prev(FirstItem) <-> P-LastItem <-> FirstItem-prev(p) <-> next(LastItem) }

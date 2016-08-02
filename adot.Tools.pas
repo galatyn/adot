@@ -346,7 +346,8 @@ type
   { Fill/fillRandom/Randomize and other tools for arrays }
   TArrayUtils = record
   public
-    class function Get<T>(const Arr: array of T):TArray<T>; static;
+    class function Get<T>(const Arr: array of T):TArray<T>; overload; static;
+    class function Get(const Arr: TStringDynArray):TArray<string>; overload; static;
     class procedure SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure Randomize<T>(var Arr: TArray<T>); static;
@@ -370,6 +371,7 @@ type
     class function Cut<T>(var Dst: TArray<T>; StartIndex,Count: integer): integer; overload; static;
     class function Slice<T>(const Src: TArray<T>; Capacity,StartIndex,Count: integer): TArray<T>; overload; static;
     class function Slice<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>; overload; static;
+    class function Slice<T>(const Src: TArray<T>; CopyValue: TFunc<T,boolean>): TArray<T>; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -980,6 +982,13 @@ type
   TLinearInterpolation_Int64 = class(TInterpolation_Int64Custom)
   protected
     function DoGetValue(const X: int64):int64; override;
+  end;
+
+  TDebugUtils = class
+  public
+
+    { returns True if application is started from IDE for example }
+    class function DebuggerIsAttached: boolean; static;
   end;
 
 implementation
@@ -1674,6 +1683,15 @@ begin
     Dst[I] := AValRangeFrom + Random*(AValRangeTo-AValRangeFrom);
 end;
 
+class function TArrayUtils.Get(const Arr: TStringDynArray): TArray<string>;
+var
+  I: Integer;
+begin
+  SetLength(result, Length(Arr));
+  for I := Low(Arr) to High(Arr) do
+    result[I] := Arr[I];
+end;
+
 class function TArrayUtils.Get<T>(const Arr: array of T): TArray<T>;
 var
   i: Integer;
@@ -1829,6 +1847,19 @@ end;
 class function TArrayUtils.Slice<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>;
 begin
   result := Slice<T>(Src, Length(Src), StartIndex, Count);
+end;
+
+class function TArrayUtils.Slice<T>(const Src: TArray<T>; CopyValue: TFunc<T, boolean>): TArray<T>;
+var
+  V: TVector<T>;
+  I: Integer;
+begin
+  V.Clear;
+  for I := Low(Src) to High(Src) do
+    if CopyValue(Src[I]) then
+      V.Add(Src[I]);
+  V.TrimExcess;
+  result := V.Items;
 end;
 
 { TDateTimeUtils }
@@ -4125,6 +4156,15 @@ begin
           (X-FPoints[FoundIndex-1].X) *
           (FPoints[FoundIndex].Y-FPoints[FoundIndex-1].Y) div
           (FPoints[FoundIndex].X-FPoints[FoundIndex-1].X);
+end;
+
+{ TDebugUtils }
+
+class function TDebugUtils.DebuggerIsAttached: boolean;
+begin
+  {$WARN SYMBOL_PLATFORM OFF}
+  result := DebugHook <> 0;
+  {$WARN SYMBOL_PLATFORM DEFAULT}
 end;
 
 end.
