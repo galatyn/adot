@@ -131,9 +131,9 @@ type
       FGuard: IAutoFreeCollection;
 
   public
+    class function Create: TAutoFreeCollection; static;
     function Add<T: class>(AObject: T):T;
     procedure Clear;
-    procedure Free; { same as clear, but more "compatible" with regular syntax in Delphi }
     function Empty: Boolean;
   end;
 
@@ -198,7 +198,6 @@ type
     class operator Implicit(const AValue: T): TAutoFree<T>;
 
     procedure Clear;
-    procedure Free; { same as clear, but more "compatible" with regular syntax in Delphi }
     procedure SetAsLink(const Value: T); { keep only link (don't free object)}
 
     property Value: T read FValue write SetValue;
@@ -227,8 +226,8 @@ type
     function CreateInstance: T;
     function GetValue: T;
   public
-    class function Create: TAutoFree<T>; overload; static;
-    class function Create(const AValue: T): TAutoFree<T>; overload; static;
+    class function Create: TAuto<T>; overload; static;
+    class function Create(const AValue: T): TAuto<T>; overload; static;
     class operator Equal(const ALeft, ARight: TAuto<T>): Boolean;
     class operator Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
     class operator NotEqual(const ALeft, ARight: TAuto<T>): Boolean;
@@ -237,7 +236,6 @@ type
     class operator Implicit(const AValue: T): TAuto<T>;
 
     procedure Clear;
-    procedure Free; {$IFNDEF DEBUG}inline;{$ENDIF} { Alias to "Clear", more compatible with regular syntax. }
 
     property Value: T read GetValue write SetValue;
   end;
@@ -258,6 +256,7 @@ type
   TCompound<TypeA,TypeB> = record
     A: TypeA;
     B: TypeB;
+
     constructor Create(const A: TypeA; const B: TypeB);
   end;
 
@@ -266,6 +265,7 @@ type
     A: TypeA;
     B: TypeB;
     C: TypeC;
+
     constructor Create(const A: TypeA; const B: TypeB; const C: TypeC);
   end;
 
@@ -317,10 +317,7 @@ type
       FOrdinalComparer: IComparer<TCompound<TypeA,TypeB>>;
   public
     class function Default: IComparer<TCompound<TypeA,TypeB>>; reintroduce;
-    constructor Create(
-      const ComparerA: IComparer<TypeA>;
-      const ComparerB: IComparer<TypeB>
-    );
+    constructor Create(ComparerA: IComparer<TypeA>; ComparerB: IComparer<TypeB>);
     function Compare(const Left, Right: TCompound<TypeA,TypeB>): Integer; override;
   end;
 
@@ -366,7 +363,7 @@ type
       FSet: TSetObjectDictionary<TValue, TEmptyRec>;
       FComparerCopy: IEqualityComparer<TValue>; { FSet.Comparer is hidden in private section, so we keep copy }
 
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCount: integer;
     function DoGetEnumerator: TEnumerator<TValue>; override;
     function GetComparer: IEqualityComparer<TValue>;
     procedure SetOwnsValues(AOwnsValues: boolean);
@@ -382,23 +379,23 @@ type
 
     destructor Destroy; override;
     function GetEnumerator: TEnumerator; reintroduce;
-    procedure Add(const AValue: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const AValue: TValue); overload;
     procedure Add(const ASet: array of TValue); overload;
     procedure Add(const AValues: TEnumerable<TValue>); overload;
     procedure IncludeLogicalAnd(const A,B: TSetClass<TValue>);
     procedure IncludeLogicalOr(const A,B: TSetClass<TValue>);
     procedure IncludeLogicalXor(const A,B: TSetClass<TValue>);
-    procedure Include(const AValue: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Include(const AValue: TValue); overload;
     procedure Include(const ASet: array of TValue); overload;
     procedure Include(const AValues: TEnumerable<TValue>); overload;
-    procedure Remove(const AValue: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Remove(const AValue: TValue); overload;
     procedure Remove(const ASet: array of TValue); overload;
     procedure Remove(const AValues: TEnumerable<TValue>); overload;
-    function Contains(const AValue: TValue): boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Contains(const AValue: TValue): boolean; overload;
     function Contains(const ASet: array of TValue): boolean; overload;
     function Contains(const AValues: TEnumerable<TValue>): boolean; overload;
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Empty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear;
+    function Empty: Boolean;
     property Count: integer read GetCount;
     property Comparer: IEqualityComparer<TValue> read GetComparer;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
@@ -446,8 +443,8 @@ type
     function GetAsArray: TArray<T>;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCount: integer;
+    function GetEmpty: Boolean;
     function GetCollection: TEnumerable<T>;
 
     property ReadOnly: TSetClass<T> read GetReadonly;
@@ -480,17 +477,17 @@ type
 
     { It is prefered to use syntax "Item in SomSet" over "SomeSet.Contains(Item)", but in
       rare situations compiler can be confused and then "Contains" method is the only way to go }
-    function Contains(const a: T) : Boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Contains(const a: TEnumerable<T>) : Boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Contains(a: TSet<T>) : Boolean; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Contains(const a: T) : Boolean; overload;
+    function Contains(const a: TEnumerable<T>) : Boolean; overload;
+    function Contains(a: TSet<T>) : Boolean; overload;
 
     function Copy: TSet<T>;
 
     procedure Clear;
 
-    class operator In(const a: T; b: TSet<T>) : Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator In(const a: TEnumerable<T>; b: TSet<T>) : Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator In(a: TSet<T>; b: TSet<T>) : Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator In(const a: T; b: TSet<T>) : Boolean;
+    class operator In(const a: TEnumerable<T>; b: TSet<T>) : Boolean;
+    class operator In(a: TSet<T>; b: TSet<T>) : Boolean;
 
     class operator Implicit(const a : T) : TSet<T>;
     class operator Implicit(const a : TEnumerable<T>) : TSet<T>;
@@ -580,7 +577,7 @@ type
     procedure Remove(const AKeys: array of TKey); overload;
     procedure Remove(const AKeys: TEnumerable<TKey>); overload;
 
-    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Empty: boolean;
 
     property Comparer: IEqualityComparer<TKey> read FComparerCopy;
     property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
@@ -594,7 +591,7 @@ type
     { Delphi 10.1 Seattle has issues with code generation for overloaded
       operators if they are inlined. The issue reported here:
         https://quality.embarcadero.com/browse/RSP-15196
-      For now we have to avoid of using "inline" methods here. }
+      For now we have to avoid of using _inline_ methods here. }
     type
       TPairEnumerator  = TMapClass<TKey,TValue>.TPairEnumerator;
       TKeyEnumerator   = TMapClass<TKey,TValue>.TKeyEnumerator;
@@ -639,27 +636,27 @@ type
 
     function GetEnumerator: TPairEnumerator;
 
-    procedure Add(const Key: TKey; Value: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Add(const Pair: TPair<TKey, TValue>); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(const Key: TKey; Value: TValue); overload;
+    procedure Add(const Pair: TPair<TKey, TValue>); overload;
     procedure Add(const V: TEnumerable<TPair<TKey, TValue>>); overload;
     procedure Add(V: TMap<TKey,TValue>); overload;
     procedure Add(const V: array of TPair<TKey, TValue>); overload;
 
-    procedure AddOrSetValue(const Key: TKey; Value: TValue); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure AddOrSetValue(const Pair: TPair<TKey, TValue>); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure AddOrSetValue(const Key: TKey; Value: TValue); overload;
+    procedure AddOrSetValue(const Pair: TPair<TKey, TValue>); overload;
     procedure AddOrSetValue(const V: TEnumerable<TPair<TKey, TValue>>); overload;
     procedure AddOrSetValue(V: TMap<TKey,TValue>); overload;
     procedure AddOrSetValue(const V: array of TPair<TKey, TValue>); overload;
 
-    procedure Remove(const V: TKey); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Remove(const V: TKey); overload;
     procedure Remove(const V: TEnumerable<TKey>); overload;
     procedure Remove(const V: array of TKey); overload;
 
-    function TryGetValue(const Key: TKey; out Value: TValue): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function ExtractPair(const Key: TKey): TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function ContainsKey(const Key: TKey): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+    function ExtractPair(const Key: TKey): TPair<TKey,TValue>;
+    procedure Clear;
+    procedure TrimExcess;
+    function ContainsKey(const Key: TKey): Boolean;
     function ToArray: TArray<TPair<TKey,TValue>>;
 
     class operator Equal(A,B: TMap<TKey,TValue>): Boolean;
@@ -700,7 +697,6 @@ type
 
   public
     type
-      TPair = System.Generics.Collections.TPair<TKey,TValue>;
 
       {# Standard containers in Delphi use classes for enumerators.
          It is ok when we keep single instance of the class inside, but for multimap we
@@ -718,9 +714,6 @@ type
         function MoveNext: Boolean;
         property Current: TValue read GetCurrent;
         property Key: TKey read GetKey;
-
-        { Does nothing, only for kind of "syntax compatibility" with classes. }
-        procedure Free;
 
         {  Returns copy. It allows us to use both syntaxes:
            Example 1.
@@ -769,14 +762,14 @@ type
   public
     constructor Create; overload;
     constructor Create(const AComparer: IEqualityComparer<TKey>); overload;
-    constructor Create(const ACollection: TEnumerable<TPair>; const AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IEqualityComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
     procedure Clear;
     procedure Add(const AKey: TKey; const AValue: TValue); overload;
     procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
     procedure Add(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
-    procedure Add(const ACollection: TEnumerable<TPair>); overload;
+    procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
 
     { e := m.Values[Key];
       while e.MoveNext do
@@ -787,7 +780,7 @@ type
     procedure RemoveValues(const AKey: TKey; const AValues: array of TValue); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
 
-    function ContainsKey(const AKey: TKey): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function ContainsKey(const AKey: TKey): Boolean;
     function ContainsKeys(const AKeys: array of TKey; AContainsCheckType: TContainsCheckType = cctAnyOf): Boolean; overload;
     function ContainsKeys(const AKeys: TEnumerable<TKey>; AContainsCheckType: TContainsCheckType = cctAnyOf): Boolean; overload;
 
@@ -803,7 +796,7 @@ type
           [do something] p.Key / p.Value; }
     function GetEnumerator: TPairEnumerator; reintroduce;
 
-    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Empty: boolean;
 
     property TotalValuesCount: integer read GetTotalValuesCount;
     property ValuesCount[const AKey: TKey]:integer read GetValuesCount;
@@ -848,22 +841,22 @@ type
     procedure SetCount(ACount: integer);
     procedure SetCapacity(ACapacity: integer);
     procedure Grow;
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetItem(ItemIndex: integer): T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer;
+    function GetItem(ItemIndex: integer): T;
     procedure SetItem(ItemIndex: integer; const Value: T);
-    function GetFirst: T; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetFirst(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetLast(const Value: T); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetFirst: T;
+    function GetLast: T;
+    procedure SetFirst(const Value: T);
+    procedure SetLast(const Value: T);
     function GetEmpty: Boolean;
-    function GetTotalSizeBytes: int64; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetTotalSizeBytes: int64;
 
   public
     type
       TEnumerator = record
       private
         Items: TArray<T>;
-        Len: integer;
+        Count: integer;
         Pos: integer;
 
         function GetCurrent: T;
@@ -877,7 +870,7 @@ type
     constructor Create(ADst: TArray<T>); overload;
 
     function Add: integer; overload;
-    function Add(const Value: T): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Add(const Value: T): integer; overload;
     procedure Add(const Value: TArray<T>); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
     procedure Add(const Value: TVector<T>); overload;
@@ -924,26 +917,26 @@ type
     function PrevPermutation: boolean;
 
     { Delete(Count-1) }
-    procedure DeleteLast; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure DeleteLast;
     { Get last item and delete from the vector }
-    function ExtractLast: T; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function ExtractLast: T;
 
     { Get item and delete from the vector }
     function Extract(ItemIndex: integer): T;
     function ExtractAll: TArray<T>;
     function ToArray: TArray<T>;
 
-    function GetEnumerator: TEnumerator; reintroduce; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEnumerator: TEnumerator; reintroduce;
+    procedure Clear;
+    procedure TrimExcess;
 
     procedure Sort; overload;
     procedure Sort(Comparer: IComparer<T>); overload;
     procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
 
     function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
-    function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean; overload;
-    function BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
 
     class operator Implicit(const AValue: T): TVector<T>;
     class operator Implicit(const AValue: TArray<T>): TVector<T>;
@@ -971,14 +964,70 @@ type
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
   end;
 
+  { Dynamic 2-dimensional array }
+  TVector2D<T> = record
+  public
+    Rows: TVector<TVector<T>>;
+
+    type
+
+      TEnumerator = class(TEnumerator<T>)
+      protected
+        Rows: TVector<TVector<T>>;
+        X,Y: integer;
+
+        function DoGetCurrent: T; override;
+        function DoMoveNext: Boolean; override;
+
+      public
+        constructor Create(const Rows: TVector<TVector<T>>);
+      end;
+
+      TCollection = class(TEnumerable<T>)
+      protected
+        Rows: TVector<TVector<T>>;
+
+        function DoGetEnumerator: TEnumerator<T>; override;
+
+      public
+        constructor Create(const Rows: TVector<TVector<T>>);
+      end;
+
+  private
+    function GetValue(x,y: integer): T;
+    procedure SetValue(x, y: integer; const Value: T);
+    function GetRowCount: integer;
+    procedure SetRowCount(const Value: integer);
+    function GetWidth(y: integer): integer;
+    procedure SetWidth(y: integer; const Value: integer);
+
+  public
+    constructor Create(Width, Height: integer);
+    procedure Clear;
+
+    function AddRow: integer;
+    function Add(y: integer): integer; overload;
+    function Add(y: integer; const Value: T): integer; overload;
+    function Add(y: integer; const Values: TEnumerable<T>): integer; overload;
+    function Add(y: integer; const Values: TArray<T>): integer; overload;
+
+    { Syntax:
+        for Value in Vec2d.Collection.Data do }
+    function Collection: IInterfacedObject<TEnumerable<T>>;
+
+    property Elements[x,y: integer]: T read GetValue write SetValue; default;
+    property RowCount: integer read GetRowCount write SetRowCount;
+    property Count[y: integer]:integer read GetWidth write SetWidth;
+  end;
+
   { Low level heap operations on array.}
   TBHeap<TKey, TValue> = class
-    class function GetLeft(ParentIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetRight(ParentIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetParent(ChildIdx: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function GetLeft(ParentIdx: integer): integer; static;
+    class function GetRight(ParentIdx: integer): integer; static;
+    class function GetParent(ChildIdx: integer): integer; static;
     class procedure MoveUp(var Items: TArray<TPair<TKey,TValue>>; ItemIndex: integer; Comparer: IComparer<TKey>); static;
     class procedure Delete(var Items: TArray<TPair<TKey,TValue>>; ItemIndex,Count: integer; Comparer: IComparer<TKey>); static;
-    class function ExtractMin(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>):TPair<TKey,TValue>; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function ExtractMin(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>):TPair<TKey,TValue>; static;
     class procedure Build(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>); static;
     class procedure Sort(var Items: TArray<TPair<TKey,TValue>>; Count: integer; Comparer: IComparer<TKey>); static;
     class procedure Replace(var Items: TArray<TPair<TKey,TValue>>; ItemIndex,Count: integer;
@@ -1028,11 +1077,11 @@ type
     FComparer: IComparer<TKey>;
     FOwnerships: TDictionaryOwnerships;
 
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCapacity(ACapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer;
+    function GetCount: integer;
+    procedure SetCapacity(ACapacity: integer);
     procedure SetValue(n: integer; const Value: TPair<TKey, TValue>);
-    function GetValue(Index: integer): TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetValue(Index: integer): TPair<TKey,TValue>;
     function GetKeyCollection: TKeyCollection;
     function DoGetEnumerator: TEnumerator<TPair<TKey, TValue>>; override;
     function GetOwnsKeys: boolean;
@@ -1046,24 +1095,24 @@ type
     function Find(const Key: TKey): integer;
 
   public
-    constructor Create(ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
-    function Add(const Key: TKey; const Value: TValue): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Add(const Pair: TPair<TKey,TValue>): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Add(const Key: TKey; const Value: TValue): integer; overload;
+    function Add(const Pair: TPair<TKey,TValue>): integer; overload;
     procedure Add(const Values: TArray<TPair<TKey,TValue>>); overload;
     procedure Add(const Values: TEnumerable<TPair<TKey,TValue>>); overload;
 
-    function MinValue: TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF}   { O(1)      }
-    function ExtractMin: TPair<TKey,TValue>; {$IFNDEF DEBUG}inline;{$ENDIF} { O(Log(n)) }
-    procedure DeleteMin; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Delete(n: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function MinValue: TPair<TKey,TValue>;    { O(1)      }
+    function ExtractMin: TPair<TKey,TValue>;  { O(Log(n)) }
+    procedure DeleteMin;
+    procedure Delete(n: integer);
 
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear;
+    procedure TrimExcess;
 
-    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Empty: boolean;
 
     property Count: integer read GetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
@@ -1095,33 +1144,33 @@ type
       FHeap: TBinaryHeapClass<TKey,TEmptyRec>;
 
     function DoGetEnumerator: TEnumerator<TKey>; override;
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetValue(n: integer): TKey; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCapacity(const Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetValue(n: integer; const Value: TKey); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer;
+    function GetCount: integer;
+    function GetValue(n: integer): TKey;
+    procedure SetCapacity(const Value: integer);
+    procedure SetValue(n: integer; const Value: TKey);
 
     { this function is O(N), avoid of use it }
-    function Find(const Key: TKey): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Find(const Key: TKey): integer;
 
   public
-    constructor Create(ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
-    constructor Create(const ACollection: TEnumerable<TKey>; ACapacity: integer = 0; const AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TKey>; ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
-    function Add(const Value: TKey): integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Add(const Value: TKey): integer; overload;
     procedure Add(const Values: TArray<TKey>); overload;
     procedure Add(const Values: TEnumerable<TKey>); overload;
 
-    function MinValue: TKey; {$IFNDEF DEBUG}inline;{$ENDIF}   { O(1)      }
-    function ExtractMin: TKey; {$IFNDEF DEBUG}inline;{$ENDIF} { O(Log(n)) }
+    function MinValue: TKey;    { O(1)      }
+    function ExtractMin: TKey;  { O(Log(n)) }
 
-    procedure DeleteMin; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Delete(n: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure DeleteMin;
+    procedure Delete(n: integer);
 
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function Empty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear;
+    procedure TrimExcess;
+    function Empty: boolean;
 
     property Count: integer read GetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
@@ -1143,11 +1192,11 @@ type
     procedure SetItemFromTail(n: integer; const Value: T);
     function GetCapacity: integer;
     procedure SetCapacity(ANewCapacity: integer);
-    function GetHead: T;  {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetHead(const Value: T);  {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetTail: T;  {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetTail(const Value: T);  {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEmpty: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetHead: T;
+    procedure SetHead(const Value: T);
+    function GetTail: T;
+    procedure SetTail(const Value: T);
+    function GetEmpty: boolean;
     procedure SetOwnsValues(const Value: Boolean);
     function DoGetEnumerator: TEnumerator<T>; override;
 
@@ -1180,11 +1229,11 @@ type
     procedure AddToTail(const AValues: TEnumerable<T>); overload;
 
     { from tail }
-    function Extract: T;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Extract: T;
     { from head }
-    function ExtractHead: T;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    function ExtractHead: T;
 
-    procedure Delete; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Delete;
     procedure DeleteHead;
 
     property Capacity: integer read GetCapacity write SetCapacity; { should have Count=0 to resize }
@@ -1221,6 +1270,8 @@ type
   private
   protected
     type
+
+      { We use allocation of items by AllocMem, no extra initialization is needed }
       P_AATreeItem = ^T_AATreeItem;
       T_AATreeItem = record
         Parent, Left, Right: P_AATreeItem;
@@ -1286,10 +1337,10 @@ type
       FKeyCollection: TKeyCollection;
       FValueCollection: TValueCollection;
 
-    function AllocNewItem: P_AATreeItem; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function AllocNewItem: P_AATreeItem;
     procedure ReleaseItem(p: P_AATreeItem);
-    function PtrToHandle(p: P_AATreeItem): TItemHandle; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function HandleToPtr(p: TItemHandle): P_AATreeItem; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function PtrToHandle(p: P_AATreeItem): TItemHandle;
+    function HandleToPtr(p: TItemHandle): P_AATreeItem;
     function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
     function GetKeyCollection: TKeyCollection;
     function GetValueCollection: TValueCollection;
@@ -1298,7 +1349,7 @@ type
     procedure treeSplit(var p: P_AATreeItem);
     function treeAdd(p,aparent: P_AATreeItem; var Dst: P_AATreeItem): Boolean;
     function treeGetHeight(p: P_AATreeItem): integer;
-    function treeFullHeight: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function treeFullHeight: integer;
     function treeMin(p: P_AATreeItem): P_AATreeItem;
     function treeMax(p: P_AATreeItem): P_AATreeItem;
     function treeSuccessor(p: P_AATreeItem): P_AATreeItem;
@@ -1306,7 +1357,7 @@ type
     procedure treeClear(p: P_AATreeItem);
     function treeDelete(x: P_AATreeItem; var t: P_AATreeItem): boolean;
     function treeFind(const AKey: TKey): P_AATreeItem;
-    procedure treeMove(Src, Dst: P_AATreeItem); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure treeMove(Src, Dst: P_AATreeItem);
     procedure treeReplace(Src, Dst: P_AATreeItem);
 
     function GetKey(AHandle: TItemHandle): TKey;
@@ -1319,7 +1370,7 @@ type
   public
     constructor Create; overload;
     constructor Create(AComparer: IComparer<TKey>); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; AComparer: IComparer<TKey> = nil); overload;
     destructor Destroy; override;
     function GetEnumerator: TPairEnumerator;
 
@@ -1396,7 +1447,7 @@ type
   public
     constructor Create; overload;
     constructor Create(AComparer: IComparer<TKey>); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; AComparer: IComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
     procedure Clear;
@@ -1452,6 +1503,8 @@ type
   TDoublyLinkedListClass<T> = class(TEnumerable<T>)
   public
     type
+
+      { We use allocation of items by AllocMem, no extra initialization is needed }
       PDoublyLinkedListItem = ^TDoublyLinkedListItem;
       TDoublyLinkedListItem = record
         Data: T;
@@ -1483,11 +1536,11 @@ type
     constructor Create(const AValues: TEnumerable<T>); overload;
     destructor Destroy; override;
 
-    function AllocItem: PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function AllocItem(const Value: T): PDoublyLinkedListItem; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure FreeItem(Item: PDoublyLinkedListItem); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function AllocItem: PDoublyLinkedListItem; overload;
+    function AllocItem(const Value: T): PDoublyLinkedListItem; overload;
+    procedure FreeItem(Item: PDoublyLinkedListItem);
 
-    procedure Add(Value: T); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Add(Value: T); overload;
     procedure Add(const AValues: array of T); overload;
     procedure Add(const AValues: TEnumerable<T>); overload;
     procedure AddBeforeFirst(Value: T);
@@ -1496,7 +1549,7 @@ type
     procedure InsertBefore(Value: T; Dst: PDoublyLinkedListItem);
     procedure InsertAfter(Value: T; Dst: PDoublyLinkedListItem);
 
-    procedure Remove(Item: PDoublyLinkedListItem); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Remove(Item: PDoublyLinkedListItem);
     function Extract(Item: PDoublyLinkedListItem):PDoublyLinkedListItem;
     procedure Clear;
     function FindByIndex(Index: integer): PDoublyLinkedListItem;
@@ -1591,8 +1644,6 @@ type
     function GetEmpty: boolean;
     function GetCount: integer;
     function GetValue(n: integer): T;
-//    function GetNode(n: integer): TNode;
-//    procedure SetNode(n: integer; const Value: TNode);
     procedure SetValue(n: integer; const Value: T);
     function GetValuesAsArray: TArray<T>;
     function GetTotalSizeBytes: int64;
@@ -1623,7 +1674,7 @@ type
     function Add(const Value: T): integer; overload;
     function Add: integer; overload;
     { all subchilds are added, assign parent node as CurParent }
-    function Commit: integer; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Commit: integer; overload;
     function Commit(ReverseOrderOfChildNodes: Boolean): integer; overload;
     { remove CurParent with all childs and assign parent node as CurParent }
     function Rollback: integer;
@@ -1669,6 +1720,7 @@ uses
 
 constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
 begin
+  Self := Default(TCompound<TypeA, TypeB>);
   Self.A := A;
   Self.B := B;
 end;
@@ -1677,6 +1729,7 @@ end;
 
 constructor TCompound<TypeA, TypeB, TypeC>.Create(const A: TypeA; const B: TypeB; const C: TypeC);
 begin
+  Self := Default(TCompound<TypeA, TypeB, TypeC>);
   Self.A := A;
   Self.B := B;
   Self.C := C;
@@ -1783,8 +1836,7 @@ end;
 
 { TCompoundComparer<TypeA, TypeB> }
 
-constructor TCompoundComparer<TypeA, TypeB>.Create(
-  const ComparerA: IComparer<TypeA>; const ComparerB: IComparer<TypeB>);
+constructor TCompoundComparer<TypeA, TypeB>.Create(ComparerA: IComparer<TypeA>; ComparerB: IComparer<TypeB>);
 begin
   FComparerA := ComparerA;
   FComparerB := ComparerB;
@@ -2212,6 +2264,7 @@ var
   Arr: TArray<TPair<TKey, TValue>>;
   KeyComparer: IComparer<TKey>;
   ValueComparer: IComparer<TValue>;
+  PairComparer: IComparer<TPair<TKey, TValue>>;
   Pair: TPair<TKey, TValue>;
   i: Integer;
   Buf: TStringBuffer;
@@ -2219,13 +2272,14 @@ begin
   Arr := ToArray;
   KeyComparer := TComparer<TKey>.Default;
   ValueComparer := TComparer<TValue>.Default;
-  TArray.Sort<TPair<TKey, TValue>>(Arr, TDelegatedComparer<TPair<TKey, TValue>>.Create(
+  PairComparer := TDelegatedComparer<TPair<TKey, TValue>>.Create(
     function (const L,R: TPair<TKey, TValue>): integer
     begin
       result := KeyComparer.Compare(L.Key, R.Key);
       if result=0 then
         result := ValueComparer.Compare(L.Value, R.Value);
-    end));
+    end);
+  TArray.Sort<TPair<TKey, TValue>>(Arr, PairComparer);
   Buf.Clear;
   for Pair in Arr do
     Buf.Write(
@@ -2345,7 +2399,7 @@ begin
   FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create(AComparer));
 end;
 
-constructor TMultimapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair>; const AComparer: IEqualityComparer<TKey> = nil);
+constructor TMultimapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IEqualityComparer<TKey> = nil);
 begin
   Create(AComparer);
   Add(ACollection);
@@ -2533,6 +2587,7 @@ procedure TMultimapClass<TKey, TValue>.Add(const AKey: TKey; const AValue: TValu
 var
   MKey: TMultimapKey;
 begin
+  MKey := Default(TMultimapKey);
   MKey.Key := AKey;
   if not FCount.TryGetValue(AKey, MKey.Number) then
     MKey.Number := 0;
@@ -2546,6 +2601,7 @@ var
   MKey: TMultimapKey;
   i: Integer;
 begin
+  MKey := Default(TMultimapKey);
   MKey.Key := AKey;
   if not FCount.TryGetValue(AKey, MKey.Number) then
     MKey.Number := 0;
@@ -2565,9 +2621,9 @@ begin
     Add(AKey, item);
 end;
 
-procedure TMultimapClass<TKey, TValue>.Add(const ACollection: TEnumerable<TPair>);
+procedure TMultimapClass<TKey, TValue>.Add(const ACollection: TEnumerable<TPair<TKey,TValue>>);
 var
-  item: TPair;
+  item: TPair<TKey,TValue>;
 begin
   for item in ACollection do
     Add(item.Key, item.Value);
@@ -2577,6 +2633,7 @@ function TMultimapClass<TKey, TValue>.Remove(const AKey: TKey): Boolean;
 var
   MKey: TMultimapKey;
 begin
+  MKey := Default(TMultimapKey);
   result := FCount.TryGetValue(AKey, MKey.Number);
   if not result then
     Exit;
@@ -2594,6 +2651,7 @@ var
   LastKey: TMultimapKey;
   LastValue: TValue;
 begin
+  LastKey := Default(TMultimapKey);
   if not FValues.ContainsKey(AEnum.FMultimapKey) or not FCount.TryGetValue(AEnum.Key, LastKey.Number) then
     raise Exception.Create('Error');
   dec(LastKey.Number);
@@ -2651,7 +2709,9 @@ end;
 
 constructor TMultimapClass<TKey, TValue>.TValueEnumerator.Create(AMultimap: TMultimapClass<TKey, TValue>; const AKey: TKey);
 begin
+  Self := Default(TValueEnumerator);
   FMultimap := AMultimap;
+  FMultimapKey := Default(TMultimapKey);
   FMultimapKey.Key := AKey;
   if not FMultimap.FCount.TryGetValue(AKey, FMultimapKey.Number) then
     FMultimapKey.Number := -1;
@@ -2662,10 +2722,6 @@ begin
   result := FMultimapKey.Number>0;
   if result then
     dec(FMultimapKey.Number);
-end;
-
-procedure TMultimapClass<TKey, TValue>.TValueEnumerator.Free;
-begin
 end;
 
 function TMultimapClass<TKey, TValue>.TValueEnumerator.GetCurrent: TValue;
@@ -3000,7 +3056,7 @@ end;
 
 procedure TSet<T>.Clear;
 begin
-  ReadWrite.Clear;
+  Self := Default(TSet<T>);
 end;
 
 function TSet<T>.GetCollection: TEnumerable<T>;
@@ -3532,22 +3588,22 @@ end;
 
 { TAutoFreeCollection }
 
+class function TAutoFreeCollection.Create: TAutoFreeCollection;
+begin
+  result := Default(TAutoFreeCollection);
+end;
+
+procedure TAutoFreeCollection.Clear;
+begin
+  Self := Default(TAutoFreeCollection);
+end;
+
 function TAutoFreeCollection.Add<T>(AObject: T): T;
 begin
   if FGuard=nil then
     FGuard := TAutoFreeCollectionImpl.Create;
   FGuard.Add(AObject);
   result := AObject;
-end;
-
-procedure TAutoFreeCollection.Clear;
-begin
-  FGuard := nil;
-end;
-
-procedure TAutoFreeCollection.Free;
-begin
-  Clear;
 end;
 
 function TAutoFreeCollection.Empty: Boolean;
@@ -3596,19 +3652,18 @@ end;
 
 class function TAutoFree<T>.Create: TAutoFree<T>;
 begin
-  result.Clear;
-end;
-
-procedure TAutoFree<T>.Clear;
-begin
-  FValue := nil;
-  FGuard := nil;
+  result := Default(TAutoFree<T>);
 end;
 
 class function TAutoFree<T>.Create(const AValue: T): TAutoFree<T>;
 begin
-  result.Clear;
+  result := Default(TAutoFree<T>);
   result.Value := AValue;
+end;
+
+procedure TAutoFree<T>.Clear;
+begin
+  Self := Default(TAutoFree<T>);
 end;
 
 procedure TAutoFree<T>.SetAsLink(const Value: T);
@@ -3640,11 +3695,6 @@ begin
   result := ALeft.Value=ARight;
 end;
 
-procedure TAutoFree<T>.Free;
-begin
-  Clear;
-end;
-
 class operator TAutoFree<T>.Implicit(const AValue: TAutoFree<T>): T;
 begin
   result := AValue.Value;
@@ -3667,21 +3717,25 @@ end;
 
 { TAuto<T> }
 
+class function TAuto<T>.Create: TAuto<T>;
+begin
+  result := Default(TAuto<T>);
+end;
+
+class function TAuto<T>.Create(const AValue: T): TAuto<T>;
+begin
+  result := Default(TAuto<T>);
+  result.Value := AValue;
+end;
+
 procedure TAuto<T>.Clear;
 begin
-  FValue := nil;
-  FGuard := nil;
+  Self := Default(TAuto<T>);
 end;
 
-class function TAuto<T>.Create: TAutoFree<T>;
+function TAuto<T>.CreateInstance: T;
 begin
-  result.Clear;
-end;
-
-class function TAuto<T>.Create(const AValue: T): TAutoFree<T>;
-begin
-  result.Clear;
-  result.Value := AValue;
+  result := TRttiUtils.CreateInstance<T>;
 end;
 
 class operator TAuto<T>.Equal(const ALeft: TAuto<T>; const ARight: T): Boolean;
@@ -3692,16 +3746,6 @@ end;
 class operator TAuto<T>.Equal(const ALeft, ARight: TAuto<T>): Boolean;
 begin
   result := ALeft.Value=ARight.Value;
-end;
-
-procedure TAuto<T>.Free;
-begin
-  Clear;
-end;
-
-function TAuto<T>.CreateInstance: T;
-begin
-  result := TRttiUtils.CreateInstance<T>;
 end;
 
 function TAuto<T>.GetValue: T;
@@ -3795,8 +3839,7 @@ begin
   FLast := FBottom;
 end;
 
-constructor TAATree<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>;
-  const AComparer: IComparer<TKey> = nil);
+constructor TAATree<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; AComparer: IComparer<TKey> = nil);
 begin
   Create(AComparer);
   Add(ACollection);
@@ -4564,7 +4607,7 @@ end;
 
 constructor TOrderedMapClass<TKey, TValue>.Create(
   const ACollection: TEnumerable<TPair<TKey, TValue>>;
-  const AComparer: IComparer<TKey>);
+        AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FTree := TAATree<TKey,TValue>.Create(ACollection, AComparer);
@@ -4762,9 +4805,10 @@ end;
 
 constructor TVector<T>.TEnumerator.Create(const Items: TArray<T>; ACount: integer);
 begin
+  Self := Default(TEnumerator);
   Self.Items := Items;
-  Len := ACount;
-  Pos := 0;
+  Self.Count := ACount;
+  Self.Pos := 0;
 end;
 
 function TVector<T>.TEnumerator.GetCurrent: T;
@@ -4774,7 +4818,7 @@ end;
 
 function TVector<T>.TEnumerator.MoveNext: Boolean;
 begin
-  result := Pos<Len;
+  result := Pos < Count;
   if result then
     inc(Pos);
 end;
@@ -4783,13 +4827,13 @@ end;
 
 constructor TVector<T>.Create(ACapacity: integer);
 begin
-  Clear;
+  Self := Default(TVector<T>);
   Capacity := ACapacity;
 end;
 
 constructor TVector<T>.Create(ADst: TArray<T>);
 begin
-  Clear;
+  Self := Default(TVector<T>);
   Items := ADst;
   Count := High(Items)-Low(Items)+1;
 end;
@@ -4829,8 +4873,7 @@ end;
 
 procedure TVector<T>.Clear;
 begin
-  SetLength(Items, 0);
-  FCount := 0;
+  Self := Default(TVector<T>);
 end;
 
 procedure TVector<T>.Delete(ItemIndex: integer);
@@ -5353,11 +5396,13 @@ end;
 
 function TVector<T>.GetItem(ItemIndex: integer): T;
 begin
+  {$IF Defined(Debug)} Assert((ItemIndex >= 0) and (ItemIndex < Count)); {$ENDIF}
   result := Items[ItemIndex];
 end;
 
 procedure TVector<T>.SetItem(ItemIndex: integer; const Value: T);
 begin
+  {$IF Defined(Debug)} Assert((ItemIndex >= 0) and (ItemIndex < Count)); {$ENDIF}
   Items[ItemIndex] := Value;
 end;
 
@@ -5402,12 +5447,12 @@ begin
   result := TArray.BinarySearch<T>(Items, Item, FoundIndex, TComparerUtils.DefaultComparer<T>, 0, Count);
 end;
 
-function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>): Boolean;
+function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean;
 begin
   result := TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, 0, Count);
 end;
 
-function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; const Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean;
+function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean;
 begin
   result := TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, AIndex,ACount);
 end;
@@ -5546,6 +5591,7 @@ end;
 
 constructor TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.Create(const PairEnumerator: TPairsEnumerator);
 begin
+  Self := Default(TKeyEnumerator);
   Self.PairEnumerator := PairEnumerator;
 end;
 
@@ -5563,6 +5609,7 @@ end;
 
 constructor TBinaryHeapClass<TKey, TValue>.TKeyCollection.Create(const PairEnumerator: TPairsEnumerator);
 begin
+  Self := Default(TKeyCollection);
   Self.PairEnumerator := PairEnumerator;
 end;
 
@@ -5573,7 +5620,7 @@ end;
 
 { TBinaryHeapClass<TKey, TValue> }
 
-constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer; const AComparer: IComparer<TKey>);
+constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   inherited Create;
   Capacity := ACapacity;
@@ -5584,7 +5631,7 @@ begin
 end;
 
 constructor TBinaryHeapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey, TValue>>;
-  ACapacity: integer; const AComparer: IComparer<TKey>);
+  ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   Create(ACapacity, AComparer);
   Add(ACollection);
@@ -5802,13 +5849,13 @@ end;
 
 { TBinaryHeapClass<TKey> }
 
-constructor TBinaryHeapClass<TKey>.Create(const ACollection: TEnumerable<TKey>; ACapacity: integer; const AComparer: IComparer<TKey>);
+constructor TBinaryHeapClass<TKey>.Create(const ACollection: TEnumerable<TKey>; ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   Create(ACapacity, AComparer);
   Add(ACollection);
 end;
 
-constructor TBinaryHeapClass<TKey>.Create(ACapacity: integer; const AComparer: IComparer<TKey>);
+constructor TBinaryHeapClass<TKey>.Create(ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FHeap := TBinaryHeapClass<TKey,TEmptyRec>.Create(ACapacity, AComparer);
@@ -6506,6 +6553,7 @@ end;
 
 constructor TTreeArrayClass<T>.TEnumerator.Create(const ANodes: TVector<TNode>);
 begin
+  Self := Default(TEnumerator);
   Nodes := ANodes;
   Index := 0;
 end;
@@ -6539,11 +6587,6 @@ begin
   result := TEnumerator.Create(Nodes);
 end;
 
-//function TTreeArrayClass<T>.GetNode(n: integer): TNode;
-//begin
-//  result := Nodes[n];
-//end;
-
 function TTreeArrayClass<T>.GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
 begin
   result := TSubtreeCollection.Create(Nodes, StaringNode);
@@ -6558,11 +6601,6 @@ function TTreeArrayClass<T>.GetValue(n: integer): T;
 begin
   result := Nodes.Items[n].Data;
 end;
-
-//procedure TTreeArrayClass<T>.SetNode(n: integer; const Value: TNode);
-//begin
-//  Nodes[n] := Value;
-//end;
 
 procedure TTreeArrayClass<T>.SetValue(n: integer; const Value: T);
 begin
@@ -6745,6 +6783,7 @@ end;
 
 constructor TTreeArrayClass<T>.TSubtreeEnumerator.Create(const ANodes: TVector<TNode>; ARoot: integer);
 begin
+  Self := Default(TSubtreeEnumerator);
   Nodes := ANodes;
   Stack.Clear;
   Stack.Add(ARoot);
@@ -6773,6 +6812,7 @@ end;
 
 constructor TTreeArrayClass<T>.TSubtreeCollection.Create(const ANodes: TVector<TNode>; ARoot: integer);
 begin
+  Self := Default(TSubtreeCollection);
   Nodes := ANodes;
   Root := ARoot;
 end;
@@ -6786,6 +6826,7 @@ end;
 
 constructor TTreeArrayClass<T>.TValuesEnumerator.Create(const ANodes: TVector<TNode>);
 begin
+  Self := Default(TValuesEnumerator);
   Enum := TEnumerator.Create(ANodes);
 end;
 
@@ -6803,12 +6844,148 @@ end;
 
 constructor TTreeArrayClass<T>.TValuesCollection.Create(const ANodes: TVector<TNode>);
 begin
+  Self := Default(TValuesCollection);
   Nodes := ANodes;
 end;
 
 function TTreeArrayClass<T>.TValuesCollection.GetEnumerator: TValuesEnumerator;
 begin
   result := TValuesEnumerator.Create(Nodes);
+end;
+
+{ TVector2D<T>.TCollectionEnumerator }
+
+constructor TVector2D<T>.TEnumerator.Create(const Rows: TVector<TVector<T>>);
+begin
+  inherited Create;
+  Self.Rows := Rows;
+  X := -1;
+  Y := 0;
+end;
+
+function TVector2D<T>.TEnumerator.DoMoveNext: Boolean;
+begin
+  if Y >= Rows.Count then
+    Exit(False);
+
+  inc(X);
+  if X < Rows[Y].Count then
+    Exit(True);
+
+  repeat
+    inc(Y);
+    if Y >= Rows.Count then
+      Exit(False);
+  until Rows[Y].Count > 0;
+  X := 0;
+end;
+
+function TVector2D<T>.TEnumerator.DoGetCurrent: T;
+begin
+  result := Rows[Y][X];
+end;
+
+{ TVector2D<T>.TCollection }
+
+constructor TVector2D<T>.TCollection.Create(const Rows: TVector<TVector<T>>);
+begin
+  inherited Create;
+  Self.Rows := Rows;
+end;
+
+function TVector2D<T>.TCollection.DoGetEnumerator: TEnumerator<T>;
+begin
+  result := TEnumerator.Create(Rows);
+end;
+
+{ TVector2D<T> }
+
+constructor TVector2D<T>.Create(Width, Height: integer);
+var
+  Y: integer;
+  V: TVector<T>;
+begin
+  Self := Default(TVector2D<T>);
+  Rows := TVector<TVector<T>>.Create(Height);
+  Rows.Count := Height;
+  for Y := 0 to Height-1 do
+  begin
+    Rows[Y] := TVector<T>.Create(Width);
+    Rows.Items[Y].Count := Width;
+  end;
+end;
+
+procedure TVector2D<T>.Clear;
+begin
+  Self := Default(TVector2D<T>);
+end;
+
+function TVector2D<T>.Collection: IInterfacedObject<TEnumerable<T>>;
+begin
+  result := TInterfacedObject<TEnumerable<T>>.Create(TCollection.Create(Rows));
+end;
+
+function TVector2D<T>.Add(y: integer): integer;
+begin
+  result := Rows.Items[y].Add;
+end;
+
+function TVector2D<T>.Add(y: integer; const Value: T): integer;
+begin
+  result := Rows.Items[y].Add(Value);
+end;
+
+function TVector2D<T>.Add(y: integer; const Values: TEnumerable<T>): integer;
+var
+  Value: T;
+begin
+  result := -1;
+  for Value in Values do
+    result := Self.Rows.Items[y].Add(Value);
+end;
+
+function TVector2D<T>.Add(y: integer; const Values: TArray<T>): integer;
+var
+  I: Integer;
+begin
+  result := -1;
+  for I := Low(Values) to High(Values) do
+    result := Self.Rows.Items[y].Add(Values[I]);
+end;
+
+function TVector2D<T>.AddRow: integer;
+begin
+  result := Rows.Add;
+end;
+
+function TVector2D<T>.GetValue(x, y: integer): T;
+begin
+  result := Rows.Items[y].Items[x];
+end;
+
+procedure TVector2D<T>.SetValue(x, y: integer; const Value: T);
+begin
+  Rows.Items[y].Items[x] := Value;
+end;
+
+function TVector2D<T>.GetRowCount: integer;
+begin
+  result := Rows.Count;
+end;
+
+procedure TVector2D<T>.SetRowCount(const Value: integer);
+begin
+  Rows.Count := Value;
+end;
+
+function TVector2D<T>.GetWidth(y: integer): integer;
+begin
+  result := Rows.Items[y].Count;
+end;
+
+procedure TVector2D<T>.SetWidth(y: integer; const Value: integer);
+begin
+  Rows.Items[y].Count := Value;
 end;
 
 end.

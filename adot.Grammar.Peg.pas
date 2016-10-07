@@ -15,10 +15,9 @@ uses
   adot.Tools,
   adot.Collections,
   adot.Strings,
-  {$IF Defined(adot)}
-  adot.Log,
-  {$ELSE}
-  msLog,
+  {$IF Defined(LogExceptions)}
+    {$Define LogGrammar}
+    adot.Log,
   {$ENDIF}
   System.SysUtils,
   System.Classes,
@@ -35,7 +34,7 @@ type
         Step: integer;
         Len: integer;
 
-        class function Create(ARule: TGrammarClass): TCallStackItem; static; inline;
+        class function Create(ARule: TGrammarClass): TCallStackItem; static;
       end;
 
   public
@@ -49,6 +48,9 @@ implementation
 
 class function TPegParser.TCallStackItem.Create(ARule: TGrammarClass): TCallStackItem;
 begin
+  {$IF SizeOf(result)<>SizeOf(result.Rule)+SizeOf(result.Step)+SizeOf(result.Len)}
+    result := Default(TCallStackItem);
+  {$ENDIF}
   with result do
   begin
     Rule := ARule;
@@ -60,11 +62,13 @@ end;
 
 procedure TPegParser.LogParseTree;
 begin
-  AppLog.Log('');
-  AppLog.Log('Input string:');
-  AppLog.Log(TStr.GetPrintable(Data.Text));
-  AppLog.Log('Parse tree:');
-  ParseTree.LogTextInputParseTree(Data);
+  {$IF Defined(LogGrammar)}
+    AppLog.Log('');
+    AppLog.Log('Input string:');
+    AppLog.Log(TStr.GetPrintable(Data.Text));
+    AppLog.Log('Parse tree:');
+    ParseTree.LogTextInputParseTree(Data);
+  {$ENDIF}
 end;
 
 function TPegParser.Accepted: Boolean;

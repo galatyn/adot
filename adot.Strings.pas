@@ -145,6 +145,9 @@ type
     { returns new string where all specified chars replaced by string }
     class function Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string; static;
 
+    { returns new string where all specified chars are deleted }
+    class function Remove(const Src: string; CharsToDelete: TSet<Char>): string; static;
+
     { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
     class function SameText(const A: string; const B: array of string): Boolean; overload;
@@ -163,7 +166,7 @@ type
     class procedure TextToLines(const Text: string; out Dst: TArray<string>); overload; static;
     class procedure TextToLines(const Text: string; Delim: Char; out Dst: TArray<string>); overload; static;
 
-    { similarity }
+    { similarity functions }
     class function TextDistance(const a,b: string; StrDistType: TTextDistance = tdLevenstein): integer; static;
     class function SimilarStrings(A,B: String; var dist: integer; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean; overload; static;
     class function SimilarStrings(A,B: String; AOptions: TSimilarityOptions = [soStrictIntMatching]): boolean; overload; static;
@@ -191,7 +194,7 @@ type
 
     { make string printable (replace all unprintable/control chars):
         GetPrintable( 'line1' + #13#10 + 'line2' + #8 + 'qqq' ) = 'line1  line2?qqq' }
-    class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static;
     class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
 
     { randomization }
@@ -233,20 +236,52 @@ type
     class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
   end;
 
+  { Usually all chars of text belong to one code page.
+    It is more efficient to save such text in single byte encoding with code page id. }
+  TCodePageId = (
+    cpiCyr,
+    cpiEur
+  );
+  TCodePages = class
+  private
+    type
+      TStrCyr = type AnsiString(1251);
+      TStrEur = type AnsiString(1252);
+
+    class var
+      CyrToUnicode: array[Byte] of Char;
+      UnicodeToCyr: TDictionary<Char, Byte>;
+      EurToUnicode: array[Byte] of Char;
+      UnicodeToEur: TDictionary<Char, Byte>;
+
+    class destructor Destroy;
+    class procedure InitCyr; static;
+    class procedure InitEur; static;
+    class function EncodeTextEur(const Text: string; Len: integer; var Dst): Boolean; static;
+    class function EncodeTextCyr(const Text: string; Len: integer; var Dst): Boolean; static;
+    class function DecodeTextCyr(const Src; Size: integer): string; static;
+    class function DecodeTextEur(const Src; Size: integer): string; static;
+  public
+    class function EncodeText(const Text: string; var CodePageId: TCodePageId; var Bytes: TArray<byte>): Boolean; static;
+    class function DecodeText(const Bytes: TArray<byte>; CodePageId: TCodePageId): string; static;
+    class function StringToBuf(const Text: string; BufSize: integer; var CodePageId: TCodePageId; var Buf; var Len: integer): boolean; static;
+    class function BufToString(const Buf; BufSize: integer; CodePageId: TCodePageId): string; static;
+  end;
+
   { Position of token in the text. Starts from zero. }
   TTokenPos = record
   public
     Start, Len: Integer;
 
     constructor Create(AStart,ALen: integer);
-    procedure SetPos(AStart,ALen: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetPos(AStart,ALen: integer);
 
     { [StartBytes; LenBytes] -> [StartChars; LenChars] }
     function BytesToChars: TTokenPos;
 
     class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
     class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
-    class operator In(const A: integer; const B: TTokenPos): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator In(const A: integer; const B: TTokenPos): Boolean;
   end;
 
   {# Internal structure to describe the token just found by tokenizer.
@@ -317,10 +352,10 @@ type
     { Find next token (word) in the text }
     function Next(out AToken: TTokenPos): Boolean; overload;
     function Next(out AToken: String): Boolean; overload;
-    function Next: String; overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function Next: String; overload;
 
     { Reset parser to initial state (Position:=0 etc ) }
-    procedure Reset; overload;{$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Reset; overload;
     procedure Reset(ANewText: PChar; ATextLen: integer); overload;
 
     { high level methods }
@@ -370,10 +405,10 @@ type
     function NextToken(out AToken: TTokenInfo): Boolean;  override;
 
     { Additional methods, specific for this class}
-    function GetTokenizersCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetTokenizer(n: integer): TTokCustom; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetFirst: TTokCustom; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLast: TTokCustom; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetTokenizersCount: integer;
+    function GetTokenizer(n: integer): TTokCustom;
+    function GetFirst: TTokCustom;
+    function GetLast: TTokCustom;
 
   public
     constructor Create(const ATokenizers: array of TTokCustom); reintroduce;
@@ -484,7 +519,7 @@ type
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   public
-    class function IsStartOfDigits(C: Char): boolean; static;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsStartOfDigits(C: Char): boolean; static;
     class function NextDigits(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
   end;
 
@@ -537,7 +572,7 @@ type
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   public
-    class function IsStartOfIdentifier(C: Char): Boolean; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsStartOfIdentifier(C: Char): Boolean; static;
     class function NextIdentifier(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
   end;
 
@@ -549,7 +584,7 @@ type
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   public
-    class function IsStartOfLiteral(C: Char): boolean; static;  {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsStartOfLiteral(C: Char): boolean; static;
     class function NextLiteral(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
     class function GetLiteralLen(Text: PChar; Len: integer): integer;
   end;
@@ -559,7 +594,7 @@ type
   protected
     function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
   public
-    class function IsStartOfWhitespace(C: Char): Boolean; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsStartOfWhitespace(C: Char): Boolean; static;
     class function NextWhitespace(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; static;
   end;
 
@@ -604,7 +639,7 @@ type
     function Next(ATokenTypes: TPasTokenTypes; out AToken: TTokenPos): Boolean; overload;
     function Next(ATokenTypes: TPasTokenTypes; out AToken: String): Boolean; overload;
     function Next(ATokenTypes: TPasTokenTypes): String; overload;
-    class function IsDelimiterChar(C: Char): Boolean; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsDelimiterChar(C: Char): Boolean; static;
 
     function GetAllTokens: TArray<TToken>;
 
@@ -623,15 +658,15 @@ type
     FPosition: integer;
 
     procedure SetSize(Value: integer);
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer;
+    procedure SetCapacity(Value: integer);
+    procedure CheckCapacity(MinCapacity: integer);
+    function GetLeft: integer;
+    procedure SetLeft(Value: integer);
+    function GetEOF: boolean;
     function GetText: string;
     procedure SetText(const Value: string);
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean;
   public
 
     procedure Clear;
@@ -648,7 +683,7 @@ type
     { Reads one character from current position of the buffer to Dst. }
     procedure Read(var Dst: char); overload;
 
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure TrimExcess;
 
     { default encoding is UTF8 }
     procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
@@ -1003,6 +1038,18 @@ begin
     else
       Buf.Write(Src.Chars[I]);
   result := Buf.Text;
+end;
+
+class function TStr.Remove(const Src: string; CharsToDelete: TSet<Char>): string;
+var
+  Buf: TStringEditor;
+  I: Integer;
+begin
+  Buf.Clear;
+  for I := 0 to Src.Length-1 do
+    if Src.Chars[I] in CharsToDelete then
+      Buf.Delete(I);
+  result := Buf.Apply(Src);
 end;
 
 class function TStr.Reverse(const S: string): string;
@@ -1573,8 +1620,10 @@ end;
 
 class operator TTokenPos.Add(const A, B: TTokenPos): TTokenPos;
 begin
-  result.Start := Min(A.Start, B.Start);
-  result.Len   := Max(A.Start+A.Len, B.Start+B.Len) - result.Start;
+  result.SetPos(
+    Min(A.Start, B.Start),
+    Max(A.Start+A.Len, B.Start+B.Len) - result.Start
+  );
 end;
 
 function TTokenPos.BytesToChars: TTokenPos;
@@ -1585,12 +1634,18 @@ end;
 
 constructor TTokenPos.Create(AStart, ALen: integer);
 begin
+  {$IF SizeOf(TTokenPos)<>SizeOf(Start)+SizeOf(Len)}
+    Self := Default(TTokenPos);
+  {$ENDIF}
   Start := AStart;
   Len := ALen;
 end;
 
 procedure TTokenPos.SetPos(AStart, ALen: integer);
 begin
+  {$IF SizeOf(TTokenPos)<>SizeOf(Start)+SizeOf(Len)}
+    Self := Default(TTokenPos);
+  {$ENDIF}
   Start := AStart;
   Len := ALen;
 end;
@@ -1605,10 +1660,7 @@ begin
   if A.Start>B.Start then
     result := B - A
   else
-  begin
-    result.Start := A.Start + A.Len;
-    result.Len   := B.Start-result.Start;
-  end;
+    result.SetPos(A.Start + A.Len, B.Start-result.Start);
 end;
 
 { TTokLines }
@@ -2657,10 +2709,11 @@ end;
 
 procedure TTokenInfo.Clear;
 begin
-  Start            := 0; { start position in the text             }
-  DelimitersPrefix := 0; { number of preceding delimiters or zero }
-  Len              := 0; { length of the token or zero            }
-  DelimitersSuffix := 0; { number of trailing delimiters or zero  }
+  { Start            := 0;   start position in the text
+    DelimitersPrefix := 0;   number of preceding delimiters or zero
+    Len              := 0;   length of the token or zero
+    DelimitersSuffix := 0;   number of trailing delimiters or zero  }
+  Self := Default(TTokenInfo);
 end;
 
 { TTokLiterals }
@@ -3123,14 +3176,17 @@ begin
 end;
 
 procedure TStringEditor.Sort;
+var
+  Comparer: IComparer<TReplace>;
 begin
-  TArray.Sort<TReplace>(Instructions.Items, TDelegatedComparer<TReplace>.Create(
+  Comparer := TDelegatedComparer<TReplace>.Create(
     function(const A,B: TReplace): integer
     begin
       result := A.DstPos.Start-B.DstPos.Start;
       if result=0 then
         result := A.Order-B.Order;
-    end));
+    end);
+  TArray.Sort<TReplace>(Instructions.Items, Comparer);
 end;
 
 function TStringEditor.Apply(const Src: string): string;
@@ -3197,9 +3253,7 @@ end;
 
 procedure TStringBuffer.Clear;
 begin
-  Size := 0;
-  Capacity := 0;
-  Position := 0;
+  Self := Default(TStringBuffer);
 end;
 
 class operator TStringBuffer.Equal(const ALeft: string; const ARight: TStringBuffer): Boolean;
@@ -3405,6 +3459,133 @@ begin
     inc(FPosition, CharCount);
     if FPosition > FSize then
       FSize := FPosition;
+  end;
+end;
+
+{ TCodePages }
+
+class procedure TCodePages.InitCyr;
+var
+  I: Integer;
+  S: TStrCyr;
+  T: string;
+begin
+  if UnicodeToCyr<>nil then
+    Exit;
+  UnicodeToCyr := TDictionary<Char, Byte>.Create;
+  SetLength(S, 256);
+  for I := 0 to 255 do
+    Byte(S[I+Low(S)]) := I;
+  T := String(S);
+  for I := 0 to 255 do
+  begin
+    CyrToUnicode[I] := T.Chars[I];
+    UnicodeToCyr.Add(T.Chars[I], I);
+  end;
+end;
+
+class procedure TCodePages.InitEur;
+var
+  I: Integer;
+  S: TStrEur;
+  T: string;
+begin
+  if UnicodeToEur<>nil then
+    Exit;
+  UnicodeToEur := TDictionary<Char, Byte>.Create;
+  SetLength(S, 256);
+  for I := 0 to 255 do
+    Byte(S[I+Low(S)]) := I;
+  T := String(S);
+  for I := 0 to 255 do
+  begin
+    EurToUnicode[I] := T.Chars[I];
+    UnicodeToEur.Add(T.Chars[I], I);
+  end;
+end;
+
+class function TCodePages.EncodeTextCyr(const Text: string; Len: integer; var Dst): Boolean;
+var
+  I: Integer;
+begin
+  InitCyr;
+  for I := 0 to Len-1 do
+    if not UnicodeToCyr.TryGetValue(Text.Chars[I], (PByte(@Dst) + I)^) then
+      Exit(False);
+  Result := True;
+end;
+
+class function TCodePages.EncodeTextEur(const Text: string; Len: integer; var Dst): Boolean;
+var
+  I: Integer;
+begin
+  InitEur;
+  for I := 0 to Len-1 do
+    if not UnicodeToEur.TryGetValue(Text.Chars[I], (PByte(@Dst) + I)^) then
+      Exit(False);
+  Result := True;
+end;
+
+class function TCodePages.DecodeTextCyr(const Src; Size: integer): string;
+var
+  I: Integer;
+begin
+  SetLength(Result, Size);
+  for I := 0 to Size-1 do
+    Result[I+Low(Result)] := CyrToUnicode[(PByte(@Src)+I)^];
+end;
+
+class function TCodePages.DecodeTextEur(const Src; Size: integer): string;
+var
+  I: Integer;
+begin
+  SetLength(Result, Size);
+  for I := 0 to Size-1 do
+    Result[I+Low(Result)] := EurToUnicode[(PByte(@Src)+I)^];
+end;
+
+class destructor TCodePages.Destroy;
+begin
+  FreeAndNil(UnicodeToCyr);
+  FreeAndNil(UnicodeToEur);
+end;
+
+class function TCodePages.EncodeText(const Text: string; var CodePageId: TCodePageId; var Bytes: TArray<byte>): Boolean;
+begin
+  SetLength(Bytes, Length(Text));
+  if EncodeTextEur(Text, Length(Text), Bytes[0]) then CodePageId := cpiEur else
+    if EncodeTextCyr(Text, Length(Text), Bytes[0]) then CodePageId := cpiCyr else
+      Exit(False);
+  result := True;
+end;
+
+class function TCodePages.DecodeText(const Bytes: TArray<byte>; CodePageId: TCodePageId): string;
+begin
+  if Length(Bytes) = 0 then
+    result := ''
+  else
+  case CodePageId of
+    cpiCyr: result := DecodeTextCyr(Bytes[0], Length(Bytes));
+    cpiEur: result := DecodeTextEur(Bytes[0], Length(Bytes));
+    else result := '';
+  end;
+end;
+
+class function TCodePages.StringToBuf(const Text: string; BufSize: integer; var CodePageId: TCodePageId; var Buf; var Len: integer): boolean;
+begin
+  Len := Min(Length(Text), BufSize);
+  if EncodeTextEur(Text, Len, Buf) then CodePageId := cpiEur else
+    if EncodeTextCyr(Text, Len, Buf) then CodePageId := cpiCyr else
+      Exit(False);
+  result := True;
+end;
+
+class function TCodePages.BufToString(const Buf; BufSize: integer; CodePageId: TCodePageId): string;
+begin
+  case CodePageId of
+    cpiCyr: result := DecodeTextCyr(Buf, BufSize);
+    cpiEur: result := DecodeTextEur(Buf, BufSize);
+    else result := '';
   end;
 end;
 
