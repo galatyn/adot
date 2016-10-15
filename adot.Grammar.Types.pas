@@ -10,10 +10,9 @@ uses
   adot.Tools,
   adot.Tools.Rtti,
   adot.Strings,
-  {$IF Defined(adot)}
-  adot.Log,
-  {$ELSE}
-  msLog,
+  {$IF Defined(LogExceptions)}
+    {$Define LogGrammar}
+    adot.Log,
   {$ENDIF}
   System.Generics.Collections,
   System.Character,
@@ -31,8 +30,8 @@ type
     Rule: TGrammarClass;
     Position: TTokenPos;
 
-    procedure SetUp(ARule: TGrammarClass; AStart,ALen: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetUp(const ASrc: TParseTreeItem); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure SetUp(ARule: TGrammarClass; AStart,ALen: integer); overload;
+    procedure SetUp(const ASrc: TParseTreeItem); overload;
 
     constructor Create(ARule: TGrammarClass; AStart,ALen: integer);
   end;
@@ -68,14 +67,14 @@ type
         RuleId: TruleId;
 
         constructor Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
-        function GetEnumerator: TRuleMatchesEnumerator; {$IFNDEF DEBUG}inline;{$ENDIF}
+        function GetEnumerator: TRuleMatchesEnumerator;
       end;
 
   private
-    function GetItem(n: integer): TParseTreeItem; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetItem(n: integer; const Item: TParseTreeItem); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetCount: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetChilds(ARoot: integer): TSubtreeCollection; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetItem(n: integer): TParseTreeItem;
+    procedure SetItem(n: integer; const Item: TParseTreeItem);
+    function GetCount: integer;
+    function GetChilds(ARoot: integer): TSubtreeCollection;
     function GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TRuleMatchesCollection;
     function GetFirstChild(Node: integer): integer;
     function GetNextSibling(Node: integer): integer;
@@ -92,7 +91,7 @@ type
     function Append: integer; overload;
     function Commit(ARule: TGrammarClass; AStart, ALen: integer): integer; overload;
     function Commit: integer; overload;
-    procedure Rollback; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Rollback;
 
     { clear Tree and set Root=-1 }
     procedure Clear;
@@ -281,6 +280,9 @@ implementation
 
 constructor TParseTreeItem.Create(ARule: TGrammarClass; AStart, ALen: integer);
 begin
+  {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
+    Self := Default(Self);
+  {$ENDIF}
   Rule := ARule;
   Position.Start := AStart;
   Position.Len := ALen;
@@ -288,12 +290,18 @@ end;
 
 procedure TParseTreeItem.SetUp(ARule: TGrammarClass; AStart,ALen: integer);
 begin
+  {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
+    Self := Default(Self);
+  {$ENDIF}
   Rule := ARule;
   Position.SetPos(AStart, ALen);
 end;
 
 procedure TParseTreeItem.SetUp(const ASrc: TParseTreeItem);
 begin
+  {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
+    Self := Default(Self);
+  {$ENDIF}
   Rule     := ASrc.Rule;
   Position := ASrc.Position;
 end;
@@ -302,6 +310,9 @@ end;
 
 constructor TParseTree.TRuleMatchesCollection.Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
+  {$IF SizeOf(TRuleMatchesCollection)<>SizeOf(Tree)+SizeOf(Root)+SizeOf(RuleId)}
+    Self := Default(Self);
+  {$ENDIF}
   Tree := ATree;
   Root := ARoot;
   RuleId := ARuleId;
@@ -316,6 +327,9 @@ end;
 
 constructor TParseTree.TRuleMatchesEnumerator.Create(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
+  {$IF SizeOf(TRuleMatchesEnumerator)<>SizeOf(Enum)+SizeOf(Nodes)+SizeOf(RuleId)}
+    Self := Default(Self);
+  {$ENDIF}
   Enum := TSubtreeEnumerator.Create(ANodes.Nodes, ARoot);
   Nodes := ANodes;
   RuleId := ARuleId;
@@ -484,7 +498,9 @@ procedure TParseTree.LogTextInputParseTree(var InputData: TBuffer);
 
   procedure L(const S: string; const Args: array of const; Margin: integer);
   begin
-    AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
+    {$IF Defined(LogGrammar)}
+      AppLog.Log(StringOfChar(' ', Margin) + Format(S, Args));
+    {$ENDIF}
   end;
 
   function ShowWS(const S: string): String;
@@ -536,7 +552,9 @@ procedure TParseTree.LogTextInputParseTree(var InputData: TBuffer);
   end;
 
 begin
-  LogTree(0, 0);
+  {$IF Defined(LogEnabled)}
+    LogTree(0, 0);
+  {$ENDIF}
 end;
 
 procedure TParseTree.SetItem(n: integer; const Item: TParseTreeItem);

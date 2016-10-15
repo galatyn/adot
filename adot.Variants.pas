@@ -19,6 +19,13 @@
 }
 interface
 
+uses
+  adot.Types,
+  System.Variants,
+  System.Math,
+  System.SysUtils,
+  System.Classes;
+
 type
 
   { Utils/helpers for variant type (set of functions ToType/ToTypeDef/TryToType etc) }
@@ -98,10 +105,12 @@ type
     function GetCount: integer;
 
   public
-    constructor Create(const VArray: variant);
+    constructor Create(VArray: variant);
 
     function Lock: pointer;
     procedure Unlock;
+
+    procedure Clear;
 
     { default enumerator for indices of all elements }
     function GetEnumerator: TDimEnumerator;
@@ -182,13 +191,25 @@ type
     property VArray: variant read GetVArray;
   end;
 
-implementation
+  { Access variant array of bytes as read/write stream (resize operation is not allowed) }
+  TVarArrayStream = class(TCustomMemoryStream)
+  protected
+    FValue: Variant;
 
-uses
-  System.Variants, 
-  System.Math, 
-  System.SysUtils, 
-  adot.Types;
+    procedure SetValue(AValue: Variant);
+    procedure SetSize(NewSize: Longint); override;
+  public
+    constructor Create(AValue: Variant);
+    destructor Destroy; override;
+    function Write(const Buffer; Count: Longint): Longint; override;
+    function ExtractValue: variant;
+
+    class function IsAcceptable(const AValue: Variant):Boolean; static;
+
+    property Value: Variant read FValue write SetValue;
+  end;
+
+implementation
 
 type
   { Unified access to content of variable of any type:
@@ -981,10 +1002,15 @@ end;
 
 { TVarArray }
 
-constructor TVarArray.Create(const VArray: variant);
+constructor TVarArray.Create(VArray: variant);
 begin
   Assert(TVar.IsArray(VArray));
   FVArray := VArray;
+end;
+
+procedure TVarArray.Clear;
+begin
+  Self := Default(TVarArray);
 end;
 
 function TVarArray.EnumElementsAsFloat(const ACurProc: TEnumFloatProc): boolean;
@@ -1063,22 +1089,71 @@ begin
   VarArrayUnLock(FVArray)
 end;
 
-procedure RunTestcases;
-var
-  v: variant;
-  s: string;
+{ TVarArrayStream }
+
+constructor TVarArrayStream.Create(AValue: Variant);
 begin
-  v := VarArrayCreate([0,2], varInteger);
-  v[0] := 1;
-  v[1] := 2;
-  v[2] := 3;
-  s := TVar.VarOrArrayToStr(v, ' ');
-  assert(s='1 2 3');
+  Value := AValue;
 end;
 
-{$IF Defined(DEBUG) and Defined(AH)}
-initialization
-  RunTestcases;
-{$IFEND}
+destructor TVarArrayStream.Destroy;
+begin
+  Value := Null;
+  inherited;
+end;
+
+procedure TVarArrayStream.SetSize(NewSize: Integer);
+begin
+  raise Exception.Create('Error');
+end;
+
+procedure TVarArrayStream.SetValue(AValue: Variant);
+begin
+  { release old value }
+  if Memory<>nil then
+  begin
+    VarArrayUnLock(FValue);
+    SetPointer(nil, 0);
+  end;
+
+  { assign new one }
+  Assert(IsAcceptable(AValue));
+  FValue := AValue;
+  Position := 0;
+  if VarIsNull(AValue) or VarIsClear(AValue) then
+    Exit;
+
+  { FValue is 1-dimensional array with ElementSize=1 }
+  SetPointer(VarArrayLock(FValue), VarArrayHighBound(FValue, 1) - VarArrayLowBound(FValue, 1) + 1);
+end;
+
+function TVarArrayStream.Write(const Buffer; Count: Integer): Longint;
+begin
+  Result := Min(Count, Size-Position);
+  if Result > 0 then
+  begin
+    System.Move(Buffer, (PByte(Memory) + Position)^, Result);
+    Position := Position + Result;
+  end;
+end;
+
+function TVarArrayStream.ExtractValue: variant;
+begin
+  if Memory<>nil then
+  begin
+    VarArrayUnLock(FValue);
+    SetPointer(nil, 0);
+  end;
+  result := FValue;
+  FValue := null;
+end;
+
+class function TVarArrayStream.IsAcceptable(const AValue: Variant): Boolean;
+begin
+  Result :=
+    VarIsNull(AValue) or
+    VarIsClear(AValue) or
+    VarIsArray(AValue) and (VarArrayDimCount(AValue)=1) and (TVarData(AValue).VArray.ElementSize=1);
+end;
 
 end.

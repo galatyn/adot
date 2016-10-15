@@ -60,11 +60,11 @@ type
       Grm: IInterfacedObject<TGrammarClass>;
 
   private
-    function GetId: int64; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetName: string; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetName(const Value: string); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetIncludeIntoParseTree: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetIncludeIntoParseTree(const Value: Boolean); {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetId: int64;
+    function GetName: string;
+    procedure SetName(const Value: string);
+    function GetIncludeIntoParseTree: Boolean;
+    procedure SetIncludeIntoParseTree(const Value: Boolean);
 
   public
     class operator Implicit(A : TMedia) : TGrammar;
@@ -203,7 +203,7 @@ type
 
     { input accepted: return length of accepted block
       input rejected: -1}
-    function GetAcceptedBlock(var Buffer: TBuffer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer;
   end;
 
   TGrammarBytesClass = class(TGrammarClassOp0)
@@ -218,7 +218,7 @@ type
 
     { input accepted: return length of accepted block
       input rejected: -1}
-    function GetAcceptedBlock(var Buffer: TBuffer): integer; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetAcceptedBlock(var Buffer: TBuffer): integer;
   end;
 
   TGrammarSequence = class(TGrammarClassOp2)

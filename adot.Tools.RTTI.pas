@@ -50,18 +50,18 @@ type
   { Conversion between enumeration type, ordinal value and string value }	
   TEnumeration<T: record> = record
   strict private
-    class function TypeInfo: PTypeInfo; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function TypeData: PTypeData; {$IFNDEF DEBUG}inline;{$ENDIF} static;
+    class function TypeInfo: PTypeInfo; static;
+    class function TypeData: PTypeData; static;
   public
     class function IsEnumeration: Boolean; static;
-    class function ToOrdinal(Enum: T): Integer; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function FromOrdinal(Value: Integer): T; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function ToString(Enum: T): string; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function FromString(const S: string): T; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function MinValue: Integer; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function MaxValue: Integer; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function InRange(Value: Integer): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF} static;
-    class function EnsureRange(Value: Integer): Integer; {$IFNDEF DEBUG}inline;{$ENDIF} static;
+    class function ToOrdinal(Enum: T): Integer; static;
+    class function FromOrdinal(Value: Integer): T; static;
+    class function ToString(Enum: T): string; static;
+    class function FromString(const S: string): T; static;
+    class function MinValue: Integer; static;
+    class function MaxValue: Integer; static;
+    class function InRange(Value: Integer): Boolean; static;
+    class function EnsureRange(Value: Integer): Integer; static;
   end;
 
 implementation

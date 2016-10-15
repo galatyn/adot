@@ -1,4 +1,7 @@
 ﻿unit adot.Tools;
+{$IFNDEF Debug}
+  { $Define UseInline}
+{$ENDIF}
 
 { Definition of classes/record types:
 
@@ -97,7 +100,7 @@ uses
   adot.Arithmetic,
   adot.Tools.Rtti,
 {$IFDEF MSWINDOWS}
-  { Preventing from "Inline has not been expanded" }
+  { Preventing from "_Inline has not been expanded" }
   Winapi.Windows,
 {$ENDIF}
   System.DateUtils,
@@ -150,8 +153,8 @@ type
          -1,10,11,12,13,14,15);                           { A..F }
   public
 
-    class function EncodedSizeChars(SourceSizeBytes: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function DecodedSizeBytes(EncodedSizeChars: integer): integer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function EncodedSizeChars(SourceSizeBytes: integer): integer; static;
+    class function DecodedSizeBytes(EncodedSizeChars: integer): integer; static;
 
     class function Encode(const Buf; ByteBufSize: integer): String; overload; static;
     class function Encode<T: Record>(const Value: T): String; overload; static;
@@ -159,8 +162,8 @@ type
     class function Encode(const s: string): string; overload; static;
     class function Encode(const s: string; utf8: boolean): string; overload; static;
     class function EncodeAnsiString(const s: AnsiString):String; static;
-    class function EncodeByteH(Src: byte): char; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function EncodeByteL(Src: byte): char; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function EncodeByteH(Src: byte): char; static;
+    class function EncodeByteL(Src: byte): char; static;
 
     class procedure Decode(const HexEncodedStr: String; var Buf); overload; static;
     class function Decode<T: Record>(const HexEncodedStr: String): T; overload; static;
@@ -168,57 +171,32 @@ type
     class function DecodeString(const HexEncodedStr: string): string; overload; static;
     class function DecodeString(const HexEncodedStr: string; utf8: boolean): string; overload; static;
     class function DecodeAnsiString(const HexEncodedStr: String):AnsiString; static;
-    class function DecodeByte(H,L: Char): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function DecodeHexChar(HexChar: Char): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function DecodeByte(H,L: Char): byte; static;
+    class function DecodeHexChar(HexChar: Char): byte; static;
 
     class function IsValid(const HexEncodedStr: String):Boolean; overload; static;
     class function IsValid(const HexEncodedStr: String; ZeroBasedStartIdx,Len: integer):Boolean; overload; static;
-    class function IsValid(const C: Char):Boolean; overload; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function IsValid(const C: Char):Boolean; overload; static;
 
     { Int64ToHex(Value) <> Encode(Value, SizeOf(Value)) for x86-compatible CPU family,
       because lower bytes of integers are stored by lower addresses. When we translate
       integer/pointer to hex we would like to use regular notation, when higher digits
       are shown first. }
     class function Int64ToHex(s: Int64): string; static;
-    class function UInt64ToHex(s: UInt64): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function UInt64ToHex(s: UInt64): string; static;
     class function NativeIntToHex(s: NativeInt): string; static;
-    class function NativeUIntToHex(s: NativeUInt): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function NativeUIntToHex(s: NativeUInt): string; static;
     class function PointerToHex(s: Pointer): string; static;
     class function CardinalToHex(s: cardinal): string; static;
     class function WordToHex(s: word): string; static;
 
     class function HexToInt64(const HexEncodedInt: String):Int64; static;
-    class function HexToUInt64(const HexEncodedInt: String):UInt64; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function HexToUInt64(const HexEncodedInt: String):UInt64; static;
     class function HexToNativeInt(const HexEncodedInt: String):NativeInt; static;
-    class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function HexToPointer(const HexEncodedPointer: String):Pointer; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function HexToCardinal(const HexEncodedCardinal: String):Cardinal; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function HexToWord(const HexEncodedWord: String):Word; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-  end;
-
-  { Conversion routines etc. to be available in THashes and internal classes (THashes.DataHash etc) }
-  THashHelperFunctions = class abstract
-  public
-    class function HashToString(const AHash: TBytes): string; static;
-    class function HashToCardinal(const AHash: TBytes): Cardinal; static;
-    class function HashToInteger(const AHash: TBytes): Integer; static; inline;
-    class function Mix(const HashA,HashB: integer): integer; overload; static; inline;
-    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
-  end;
-
-  { Abstract class for hashes }
-  TCustomHash = class abstract(THashHelperFunctions)
-  protected
-    class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
-  public
-    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload; virtual;
-    class function Encode(S: TStream): TBytes; overload; virtual; abstract;
-
-    class function Encode<T: Record>(const Value: T): TBytes; overload;
-    class function Encode(const S: TBytes): TBytes; overload;
-    class function Encode(const S: string): TBytes; overload;
-    class function EncodeAnsiString(const S: AnsiString): TBytes;
-    class function EncodeFile(const AFileName: string): TBytes; overload;
+    class function HexToNativeUInt(const HexEncodedInt: String):NativeUInt; static;
+    class function HexToPointer(const HexEncodedPointer: String):Pointer; static;
+    class function HexToCardinal(const HexEncodedCardinal: String):Cardinal; static;
+    class function HexToWord(const HexEncodedWord: String):Word; static;
   end;
 
   { AH: Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
@@ -226,60 +204,92 @@ type
     AH (update from 05.04.2016): The issue is fixed, in Delphi 10 Seattle it works correctly.
     Why we still keep THashes class:
     - Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
-    - In object model it is much easier to introduce new function (like hash file/stream etc)
-    - If other issues will be doscovered in Delphi hash, we can fix it witghout changes in other code }
+    - In object model it is much easier to introduce new functions (like hash file/stream etc)
+    - If other issues will be discovered in Delphi hash, we can fix it witghout changes in our code }
   { Simple API for hashing functions (including CRC32/Adler32) }	
-  THashes = class(THashHelperFunctions)
+  THashes = class
   public
     const
       StreamingBufSize = 64*1024;
 
     type
-      MD5 = class(TCustomHash)
+      { Abstract class for hashes }
+      TCustomHash = class abstract
+      protected
+        { used by CRC/Adler to transform 32bit hash to TBytes }
+        class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
+        
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; overload; virtual; abstract;
+        class function DoEncode(S: TStream): TBytes; overload; virtual; abstract;
       public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function Encode(S: TStream): TBytes; override;
+        class function Encode(const Buf; ByteBufSize: integer): TBytes; overload;
+        class function Encode(S: TStream): TBytes; overload; 
+        class function Encode(const S: TBytes): TBytes; overload;
+        class function Encode(const S: string): TBytes; overload;
+        class function EncodeAnsiString(const S: AnsiString): TBytes;
+        class function EncodeFile(const AFileName: string): TBytes; overload;
+      end;
+
+      MD5 = class(TCustomHash)
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
       end;
 
       SHA1 = class(TCustomHash)
-      public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function Encode(S: TStream): TBytes; override;
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
+      end;
+
+      { we use default 256bit hash (use THashSHA2 directly for other options - 224bit,384bit,...) }
+      SHA2 = class(TCustomHash)
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
       end;
 
       CRC32 = class(TCustomHash)
-      public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function Encode(S: TStream): TBytes; override;
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
       end;
 
       Adler32 = class(TCustomHash)
-      public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function Encode(S: TStream): TBytes; override;
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
       end;
 
       BobJenkins32 = class(TCustomHash)
-      public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function Encode(S: TStream): TBytes; override;
+      protected
+        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
+        class function DoEncode(S: TStream): TBytes; override;
       end;
 
       { Strong hash for critical parts (password checksum etc).
         MD5 is outdated for use in cryptography, but for other tasks it's still good enough }
       Strong = MD5;
+
       { Fast hash with good avalanche effect (hash tables etc). }
       Fast = BobJenkins32;
+
       { Fastest hash for detection of modifications in massive data arrays (file checksum etc).
         We use Adler32, it's two times faster than Crc32 and still quite good. }
       Fastest = Adler32;
+
+    {class function HashToCardinal(const AHash: TBytes): Cardinal; static;}
+    class function HashToString(const AHash: TBytes): string; static;
+    class function Mix(const HashA,HashB: integer): integer; overload; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
+    class function Mix(const HashA,HashB: TBytes): TBytes; overload; static;
   end;
 
   TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
   protected
     FExtComparer: IComparer<TValueType>;
   public
-    constructor Create(const AExtComparer: IComparer<TValueType>);
+    constructor Create(AExtComparer: IComparer<TValueType>);
     function Compare(const Left, Right: TValueType): Integer;
   end;
 
@@ -426,8 +436,9 @@ type
 
     class function IsValid(const S: string): Boolean; static;
     class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
-    class procedure New(var Dst: TGUID); static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetNew: TGUID; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+
+    class function GetNew: TGUID; static;
+    class function GetNewAsString: string; static;
   end;
 
   { Block reader and other utils }
@@ -506,6 +517,15 @@ type
 
     { Encode disabled chars (hex), check disabled names ("COM1", "PRN", "NUL" etc). }
     class function StringToFilename(const AStr: string): string; static;
+
+    { When we check all/lot of files for existance in some folder, it is faster to list files than call FileExists.
+      It is especially true for network drives. Example of timings for network folder with many files:
+        FileExists for every file : 31.65 sec
+        Enumerate all files       :  4.19 sec }
+    { Preload list of files into cache }
+    class procedure FileExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True); static;
+    { Will use preloaded Cache when possible and FileExists function otherwise }
+    class function FileExists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
   end;
 
   { Generic implementation of IfThen (to accept virtually any type). Example:
@@ -519,8 +539,8 @@ type
     class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
     class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static;
     class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
-    class procedure Exchange<T>(var A,B: T); static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function BoolToStr(Value: boolean): string; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class procedure Exchange<T>(var A,B: T); static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function BoolToStr(Value: boolean): string; static;
 
     class function Min3(const A,B,C: integer): integer; overload; static;
     class function Min3(const A,B,C: double): double; overload; static;
@@ -585,18 +605,12 @@ type
   end;
 
   {  Simple API to perform periodical actions. Example:
-     var
-       T: TTimeOut;
-       i: integer;
-     begin
        T.StartSec(1, 10);    Timeout is 1 sec, check for timeout every 10th iteration.
        for i := 0 to Count-1 do
-       begin
-         [do something with I]
-         if T.TimedOut then
-           Application.ProcessMessages;
-       end;
-     end; }
+         if T.Timedout then
+           Break
+         else
+           ProcessItem(I); }
   { Allows to avoid of some operations to be executed too often }	 
   TTimeOut = record
   private
@@ -606,18 +620,20 @@ type
     FStartTime: TDateTime;
     FMaxTimeForOp: TDateTime;
 
+    function GetTimedOut: Boolean;
+
   public
     { If we check for timeout every iteration, usually (when iterations are short)
       it is too often and our checks may consume more time then usefull work itself.
       To check only 1 time for N iterations set ACheckPeriod=N. }
     procedure Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
     procedure StartSec(AMaxTimeForOpSec: double; ACheckPeriod: integer = 0);
+    procedure StartInfinite;
     procedure Restart;
 
-    { If TimedOut is set to True manually, then if will be constantly True until next
-      call Start/StartSec/Restart }
-    procedure SetTimedOut(ATimedOut: boolean);
-    function TimedOut: Boolean;
+    { If set True manually, then it will be constantly True until next Start* }
+    property TimedOut: Boolean read GetTimedOut write FOpTimedOut;
+    property StartTime: TDateTime read FStartTime;
   end;
 
   { Currency type utils }
@@ -638,21 +654,21 @@ type
     destructor Destroy; override;
 
     { mapped to TWriter }
-    procedure Write(const Value: Char); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Int8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: UInt8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Int16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: UInt16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Int32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: UInt32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Int64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: UInt64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Single); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Double); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Write(const Value: Extended); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Value: Char); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Int8); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: UInt8); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Int16); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: UInt16); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Int32); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: UInt32); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Int64); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: UInt64); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Single); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Double); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Write(const Value: Extended); overload; {$IFDEF UseInline}inline;{$ENDIF}
 
     { extentions }
-    procedure Write(const Buf; Count: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Write(const Buf; Count: integer); overload; {$IFDEF UseInline}inline;{$ENDIF}
     procedure Write(const Value: TBytes); overload;
     procedure Write(const Value: string); overload;
   end;
@@ -666,21 +682,21 @@ type
     destructor Destroy; override;
 
     { mapped to TReader }
-    procedure Read(out Value: Char); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Int8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: UInt8); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Int16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: UInt16); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Int32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: UInt32); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Int64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: UInt64); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Single); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Double); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Read(out Value: Extended); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(out Value: Char); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Int8); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: UInt8); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Int16); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: UInt16); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Int32); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: UInt32); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Int64); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: UInt64); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Single); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Double); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(out Value: Extended); overload; {$IFDEF UseInline}inline;{$ENDIF}
 
     { extentions }
-    procedure Read(var Buf; Count: integer); overload; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Read(var Buf; Count: integer); overload; {$IFDEF UseInline}inline;{$ENDIF}
     procedure Read(out Value: TBytes); overload;
     procedure Read(out Value: string); overload;
   end;
@@ -699,15 +715,15 @@ type
           release configuration (internal error). Reproduced in Delphi 10.1 }
     function GetValue: T;
     procedure SetValue(const AValue: T);
-    function GetEmpty: boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetPointer: PT; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: boolean; //{$IFDEF UseInline}inline;{$ENDIF}
+    function GetPointer: PT; //{$IFDEF UseInline}inline;{$ENDIF}
   public
 
     { we use class functions because parameterless constructors are not allowed here }
-    class function Create: TBox<T>; overload; static; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class function Create: TBox<T>; overload; static; //{$IFDEF UseInline}inline;{$ENDIF}
     class function Create(const AValue: T): TBox<T>; overload; static;
 
-    procedure Clear; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure Clear; //{$IFDEF UseInline}inline;{$ENDIF}
 
     { assign operators }
     class operator Implicit(const AValue: TBox<T>): T;
@@ -720,12 +736,12 @@ type
     { compare operators }
     class operator Equal(const Left, Right: TBox<T>): Boolean;
     class operator Equal(const Left: TBox<T>; const Right: T): Boolean;
-    class operator Equal(const Left: T; const Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator NotEqual(const Left, Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator Equal(const Left: T; const Right: TBox<T>): Boolean;
+    class operator NotEqual(const Left, Right: TBox<T>): Boolean;
     class operator LessThan(const Left,Right: TBox<T>): Boolean;
     class operator LessThanOrEqual(const Left,Right: TBox<T>): Boolean;
-    class operator GreaterThan(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
-    class operator GreaterThanOrEqual(const Left,Right: TBox<T>): Boolean; //{$IFNDEF DEBUG}inline;{$ENDIF}
+    class operator GreaterThan(const Left,Right: TBox<T>): Boolean;
+    class operator GreaterThanOrEqual(const Left,Right: TBox<T>): Boolean;
 
     { basic math operators (available for numeric types) }
     class operator Add(Left: TBox<T>; Right: TBox<T>): TBox<T>;
@@ -810,16 +826,16 @@ type
     FPosition: integer;
 
     procedure SetSize(Value: integer);
-    function GetCapacity: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetCapacity(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure CheckCapacity(MinCapacity: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetLeft: integer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure SetLeft(Value: integer); {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetCurrentData: pointer; {$IFNDEF DEBUG}inline;{$ENDIF}
-    function GetEOF: boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetCapacity: integer; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure SetCapacity(Value: integer); {$IFDEF UseInline}inline;{$ENDIF}
+    procedure CheckCapacity(MinCapacity: integer); {$IFDEF UseInline}inline;{$ENDIF}
+    function GetLeft: integer; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure SetLeft(Value: integer); {$IFDEF UseInline}inline;{$ENDIF}
+    function GetCurrentData: pointer; {$IFDEF UseInline}inline;{$ENDIF}
+    function GetEOF: boolean; {$IFDEF UseInline}inline;{$ENDIF}
     function GetText: string;
     procedure SetText(const Value: string);
-    function GetEmpty: Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
+    function GetEmpty: Boolean; {$IFDEF UseInline}inline;{$ENDIF}
     procedure SetData(AData: TArray<Byte>);
   public
 
@@ -843,8 +859,8 @@ type
     function Slice(Start,Len: integer): TArray<byte>;
 
     { Makes sure that Capacity is equal to Size. After that Data field can be used directly. }
-    procedure TrimExcess; {$IFNDEF DEBUG}inline;{$ENDIF}
-    procedure Clear; {$IFNDEF DEBUG}inline;{$ENDIF}
+    procedure TrimExcess;
+    procedure Clear;
 
     procedure LoadFromFile(const FileName: string);
     procedure SaveToFile(const FileName: string);
@@ -994,11 +1010,7 @@ type
 implementation
 
 Uses
-  adot.Strings
-{$IFDEF LogExceptions}
-  ,msLog
-{$ENDIF}
-  ;
+  FellesKlasser.Strings;
 
 { THex }
 
@@ -1283,7 +1295,7 @@ end;
 
 { TInvertedComparer<TValue> }
 
-constructor TInvertedComparer<TValueType>.Create(const AExtComparer: IComparer<TValueType>);
+constructor TInvertedComparer<TValueType>.Create(AExtComparer: IComparer<TValueType>);
 begin
   inherited Create;
   FExtComparer := AExtComparer;
@@ -1769,19 +1781,21 @@ class procedure TArrayUtils.StableSort<T>(var Dst: TArray<T>; StartIndex, Count:
 var
   Idx: TArray<integer>;
   Src,Tmp: TArray<T>;
+  Cmp: IComparer<integer>;
   I: Integer;
 begin
   SetLength(Idx, Count);
   for I := 0 to High(Idx) do
     Idx[I] := I + StartIndex;
   Src := Dst;
-  TArray.Sort<integer>(Idx, TDelegatedComparer<integer>.Create(
+  Cmp := TDelegatedComparer<integer>.Create(
     function(const A,B: integer): integer
     begin
       result := Comparer.Compare(Src[Idx[A]], Src[Idx[B]]);
       if result=0 then
         result := Idx[B]-Idx[A];
-    end));
+    end);
+  TArray.Sort<integer>(Idx, Cmp);
   SetLength(Tmp, Count);
   for I := 0 to High(Tmp) do
     Tmp[I] := Dst[Idx[I]];
@@ -1913,9 +1927,12 @@ end;
 { TIndex }
 
 class function TIndex.Get(Count, StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>;
+var
+  Cmp: IComparer<integer>;
 begin
   result := Direct(Count,StartIndex);
-  TArray.Sort<integer>(Result, TDelegatedComparer<integer>.Create(AComparer));
+  Cmp := TDelegatedComparer<integer>.Create(AComparer);
+  TArray.Sort<integer>(Result, Cmp);
 end;
 
 class function TIndex.Random(Count: integer; StartIndex: integer = 0): TArray<integer>;
@@ -1978,14 +1995,16 @@ begin
     THex.IsValid(S, 25,12);
 end;
 
-class procedure TGUIDUtils.New(var Dst: TGUID);
-begin
-  CreateGUID(Dst);
-end;
-
 class function TGUIDUtils.GetNew: TGUID;
 begin
   CreateGUID(Result);
+end;
+
+class function TGUIDUtils.GetNewAsString: string;
+var G: TGUID;
+begin
+  CreateGUID(G);
+  result := GuidToString(G);
 end;
 
 class function TGUIDUtils.TryStringToGUID(const S: string; out Dst: TGUID): boolean;
@@ -2108,6 +2127,7 @@ type
   end;
 var
   List: TList<TFileInfo>;
+  Comparer: IComparer<TFileInfo>;
   TotalSize: Int64;
   TotalCount: Integer;
   FilePath: string;
@@ -2127,11 +2147,12 @@ begin
         R.Age  := AFile.TimeStamp;
         List.Add(R);
       end);
-    List.Sort(TDelegatedComparer<TFileInfo>.Create(
+    Comparer := TDelegatedComparer<TFileInfo>.Create(
       function(const A,B: TFileInfo): Integer
       begin
         result := Sign(A.Age-B.Age);
-      end));
+      end);
+    List.Sort(Comparer);
     TotalCount := List.Count;
     TotalSize := 0;
     for i := 0 to List.Count-1 do
@@ -2243,21 +2264,11 @@ end;
 
 class function TFileUtils.IsLocked(const AFileName: string; AMode: word): boolean;
 begin
-  result := False;
   try
     TFileStream.Create(AFileName, AMode).Free;
+    result := False;
   except
-    on e: Exception do
-    begin
-      result := True;
-      {$IFDEF LogExceptions}
-      try
-        msLog.Log('CheckFileAccess error: %s ("%s")', [e.ClassName, e.Message]);
-        msLog.Log('File "%s" is locked, mode=%s', [AFileName, FileModeToString(aMode)]);
-      except
-      end;
-      {$ENDIF}
-    end;
+    result := True;
   end;
 end;
 
@@ -2424,6 +2435,34 @@ begin
       Result := Result + vFile[I];
 end;
 
+class procedure TFileUtils.FileExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True);
+var
+  SearchOption: TSearchOption;
+begin
+  Cache.Clear;
+  if Recursive then SearchOption := TSearchOption.soAllDirectories
+    else SearchOption := TSearchOption.soTopDirectoryOnly;
+  if TDirectory.Exists(CacheFolder) then
+    Cache.Add(TDirectory.GetFiles(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)), '*.*', SearchOption));
+end;
+
+class function TFileUtils.FileExists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean;
+begin
+  if not AnsiLowerCase(FullFileName).StartsWith(AnsiLowerCase(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)))) then
+    result := System.SysUtils.FileExists(FullFileName)
+  else
+  begin
+    { We check files when they should exist, non existing file is very rare case.
+      To make check robust/reliable we use two different aproaches in different time:
+      - We check file in preloaded list of files. It is very fast, if file is here, then check is done.
+      - If file is not in the list, then we check with FixeExists function.
+      We report non existing file after double check only. }
+    result := FullFileName in Cache;
+    if not result then
+      result := System.SysUtils.FileExists(FullFileName);
+  end;
+end;
+
 { TIfThen }
 
 class function TIfThen.Get<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
@@ -2523,11 +2562,6 @@ end;
 
 { TTimeOut }
 
-procedure TTimeOut.SetTimedOut(ATimedOut: boolean);
-begin
-  FOpTimedOut := ATimedOut;
-end;
-
 procedure TTimeOut.Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
 begin
   FMaxTimeForOp:= AMaxTimeForOp;
@@ -2540,23 +2574,28 @@ begin
   Start(AMaxTimeForOpSec/SecsPerDay, ACheckPeriod);
 end;
 
-procedure TTimeOut.Restart;
+procedure TTimeOut.StartInfinite;
 begin
-  FOpTimedOut  := False;
-  FStartTime   := Now;
-  FCounter     := FCheckPeriod;
+  Start(-1); { negative MaxTimeForOp means that .TimedOut is constantly False }
 end;
 
-function TTimeOut.TimedOut: Boolean;
+procedure TTimeOut.Restart;
 begin
-  if FOpTimedOut then
-    Result := True
-  else
+  FStartTime   := Now;
+  FCounter     := FCheckPeriod;
+  FOpTimedOut  := FMaxTimeForOp = 0;
+end;
+
+function TTimeOut.GetTimedOut: Boolean;
+begin
+  { negative value = infinite (never timed out) }
+  if FMaxTimeForOp < 0 then Result := False else
+  { already timed out }
+  if FOpTimedOut then Result := True else
+  { check for timeout }
   begin
     Dec(FCounter);
-    if FCounter>0 then
-      Result := False
-    else
+    if FCounter > 0 then Result := False else
     begin
       FCounter := FCheckPeriod;
       Result := Now-FStartTime>FMaxTimeForOp;
@@ -3316,9 +3355,63 @@ begin
   result := 'G' + result.Substring(1, Length(result)-2);
 end;
 
-{ THashHelperFunctions }
+{ TCustomHash }
 
-class function THashHelperFunctions.HashToCardinal(const AHash: TBytes): Cardinal;
+class function THashes.TCustomHash.Encode(const S: TBytes): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := DoEncode(S[Low(S)], length(S));
+end;
+
+class function THashes.TCustomHash.Encode(const S: string): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function THashes.TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
+begin
+  result := DoEncode(Buf, ByteBufSize);
+end;
+
+class function THashes.TCustomHash.Encode(S: TStream): TBytes;
+begin
+  result := DoEncode(S);
+end;
+
+class function THashes.TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
+begin
+  if Length(S)=0 then
+    SetLength(result, 0)
+  else
+    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function THashes.TCustomHash.EncodeFile(const AFileName: string): TBytes;
+var
+  S: TFileStream;
+begin
+  S := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
+  try
+    Result := DoEncode(S);
+  finally
+    S.Free;
+  end;
+end;
+
+class function THashes.TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
+begin
+  SetLength(Result, 4);
+  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
+end;
+
+{ THashes }
+
+{class function THashes.HashToCardinal(const AHash: TBytes): Cardinal;
 begin
   Assert(Length(AHash)=4);
   result :=
@@ -3326,98 +3419,111 @@ begin
     (Cardinal(AHash[1]) shl 16) or
     (Cardinal(AHash[2]) shl  8) or
     (Cardinal(AHash[3]));
-end;
+end;}
 
-class function THashHelperFunctions.HashToInteger(const AHash: TBytes): Integer;
-begin
-  result := Integer(HashToCardinal(AHash));
-end;
-
-class function THashHelperFunctions.HashToString(const AHash: TBytes): string;
+class function THashes.HashToString(const AHash: TBytes): string;
 begin
   Result := THex.Encode(AHash);
 end;
 
-class function THashHelperFunctions.Mix(const HashA, HashB, HashC: integer): integer;
+class function THashes.Mix(const HashA, HashB, HashC: integer): integer;
 begin
   result := Mix(Mix(HashA, HashB), HashC);
 end;
 
-class function THashHelperFunctions.Mix(const HashA, HashB: integer): integer;
+class function THashes.Mix(const HashA, HashB: integer): integer;
 begin
   result := (HashA*1103515245 + 12345) xor HashB;
 end;
 
-{ TCustomHash }
-
-class function TCustomHash.Encode(const S: TBytes): TBytes;
-begin
-  if Length(S)=0 then
-    SetLength(result, 0)
-  else
-    result := Encode(S[Low(S)], length(S));
-end;
-
-class function TCustomHash.Encode(const S: string): TBytes;
-begin
-  if Length(S)=0 then
-    SetLength(result, 0)
-  else
-    result := Encode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
-end;
-
-class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
-begin
-  if Length(S)=0 then
-    SetLength(result, 0)
-  else
-    result := Encode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
-end;
-
-class function TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
-begin
-
-end;
-
-class function TCustomHash.Encode<T>(const Value: T): TBytes;
-begin
-  Result := Encode(Value, SizeOf(Value));
-end;
-
-class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
+class function THashes.Mix(const HashA, HashB: TBytes): TBytes;
 var
-  S: TFileStream;
+  V,L1,L2,LR: Integer;
+  Src1,Src2,Dst: pointer;
 begin
-  S := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
-  try
-    Result := Encode(S);
-  finally
-    S.Free;
-  end;
-end;
+  L1 := Length(HashA);
+  L2 := Length(HashB);
+  LR := Max(L1, L2);
+  SetLength(result, LR);
+  if LR = 0 then
+    Exit;
+  Dst := @result[0];
+  if L1>0 then Src1 := @HashA[0] else Src1 := nil;
+  if L2>0 then Src2 := @HashB[0] else Src2 := nil;
+  V := 0;
+  
+  while LR >= SizeOf(integer) do
+  begin
+    
+    { read from HashA }
+    if L1 >= SizeOf(integer) then
+    begin
+      V := (V*1103515245 + 12345) xor integer(Src1^);
+      inc(PByte(Src1), SizeOf(integer));
+      dec(L1, SizeOf(integer));
+    end
+    else
+      while L1 > 0 do
+      begin
+        V := (V*1103515245 + 12345) xor PByte(Src1)^;
+        inc(PByte(Src1));
+        dec(L1);
+      end;
 
-class function TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
-begin
-  SetLength(Result, 4);
-  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
+    { read from HashB }
+    if L2 >= SizeOf(integer) then
+    begin
+      V := (V*1103515245 + 12345) xor integer(Src2^);
+      inc(PByte(Src2), SizeOf(integer));
+      dec(L2, SizeOf(integer));
+    end
+    else
+      while L2 > 0 do
+      begin
+        V := (V*1103515245 + 12345) xor PByte(Src2)^;
+        inc(PByte(Src2));
+        dec(L2);
+      end;
+
+    integer(Dst^) := V;
+    dec(LR, SizeOf(integer));
+  end;
+  
+  while LR > 0 do
+  begin
+    if L1 > 0 then
+    begin
+      V := (V*1103515245 + 12345) xor byte(Src1^);
+      inc(PByte(Src1));
+      dec(L1);
+    end;
+    if L2 > 0 then
+    begin
+      V := (V*1103515245 + 12345) xor byte(Src2^);
+      inc(PByte(Src2));
+      dec(L2);
+    end;
+    Byte(Dst^) := V;
+    dec(LR);
+  end;
 end;
 
 { TMD5 }
 
-class function THashes.MD5.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function THashes.MD5.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
-  h: THashMD5;
+  Hash: THashMD5;
 begin
   try
-    h := THashMD5.Create;
-    h.Update(@Buf, ByteBufSize);
-    Result := h.HashAsBytes;
+    Hash := THashMD5.Create;
+    Hash.Update(@Buf, ByteBufSize);
+    Result := Hash.HashAsBytes;
   finally
-    h.Reset;
+    Hash.Reset;
   end;
 end;
 
-class function THashes.MD5.Encode(S: TStream): TBytes;
+class function THashes.MD5.DoEncode(S: TStream): TBytes;
 var
   Reader: TStreamUtils.TReader;
   Hash: THashMD5;
@@ -3435,20 +3541,20 @@ end;
 
 { THashes.SHA1 }
 
-class function THashes.SHA1.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function THashes.SHA1.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
-  h: THashSHA1;
+  Hash: THashSHA1;
 begin
   try
-    h := THashSHA1.Create;
-    h.Update(@Buf, ByteBufSize);
-    Result := h.HashAsBytes;
+    Hash := THashSHA1.Create;
+    Hash.Update(@Buf, ByteBufSize);
+    Result := Hash.HashAsBytes;
   finally
-    h.Reset;
+    Hash.Reset;
   end;
 end;
 
-class function THashes.SHA1.Encode(S: TStream): TBytes;
+class function THashes.SHA1.DoEncode(S: TStream): TBytes;
 var
   Reader: TStreamUtils.TReader;
   Hash: THashSHA1;
@@ -3464,9 +3570,40 @@ begin
   end;
 end;
 
+{ THashes.SHA2 }
+
+class function THashes.SHA2.DoEncode(const Buf; ByteBufSize: integer): TBytes;
+var
+  Hash: THashSHA2;
+begin
+  try
+    Hash := THashSHA2.Create;
+    Hash.Update(@Buf, ByteBufSize);
+    Result := Hash.HashAsBytes;
+  finally
+    Hash.Reset;
+  end;
+end;
+
+class function THashes.SHA2.DoEncode(S: TStream): TBytes;
+var
+  Reader: TStreamUtils.TReader;
+  Hash: THashSHA2;
+begin
+  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Hash := THashSHA2.Create;
+  try
+    while Reader.ReadNext do
+      Hash.Update(Reader.Bytes, Reader.Count);
+    Result := Hash.HashAsBytes;
+  finally
+    Hash.Reset;
+  end;
+end;
+
 { THashes.CRC32 }
 
-class function THashes.CRC32.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function THashes.CRC32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   Crc: Cardinal;
 begin
@@ -3475,7 +3612,7 @@ begin
   Result := Hash32ToBytes(Crc);
 end;
 
-class function THashes.CRC32.Encode(S: TStream): TBytes;
+class function THashes.CRC32.DoEncode(S: TStream): TBytes;
 var
   Reader: TStreamUtils.TReader;
   Crc: Cardinal;
@@ -3489,7 +3626,7 @@ end;
 
 { THashes.Adler32 }
 
-class function THashes.Adler32.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function THashes.Adler32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   Crc: Cardinal;
 begin
@@ -3498,7 +3635,7 @@ begin
   Result := Hash32ToBytes(Crc);
 end;
 
-class function THashes.Adler32.Encode(S: TStream): TBytes;
+class function THashes.Adler32.DoEncode(S: TStream): TBytes;
 var
   Reader: TStreamUtils.TReader;
   Crc: Cardinal;
@@ -3512,7 +3649,7 @@ end;
 
 { THashes.BobJenkins32 }
 
-class function THashes.BobJenkins32.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function THashes.BobJenkins32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   h: THashBobJenkins;
 begin
@@ -3525,7 +3662,7 @@ begin
   end;
 end;
 
-class function THashes.BobJenkins32.Encode(S: TStream): TBytes;
+class function THashes.BobJenkins32.DoEncode(S: TStream): TBytes;
 var
   Reader: TStreamUtils.TReader;
   Hash: THashBobJenkins;
@@ -4168,3 +4305,5 @@ begin
 end;
 
 end.
+
+

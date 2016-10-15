@@ -177,6 +177,8 @@ type
     class function ForEach(AStart: TControl; ACallback: TControlBrkProc): Boolean; overload; static;
     class procedure ForEach(AStart: TControl; ACallback: TControlProc); overload; static;
     class function GetAll(AStart: TControl): TArray<TControl>; static;
+    class function FindControlAtPos(AScreenPos: TPoint): TControl; static;
+    class function FindControlAtMousePos: TControl; static;
   end;
 
   { Copy streams without locking UI etc }
@@ -663,6 +665,63 @@ begin
           Exit(False);
   end;
   result := True;
+end;
+
+class function TControlUtils.FindControlAtMousePos: TControl;
+begin
+  Result := FindControlAtPos(Mouse.CursorPos);
+end;
+
+function FindSubcontrolAtPos(AControl: TControl; AScreenPos, AClientPos: TPoint): TControl;
+var
+  i: Integer;
+  C: TControl;
+begin
+  Result := nil;
+  C := AControl;
+  if (C=nil) or not C.Visible or not TRect.Create(C.Left, C.Top, C.Left+C.Width, C.Top+C.Height).Contains(AClientPos) then
+    Exit;
+  Result := AControl;
+  if AControl is TWinControl then
+    for i := 0 to TWinControl(AControl).ControlCount-1 do
+    begin
+      C := FindSubcontrolAtPos(TWinControl(AControl).Controls[i], AScreenPos, AControl.ScreenToClient(AScreenPos));
+      if C<>nil then
+        Result := C;
+    end;
+end;
+
+class function TControlUtils.FindControlAtPos(AScreenPos: TPoint): TControl;
+var
+  i: Integer;
+  f,m: TForm;
+  p: TPoint;
+  r: TRect;
+begin
+  Result := nil;
+  for i := Screen.FormCount-1 downto 0 do
+    begin
+      f := Screen.Forms[i];
+      if f.Visible and (f.Parent=nil) and (f.FormStyle<>fsMDIChild) and
+        TRect.Create(f.Left, f.Top, f.Left+f.Width, f.Top+f.Height).Contains(AScreenPos)
+      then
+        Result := f;
+    end;
+  Result := FindSubcontrolAtPos(Result, AScreenPos, AScreenPos);
+  if (Result is TForm) and (TForm(Result).ClientHandle<>0) then
+  begin
+    WinAPI.Windows.GetWindowRect(TForm(Result).ClientHandle, r);
+    p := TPoint.Create(AScreenPos.X-r.Left, AScreenPos.Y-r.Top);
+    m := nil;
+    for i := TForm(Result).MDIChildCount-1 downto 0 do
+    begin
+      f := TForm(Result).MDIChildren[i];
+      if TRect.Create(f.Left, f.Top, f.Left+f.Width, f.Top+f.Height).Contains(p) then
+        m := f;
+    end;
+    if m<>nil then
+      Result := FindSubcontrolAtPos(m, AScreenPos, p);
+  end;
 end;
 
 class function TControlUtils.FindForm(C: TControl): TForm;

@@ -21,6 +21,8 @@ type
 
   { types }
 
+  TCycleAction = (caContinue, caBreak);
+
   TEmptyRec = record end;
   TSetOfByte = set of Byte;
   TSetOfAnsiChar = set of AnsiChar;

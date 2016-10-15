@@ -1,4 +1,7 @@
 ﻿unit adot.Graphics;
+{$IFNDEF Debug}
+  { $Define UseInline}
+{$ENDIF}
 
 { Definition of classes/record types:
 
@@ -82,21 +85,22 @@ type
     class function GetBrightness(r,g,b: byte): byte; overload; static;
     class function GetBrightnessBGRA(c: cardinal): byte; static;
     { result has brightness = N% from brightness of C }
-    class function AdjustComponentBrightness(c: byte; BrightnessPercent: cardinal): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function AdjustComponentBrightness(c: byte; BrightnessPercent: cardinal): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
     class function AdjustBrightness(c: TColor; BrightnessPercent: cardinal): TColor; static;
     class function AdjustBrightnessBin(c: TColor; BrightnessPercent: cardinal): TColor; static; { no ColorToRGB transformation }
     { result has brightness = N% from max }
     class function SetBrightness(c: TColor; BrightnessPercent: byte): TColor; static;
+    class function SetBrightnessAbs(c: TColor; Brightness: Byte): TColor; static;
 
     { broduces mix of several colors }
     class function MixColors(const Colors: array of TColor): TColor; static;
 
     { color <-> components }
-    class function ColorToRGB(c: TColor): TColor; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function RGBToColor(R,G,B: byte): TColor; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetR(C: TColor): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetG(C: TColor): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
-    class function GetB(C: TColor): byte; static; {$IFNDEF DEBUG}inline;{$ENDIF}
+    class function ColorToRGB(c: TColor): TColor; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function RGBToColor(R,G,B: byte): TColor; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function GetR(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function GetG(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function GetB(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
   end;
   TColorTools = TColorUtils;
 
@@ -376,6 +380,27 @@ begin
     result := RGBToColor(BrNew, BrNew, BrNew)
   else
     result := AdjustBrightness(C, BrNew*100 div BrCur);
+end;
+
+class function TColorUtils.SetBrightnessAbs(c: TColor; Brightness: Byte): TColor;
+var
+  R,G,B: byte;
+  x: double;
+begin
+  {
+    L = x*(R+G+B)/3
+    x=L*3/(R+G+B)
+  }
+  C := ColorToRGB(C);
+  R := GetR(C);
+  G := GetG(C);
+  B := GetB(C);
+  x := Brightness*3/(R+G+B);
+  result := RGBToColor(
+    Min(Round(R*x), 255),
+    Min(Round(G*x), 255),
+    Min(Round(B*x), 255)
+  );
 end;
 
 class function TColorUtils.GetR(C: TColor): byte;
