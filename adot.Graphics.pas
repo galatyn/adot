@@ -10,9 +10,12 @@ interface
 
 uses
   adot.Tools,
+  adot.Collections,
   System.UITypes,
   System.Math,
-  System.SysUtils;
+  System.SysUtils,
+  System.Generics.Collections,
+  System.Generics.Defaults, System.Types;
 
 type
   { Find similar standard color, change brightness etc }
@@ -97,11 +100,15 @@ type
   end;
   TColorTools = TColorUtils;
 
+  TAccessMode = (amReadOnly, amWriteOnly, amReadWrite);
   { Pixel format is automatically translated to standard TAlphaColor form System.UITypes.pas:
       ARGB (4 bytes) = (A shl 24) or (R shl 16) or (G shl 8) or B.
     Check TBitmapDirectAccess from adot.FMX.Graphics. }
   TBitmapDirectAccessCustom = class abstract
   protected
+    FLockCount: integer;
+    FAccessMode: TAccessMode;
+
     function DoGetLine(y: integer): PAlphaColor; virtual; abstract;
     function DoGetWidth: integer; virtual; abstract;
     function DoGetHeight: integer; virtual; abstract;
@@ -110,14 +117,22 @@ type
 
     function GetPixel(x,y: integer): TAlphaColor;
     procedure SetPixel(x,y: integer; colors: TAlphaColor);
+    constructor Create(ALock: boolean; AAccessMode: TAccessMode = amReadWrite);
   public
+    destructor Destroy; override;
+
     procedure Lock;
     procedure Unlock;
+
+    procedure Fill(x1,y1,x2,y2: integer; c: TAlphaColor); overload;
+    procedure Fill(c: TAlphaColor); overload;
 
     property Lines[y: integer]: PAlphaColor read DoGetLine;
     property Pixels[x,y: integer]: TAlphaColor read GetPixel write SetPixel;
     property Width: integer read DoGetWidth;
     property Height: integer read DoGetHeight;
+    property LockCount: integer read FLockCount;
+    property AccessMode: TAccessMode read FAccessMode;
   end;
 
   { Class to perform gamma correction for raster image }
@@ -128,10 +143,12 @@ type
 
     procedure SetGamma(const Value: double);
   public
-    constructor Create(Gamma: double);
+    constructor Create; overload;
+    constructor Create(Gamma: double); overload;
 
     procedure Correct(Dst: PAlphaColor; Count: integer); overload;
     procedure Correct(Bmp: TBitmapDirectAccessCustom); overload;
+    class procedure Correct(Bmp: TBitmapDirectAccessCustom; Gamma: double); overload;
 
     property Gamma: double read FGamma write SetGamma;
   end;
@@ -151,6 +168,98 @@ type
 
     property AvgLuminance[x1,y1,x2,y2: integer]: byte read GetAvgLuminance; default;
   end;
+
+  { Calculates number of different colors "online" (we can add/delete colors any time). }
+  TDiversity = record
+    Colors: TMap<TAlphaColor, integer>;
+    Diversity: integer;
+
+    procedure Clear;
+    procedure Add(C: TAlphaColor);
+    procedure Delete(C: TAlphaColor);
+    procedure CopyTo(var Dst: TDiversity);
+  end;
+
+  { temp - to be deleted }
+  TImageDiversity = class
+  public
+    Values: array of array of single;
+    Width,Height: integer;
+
+    procedure Clear;
+    procedure SetUp(Src: TBitmapDirectAccessCustom; FieldW,FieldH: integer);
+  end;
+
+  { Some area of the image, stored as set of horizontal segments. }
+(*  TImageArea = class
+    Segments: TVector<TPoint>; { X=YLeft, Y=YRight }
+    RoundingRect: TRect;
+    Area: int64;
+    MassCenter: TPoint;
+  end;
+
+  TLinkedAreas = class
+  private
+  protected
+    FPoints: TVector<TPoint>; { X=YLeft, Y=YRight }
+    FRoundingRect: TRect;
+    FArea: integer;
+    FMassCenter: TPoint;
+
+    function GetCount: integer; inline;
+    procedure FindFilled(AImageBits: PByteList; ALineSize, x, y: integer); overload;
+    function GetWidth:integer; inline;
+    function GetHeight:integer; inline;
+  public
+    Constructor Create;
+    procedure GetSeg(index: integer; var x1,x2,y: integer); inline;
+    procedure Offset(dx,dy: integer);
+    procedure Clear;
+
+    // find segments of filled region (connected points)
+    // foFindAll is not appliable here because we have X,Y specified
+    procedure FindFilled(AImage: TGrayscaleImage; x, y: integer;
+      AOptions: TFillOptions = [foNormalize, foUpdate]); overload;
+    procedure FindFilled(AImage: TGrayscaleImage;
+      AOptions: TFillOptions = [foNormalize, foUpdate]); overload;
+
+    // most function here optimized for ALineSize=65536, but sometimes it can
+    // be usefull to have all positions encoded by LineSize of some image
+    procedure ChangeLineSize(ALineSize: integer);
+
+    procedure UpdateProperties; // update RoundingRect, Area, MassCenter etc
+    procedure FindRoundingRect;
+    procedure FindArea;
+    procedure FindMassCenter;
+
+    property Count: integer read GetCount;
+    property Points: TList<integer> read FPoints;
+    property LineSize: integer read FLineSize;
+    property RoundingRect: TRect read FRoundingRect;
+    property Area: integer read FArea;
+    property MassCenter: TPoint read FMassCenter;
+    property Image: TGrayscaleImage read GetImage; // raster presentation
+    property Width: integer read GetWidth;
+    property Height: integer read GetHeight;
+  end;  *)
+
+(*  TLuminanceFields = class
+  public
+    type
+      TField = class
+        { where field (square regionz) is placed in original image }
+        Left,Top,Right,Bottom: integer;
+      end;
+  protected
+    function GetCount: integer;
+    function GetField(n: integer): TField;
+  public
+    constructor Create;
+    procedure FindFoeld(Src: TBitmapDirectAccessCustom; MaxLumDiff: byte = 10);
+
+    property Count: integer read GetCount;
+    property Fields[n: integer]: TField read GetField;
+  end; *)
 
 implementation
 
@@ -331,6 +440,46 @@ end;
 
 { TBitmapDirectAccessCustom }
 
+constructor TBitmapDirectAccessCustom.Create(ALock: boolean; AAccessMode: TAccessMode = amReadWrite);
+begin
+  FAccessMode := AAccessMode;
+  if ALock then
+    Lock;
+end;
+
+destructor TBitmapDirectAccessCustom.Destroy;
+begin
+  if LockCount > 0 then
+  begin
+    FLockCount := 0;
+    DoUnlock;
+  end;
+  inherited;
+end;
+
+procedure TBitmapDirectAccessCustom.Fill(x1, y1, x2, y2: integer; c: TAlphaColor);
+var
+  p: PAlphaColor;
+  i: Integer;
+begin
+  while y1 <= y2 do
+  begin
+    p := Lines[y1];
+    inc(p, x1);
+    inc(y1);
+    for i := x1 to x2 do
+    begin
+      p^ := c;
+      inc(p);
+    end;
+  end;
+end;
+
+procedure TBitmapDirectAccessCustom.Fill(c: TAlphaColor);
+begin
+  Fill(0,0,Width-1,Height-1,c);
+end;
+
 function TBitmapDirectAccessCustom.GetPixel(x, y: integer): TAlphaColor;
 var p: PAlphaColor;
 begin
@@ -349,15 +498,35 @@ end;
 
 procedure TBitmapDirectAccessCustom.Lock;
 begin
-  DoLock;
+  inc(FLockCount);
+  if FLockCount=1 then
+    DoLock;
 end;
 
 procedure TBitmapDirectAccessCustom.Unlock;
 begin
-  DoUnlock;
+  dec(FLockCount);
+  if FLockCount=0 then
+    DoUnlock;
 end;
 
 { TGammaCorrection }
+
+class procedure TGammaCorrection.Correct(Bmp: TBitmapDirectAccessCustom; Gamma: double);
+var
+  Correction: TGammaCorrection;
+begin
+  Correction := TGammaCorrection.Create(Gamma);
+  try
+    Correction.Correct(bmp);
+  finally
+    Correction.Free;
+  end;
+end;
+
+constructor TGammaCorrection.Create;
+begin
+end;
 
 constructor TGammaCorrection.Create(Gamma: double);
 begin
@@ -386,6 +555,7 @@ begin
       (FMap[(C shr  8) and $FF] shl  8) or
       (FMap[ C         and $FF]       );
     Dst^ := C;
+    inc(Dst);
   end;
 end;
 
@@ -410,18 +580,23 @@ var
   Src: PAlphaColor;
   Dst: PInt64Array;
 begin
-  FIntegralImage.SetSize(Bmp.Width, Bmp.Height);
-  for Y := 0 to Bmp.Height-1 do
-  begin
-    Src := Bmp.Lines[Y];
-    Dst := FIntegralImage.Lines[Y];
-    for X := 0 to Bmp.Width-1 do
+  Bmp.Lock;
+  try
+    FIntegralImage.SetSize(Bmp.Width, Bmp.Height);
+    for Y := 0 to Bmp.Height-1 do
     begin
-      Dst[X] := TColorUtils.GetBrightnessBGRA(Src^);
-      inc(Src);
+      Src := Bmp.Lines[Y];
+      Dst := FIntegralImage.Lines[Y];
+      for X := 0 to Bmp.Width-1 do
+      begin
+        Dst[X] := TColorUtils.GetBrightnessBGRA(Src^);
+        inc(Src);
+      end;
     end;
+    FIntegralImage.Build;
+  finally
+    Bmp.Unlock;
   end;
-  FIntegralImage.Build;
 end;
 
 procedure TIntegralLuminance.Clear;
@@ -432,6 +607,153 @@ end;
 function TIntegralLuminance.GetAvgLuminance(x1, y1, x2, y2: integer): byte;
 begin
   result := FIntegralImage.Avg[x1,y1,x2,y2];
+end;
+
+{ TDiversity }
+
+procedure TDiversity.Clear;
+begin
+  Colors.Clear;
+  Diversity := 0;
+end;
+
+procedure TDiversity.CopyTo(var Dst: TDiversity);
+var
+  P: TPair<TAlphaColor, integer>;
+begin
+  Dst.Clear;
+  for P in Colors do
+    Dst.Colors.Add(P.Key, P.Value);
+  Dst.Diversity := Diversity;
+end;
+
+procedure TDiversity.Add(C: TAlphaColor);
+var
+  I: integer;
+begin
+  if not Colors.TryGetValue(C, I) then
+  begin
+    I := 0;
+    inc(Diversity);
+  end;
+  inc(I);
+  Colors.AddOrSetValue(C,I);
+end;
+
+procedure TDiversity.Delete(C: TAlphaColor);
+var
+  I: integer;
+begin
+  if not Colors.TryGetValue(C, I) then
+    Exit;
+  dec(I);
+  if I > 0 then
+    Colors.AddOrSetValue(C,I)
+  else
+  begin
+    Colors.Remove(C);
+    dec(Diversity);
+  end;
+end;
+
+{ TImageDiversity }
+
+procedure TImageDiversity.Clear;
+begin
+  SetLength(Values, 0);
+  Width := 0;
+  Height := 0;
+end;
+
+procedure TImageDiversity.SetUp(Src: TBitmapDirectAccessCustom; FieldW,FieldH: integer);
+var
+  D: TDiversity;
+  P: PAlphaColor;
+  XX,YY,x1,y1,x2,y2,X,Y: Integer;
+begin
+  Assert((FieldW<=Src.Width) and (FieldH<=Src.Height));
+  Width := Src.Width;
+  Height := Src.Height;
+  SetLength(Values, Height,Width);
+
+  for Y := 0 to Height-1 do
+    for X := 0 to Width-1 do
+    begin
+      D.Clear;
+      Y1 := Max(Y-FieldH, 0);
+      Y2 := Min(Y+FieldH, Height-1);
+      X1 := Max(X-FieldW, 0);
+      X2 := Min(X+FieldW, Width-1);
+      for YY := Y1 to Y2 do
+      begin
+        P := Src.Lines[YY];
+        inc(P, X1);
+        for XX := X1 to X2 do
+        begin
+          D.Add(P^);
+          inc(P);
+        end;
+      end;
+      Values[Y][X] := D.Diversity / ((Y2-Y1+1)*(X2-X1+1));
+    end;
+
+(*
+  FieldW := Min(FieldW, Width);
+  FW2    := FieldW shr 1;
+  FieldH := Min(FieldH, Height);
+  FH2    := FieldH shr 1;
+
+  D.Clear;
+  for Y := 0 to FieldH-1 do
+  begin
+    P := Src.Lines[Y];
+    for X := 0 to FieldW-1 do
+    begin
+      D.Add(P^);
+      inc(P);
+    end;
+  end;
+
+  for Y := FH2 to Height-1 - FH2 do
+  begin
+    D.CopyTo(C);
+    for X := FW2 to Width-1 - FW2 do
+    begin
+      Values[Y,X] := D.Diversity/(FieldW*FieldH);
+      for I := Y-FH2 to Y+FH2-1 do
+      begin
+        P := Src.Lines[I];
+        inc(P, X-FW2);
+        D.Delete(P^);
+      end;
+      inc(P);
+    end;
+    C.CopyTo(D);
+
+    P := Src.Lines[Y-FH2];
+    for I := 0 to FW2-1 do
+    begin
+      D.Delete(P^);
+      inc(P);
+    end;
+    P := Src.Lines[Y+FH2];
+    for I := 0 to FW2-1 do
+    begin
+      D.Add(P^);
+      inc(P);
+    end;
+  end;
+
+  {
+   AAABBBBBBBBCCC
+   AAABBBBBBBBCCC
+   DDD........EEE
+   DDD........EEE
+   FFFGGGGGGGGHHH
+   FFFGGGGGGGGHHH
+  }
+
+  *)
 end;
 
 end.
