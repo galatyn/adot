@@ -53,6 +53,7 @@ type
     constructor Create;
     procedure Log(const Msg: string; InfoType: TInfoType = itInfo); overload; virtual;
     procedure Log(const Msg: string; const Args: array of const; InfoType: TInfoType = itInfo); overload; virtual;
+    procedure Log(const Msg: TArray<string>; InfoType: TInfoType = itInfo); overload;
     procedure Flush; virtual;
 
     // temporarily disable logging (all output will be ignored)
@@ -248,6 +249,37 @@ procedure TCustomLog.Log(const Msg: string; const Args: array of const;
 begin
   if Enabled then
     Log(Format(Msg, Args), InfoType);
+end;
+
+procedure TCustomLog.Log(const Msg: TArray<string>; InfoType: TInfoType);
+var
+  S: string;
+  P: PChar;
+  I,J: Integer;
+begin
+  if Length(Msg) = 0 then
+    Exit;
+  J := (Length(Msg)-1)*2;
+  for I := Low(Msg) to High(Msg) do
+    inc(J, Length(Msg[I]));
+  SetLength(S, J);
+  P := PChar(S);
+  for I := Low(Msg) to High(Msg) do
+  begin
+    if I > Low(Msg) then
+    begin
+      P^ := #13; inc(P);
+      P^ := #10; inc(P);
+    end;
+    J := Length(Msg[I]);
+    if J > 0 then
+    begin
+      System.Move(Msg[I][Low(Msg[I])], P^, J*SizeOf(Char));
+      inc(P, J);
+    end;
+  end;
+  Assert(P-PChar(S)=Length(S));
+  Log(S, InfoType);
 end;
 
 constructor TCustomLog.Create;

@@ -1010,7 +1010,7 @@ type
 implementation
 
 Uses
-  FellesKlasser.Strings;
+  adot.Strings;
 
 { THex }
 

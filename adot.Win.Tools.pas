@@ -92,6 +92,8 @@ type
     class function GetIntegrityLevel(AProcessId: DWORD; var Integrity: TIntegrityLevel):Boolean; overload; static;
     class function GetIntegrityLevel(var Integrity: TIntegrityLevel):Boolean; overload; static;
     class function GetIntegrityLevel: String; overload; static;
+
+    class function GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean; static;
   end;
 
   { AddDbgPrivileges / AddPrivilege / NullDACL etc }
@@ -225,6 +227,114 @@ type
     property OnMessage: TOnMessage read FOnMessage write FOnMessage;
     property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
     property Handle: HWND read FWnd;
+  end;
+
+  TRestartManager = class
+  protected
+    class destructor Destroy;
+
+  public
+    class var
+      RestartManagerLibrary: THandle;
+      InitCount: int64;
+
+    type
+      RM_APP_TYPE      = DWORD;
+      RM_SHUTDOWN_TYPE = DWORD;
+      RM_REBOOT_REASON = DWORD;
+
+      RM_UNIQUE_PROCESS = record
+        dwProcessId: DWORD;
+        ProcessStartTime: TFileTime;
+      end;
+      PRM_UNIQUE_PROCESS = ^RM_UNIQUE_PROCESS;
+
+    const
+      CCH_RM_MAX_APP_NAME   = 255;
+      CCH_RM_MAX_SVC_NAME   = 63;
+
+    type
+      RM_PROCESS_INFO = record
+        Process             : RM_UNIQUE_PROCESS;
+        strAppName          : array[0..CCH_RM_MAX_APP_NAME] of WideChar;
+        strServiceShortName : array[0..CCH_RM_MAX_SVC_NAME] of WideChar;
+        ApplicationType     : RM_APP_TYPE;
+        AppStatus           : ULONG;
+        TSSessionId         : DWORD;
+        bRestartable        : BOOL;
+      end;
+      PRM_PROCESS_INFO = ^RM_PROCESS_INFO;
+
+    const
+      restartmanagerlib = 'Rstrtmgr.dll';
+
+      RM_SESSION_KEY_LEN    = SizeOf(TGUID);
+      CCH_RM_SESSION_KEY    = RM_SESSION_KEY_LEN*2;
+      RM_INVALID_TS_SESSION = -1;
+      RM_INVALID_PROCESS    = -1;
+
+      RmUnknownApp  = 0;
+      RmMainWindow  = 1;
+      RmOtherWindow = 2;
+      RmService     = 3;
+      RmExplorer    = 4;
+      RmConsole     = 5;
+      RmCritical    = 1000;
+
+      RmForceShutdown          = $01;
+      RmShutdownOnlyRegistered = $10;
+
+      RmRebootReasonNone             = $0;
+      RmRebootReasonPermissionDenied = $1;
+      RmRebootReasonSessionMismatch  = $2;
+      RmRebootReasonCriticalProcess  = $4;
+      RmRebootReasonCriticalService  = $8;
+      RmRebootReasonDetectedSelf     = $10;
+
+    class var
+      RmStartSession:
+        function(
+          var pSessionHandle : DWORD;
+              dwSessionFlags : DWORD;
+              strSessionKey  : LPWSTR): DWORD; stdcall;
+
+      RmRegisterResources:
+        function(
+          dwSessionHandle : DWORD;
+          nFiles          : UINT;
+          rgsFilenames    : PPWideChar;
+          nApplications   : UINT;
+          rgApplications  : PRM_UNIQUE_PROCESS;
+          nServices       : UINT;
+          rgsServiceNames : PPWideChar): DWORD; stdcall;
+
+      RmGetList:
+        function(
+          dwSessionHandle   : DWORD;
+          pnProcInfoNeeded  : PUINT;
+          pnProcInfo        : PUINT;
+          rgAffectedApps    : PRM_PROCESS_INFO;
+          lpdwRebootReasons : LPDWORD): DWORD; stdcall;
+
+      RmShutdown:
+        function(
+          dwSessionHandle : DWORD;
+          lActionFlags    : ULONG;
+          fnStatus        : Pointer): DWORD; stdcall;
+
+      RmRestart:
+        function(
+          dwSessionHandle : DWORD;
+          dwRestartFlags  : DWORD;
+          fnStatus        : Pointer): DWORD; stdcall;
+
+      RmEndSession:
+        function(dwSessionHandle: DWORD): DWORD; stdcall;
+
+    class function Initialize: Boolean; static;
+    class procedure Uninitialize; static;
+
+    class function GetProcessesLockingFile(FileName: string; var ProcessNames: TArray<string>): boolean; static;
   end;
 
 // AH: We should remove it when Embarcadero include it into Winapi.Windows
@@ -435,21 +545,41 @@ begin
 end;
 
 class function TProcess.QueryImagePath(AProcessId: DWORD; AMaxLen: integer = 4096): String;
+const
+  PROCESS_QUERY_LIMITED_INFORMATION = $1000;
 var
   p: THandle;
   l: DWORD;
+  DesiredAccess: cardinal;
 begin
   result := '';
+
+  { QueryFullProcessImageName (more reliable, than GetModuleFileNameEx) }
+  if System.SysUtils.Win32MajorVersion >= 6 then
+    DesiredAccess := PROCESS_QUERY_LIMITED_INFORMATION { Windows Vista or higher }
+  else
+    DesiredAccess := PROCESS_QUERY_INFORMATION;
+  p := OpenProcess(DesiredAccess, False, AProcessId);
+  if p<>0 then
+    try
+      SetLength(Result, AMaxLen);
+      l := length(Result)-1;
+      if QueryFullProcessImageName(p, 0, PChar(Result), l) then
+      begin
+        SetLength(Result, l);
+        Exit;
+      end;
+    finally
+      CloseHandle(p);
+    end;
+
+  { GetModuleFileNameEx }
   p := OpenProcess(PROCESS_QUERY_INFORMATION or PROCESS_VM_READ, False, AProcessId);
   if p<>0 then
     try
-      setlength(Result, AMaxLen);
+      SetLength(Result, AMaxLen);
       l := length(Result)-1;
-      // AH: QueryFullProcessImageName is more reliable, than GetModuleFileNameEx.
-      if QueryFullProcessImageName(p, 0, PChar(Result), l) then
-        setlength(Result, l)
-      else
-        setlength(Result, GetModuleFileNameEx(p, 0, PChar(Result), length(Result) - 1));
+      SetLength(Result, GetModuleFileNameEx(p, 0, PChar(Result), length(Result) - 1));
     finally
       CloseHandle(p);
     end;
@@ -461,6 +591,11 @@ var
 begin
   GetIntegrityLevel(il);
   Result := Integrities[il];
+end;
+
+class function TProcess.GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean;
+begin
+  result := TRestartManager.GetProcessesLockingFile(FileName, ProcessNames);
 end;
 
 { TSecurity }
@@ -780,6 +915,138 @@ begin
     FOnMessage(Message);
   if Assigned(FOnMessageRef) then
     FOnMessageRef(Message);
+end;
+
+{ TRestartManager }
+
+function GetSystemDir: String;
+begin
+  SetLength(Result, MAX_PATH);
+  SetLength(Result, GetSystemDirectory(PChar(result), Length(Result)));
+  Result := IncludeTrailingPathDelimiter(Result);
+end;
+
+class function TRestartManager.Initialize: Boolean;
+begin
+  Inc(InitCount);
+  if InitCount <> 1 then
+    Result := RestartManagerLibrary <> 0
+  else
+  begin
+    Result := System.SysUtils.Win32MajorVersion >= 6; { Windows Vista or higher }
+    if not Result then
+      Exit;
+    RestartManagerLibrary := LoadLibrary(PChar(GetSystemDir + restartmanagerlib));
+    Result := RestartManagerLibrary <> 0;
+    if not Result then
+      Exit;
+    RmStartSession      := GetProcAddress(RestartManagerLibrary, 'RmStartSession');
+    RmRegisterResources := GetProcAddress(RestartManagerLibrary, 'RmRegisterResources');
+    RmGetList           := GetProcAddress(RestartManagerLibrary, 'RmGetList');
+    RmShutdown          := GetProcAddress(RestartManagerLibrary, 'RmShutdown');
+    RmRestart           := GetProcAddress(RestartManagerLibrary, 'RmRestart');
+    RmEndSession        := GetProcAddress(RestartManagerLibrary, 'RmEndSession');
+  end;
+end;
+
+class procedure TRestartManager.Uninitialize;
+begin
+  if InitCount <= 0 then
+    Exit;
+  Dec(InitCount);
+  if (InitCount = 0) and (RestartManagerLibrary <> 0) then
+  begin
+    FreeLibrary(RestartManagerLibrary);
+    RestartManagerLibrary := 0;
+
+    RmStartSession      := nil;
+    RmRegisterResources := nil;
+    RmGetList           := nil;
+    RmShutdown          := nil;
+    RmRestart           := nil;
+    RmEndSession        := nil;
+  end;
+end;
+
+class destructor TRestartManager.Destroy;
+begin
+  if RestartManagerLibrary <> 0 then
+  begin
+    InitCount := 1;
+    Uninitialize;
+  end;
+end;
+
+class function TRestartManager.GetProcessesLockingFile(FileName: string; var ProcessNames: TArray<string>): boolean;
+var
+  ErrorCode: DWord;
+  SessionHandle: DWORD;
+  SessionKey: string;
+  PFileName: PWideChar;
+  ProcInfoNeededCount: UINT;
+  ProcInfoCount: UINT;
+  ProcessInfoArr: array of RM_PROCESS_INFO;
+  RebootReason: DWORD;
+  i: Integer;
+begin
+
+  { RmStartSession }
+  SetLength(ProcessNames, 0);
+  result := False;
+  if not TRestartManager.Initialize then
+    Exit;
+  SessionKey := StringOfChar(#0, CCH_RM_SESSION_KEY);
+  ErrorCode := RmStartSession(SessionHandle, 0, PChar(SessionKey));
+  if ErrorCode <> ERROR_SUCCESS then
+    Exit;
+
+  try
+
+    { RmRegisterResources }
+    FileName := FileName + #0#0;
+    PFileName := PChar(FileName);
+    ErrorCode := RmRegisterResources(SessionHandle, 1, @PFileName, 0, nil, 0, nil);
+    if ErrorCode <> ERROR_SUCCESS then
+      Exit;
+
+    { RmGetList }
+    ProcInfoNeededCount := 0;
+    ProcInfoCount := 0;
+    SetLength(ProcessInfoArr, ProcInfoCount);
+    ErrorCode := RmGetList(SessionHandle, @ProcInfoNeededCount, @ProcInfoCount, nil, @RebootReason);
+    case ErrorCode of
+      ERROR_SUCCESS:
+        begin
+          Result := True;
+          Exit;
+        end;
+      ERROR_MORE_DATA:
+        ;
+      else
+        Exit;
+    end;
+    ProcInfoCount := ProcInfoNeededCount + 10;
+    SetLength(ProcessInfoArr, ProcInfoCount);
+    ProcInfoNeededCount := 0;
+    ErrorCode := RmGetList(SessionHandle, @ProcInfoNeededCount, @ProcInfoCount, @ProcessInfoArr[0], @RebootReason);
+    if ErrorCode <> ERROR_SUCCESS then
+      Exit;
+
+    { fill ProcessNames }
+    SetLength(ProcessNames, ProcInfoCount);
+    for i := 0 to ProcInfoCount-1 do
+    begin
+      ProcessNames[i] := TProcess.QueryImagePath(ProcessInfoArr[i].Process.dwProcessId);
+      if ProcessNames[i] = '' then
+        ProcessNames[i] := ProcessInfoArr[i].strAppName;
+      ProcessNames[i] := ProcessNames[i] + format('[%d]', [ProcessInfoArr[i].Process.dwProcessId]);
+    end;
+
+    Result := True;
+
+  finally
+    RmEndSession(SessionHandle);
+  end;
 end;
 
 end.
