@@ -1,5 +1,8 @@
 unit adot.DUnit.Runner;
 
+{ If CONSOLE_TESTRUNNER conditional is defined for the project, then console runner will be used.
+  If CONSOLE_TESTRUNNER is not defined, then standard DUnit form will be shown. }
+
 { CLR is not supported }
 {$IF Defined(CLR)}
   {$MESSAGE ERROR 'DotNet is not supported by DUnit framework' }
@@ -26,6 +29,12 @@ uses
   System.SysUtils;
 
 type
+  TExitBehavior = (
+    ebContinue,
+    ebPause,
+    ebHaltOnFailures
+  );
+
   { Default runner from DUnitTestRunner.pas does not provide access to results, we create custom runner
     to see tests results (.TestResult is available after .Run call in console mode) }
   TUnitTestingRunner = class
@@ -34,7 +43,7 @@ type
 
   public
     destructor Destroy; override;
-    procedure Run(AExitBehavior: TRunnerExitBehavior = rxbContinue);
+    procedure Run(AExitBehavior: TExitBehavior = ebContinue);
 
     property TestResult: TTestResult read FTestResult;
   end;
@@ -49,7 +58,7 @@ begin
   inherited;
 end;
 
-procedure TUnitTestingRunner.Run(AExitBehavior: TRunnerExitBehavior = rxbContinue);
+procedure TUnitTestingRunner.Run(AExitBehavior: TExitBehavior = ebContinue);
 begin
   FreeAndNil(FTestResult);
 
@@ -59,13 +68,14 @@ begin
     FTestResult := TestFramework.RunTest(registeredTests, [TTextTestListener.Create]);
     {$IF not Defined(NEXTGEN)}
       case AExitBehavior of
-        rxbPause:
+        ebContinue: ;
+        ebPause:
           try
             writeln(sPressReturn);
             readln;
           except
           end;
-        rxbHaltOnFailures:
+        ebHaltOnFailures:
           if not FTestResult.WasSuccessful then
             System.Halt(FTestResult.ErrorCount+FTestResult.FailureCount);
       end;

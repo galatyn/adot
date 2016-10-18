@@ -595,7 +595,12 @@ end;
 
 class function TProcess.GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean;
 begin
-  result := TRestartManager.GetProcessesLockingFile(FileName, ProcessNames);
+  try
+    result := TRestartManager.GetProcessesLockingFile(FileName, ProcessNames);
+  except
+    result := False;
+    SetLength(ProcessNames, 0);
+  end;
 end;
 
 { TSecurity }

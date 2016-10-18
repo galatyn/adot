@@ -1,7 +1,5 @@
 unit adot.Grammar.Types;
 
-{$DEFINE adot}
-
 interface
 
 uses

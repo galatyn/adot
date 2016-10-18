@@ -2265,7 +2265,8 @@ end;
 class function TFileUtils.IsLocked(const AFileName: string; AMode: word): boolean;
 begin
   try
-    TFileStream.Create(AFileName, AMode).Free;
+    if System.SysUtils.FileExists(AFileName) then
+      TFileStream.Create(AFileName, AMode).Free;
     result := False;
   except
     result := True;

@@ -18,7 +18,8 @@ uses
   System.Math,
   System.SysUtils,
   System.Generics.Collections,
-  System.Generics.Defaults, System.Types;
+  System.Generics.Defaults, 
+  System.Types;
 
 type
   { Find similar standard color, change brightness etc }

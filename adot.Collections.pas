@@ -6878,6 +6878,7 @@ begin
       Exit(False);
   until Rows[Y].Count > 0;
   X := 0;
+  Result := True;
 end;
 
 function TVector2D<T>.TEnumerator.DoGetCurrent: T;
