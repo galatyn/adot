@@ -1710,6 +1710,99 @@ type
     property ValuesCollection: TValuesCollection read GetValuesCollection;
   end;
 
+  TRange = record
+  private
+    FValueMin,FValueMax: integer;
+
+    type
+      TEnumerator = record
+      private
+        FCurValue, FMaxValue: integer;
+      public
+        constructor Create(const R: TRange);
+        function MoveNext: boolean;
+        function GetCurrentValue: integer;
+
+        property Current: integer read GetCurrentValue;
+      end;
+
+    function GetAsString: string;
+    procedure SetAsString(const Value: string);
+    function GetEmpty: boolean;
+    function GetLength: integer;
+
+  public
+
+    constructor Create(AValueMin,AValueMax: integer); overload;
+    procedure Init(AValueMin,AValueMax: integer);
+    procedure Clear;
+    function GetEnumerator: TEnumerator;
+
+    function Overlaps(const a: TRange): boolean;
+
+    class operator In(const a: TRange; b: TRange) : Boolean;
+    class operator In(const a: integer; b: TRange) : Boolean;
+
+    class operator Add(const a,b: TRange) : TRange;
+    { Subtract may produce two ranges, it can't be implemented with single TRange as result
+      class operator Subtract(const a,b: TRange) : TRange; }
+    class operator LogicalAnd(const a,b: TRange) : TRange;
+    class operator LogicalOr(const a,b: TRange) : TRange;
+    { XOR may produce two ranges, it can't be implemented with single TRange as result
+      class operator LogicalXor(const a,b: TRange) : TRange; }
+    class operator Inc(const a: TRange) : TRange;
+    class operator Dec(const a: TRange) : TRange;
+
+    class operator Equal(const a,b: TRange) : Boolean;
+    class operator NotEqual(const a,b: TRange) : Boolean;
+    class operator GreaterThanOrEqual(const a,b: TRange) : Boolean;
+    class operator GreaterThan(const a,b: TRange) : Boolean;
+    class operator LessThan(const a,b: TRange) : Boolean;
+    class operator LessThanOrEqual(const a,b: TRange) : Boolean;
+
+    property AsString: string read GetAsString write SetAsString;
+    property Empty: boolean read GetEmpty;
+    property Length: integer read GetLength;
+
+    { synonyms to FValueMin/FValueMax }
+    property Start: integer read FValueMin write FValueMin;
+    property Finish: integer read FValueMax write FValueMax;
+    property Left: integer read FValueMin write FValueMin;
+    property Right: integer read FValueMax write FValueMax;
+    property ValueMin: integer read FValueMin write FValueMin;
+    property ValueMax: integer read FValueMax write FValueMax;
+  end;
+
+  TRangeEnumerator = record
+  private
+    Src: TArray<integer>;
+    Cur: integer;
+
+    function GetCurrent: TRange;
+  public
+    constructor Create(Src: TArray<integer>);
+    function MoveNext: boolean;
+
+    property Current: TRange read GetCurrent;
+  end;
+
+  TRangeEnumerable = record
+  private
+    Src: TArray<integer>;
+  public
+    constructor Create(Src: TArray<integer>);
+    function GetEnumerator: TRangeEnumerator;
+  end;
+
+  TRangeComparer = class(TComparer<TRange>)
+  protected
+    class var
+      FOrdinalComparer: IComparer<TRange>;
+  public
+    class function Ordinal: IComparer<TRange>; reintroduce;
+    function Compare(const Left, Right: TRange): Integer; override;
+  end;
+
 implementation
 
 uses
@@ -4790,6 +4883,9 @@ begin
   if TypeInfo(T) = TypeInfo(string) then
     result := IComparer<T>( IComparer<string>(TIStringComparer.Ordinal) )
   else
+  if TypeInfo(T) = TypeInfo(TRange) then
+    result := IComparer<T>( IComparer<TRange>(TRangeComparer.Ordinal) )
+  else
     result := TComparer<T>.Default;
 end;
 
@@ -4797,6 +4893,10 @@ class function TComparerUtils.DefaultEqualityComparer<T>: IEqualityComparer<T>;
 begin
   if TypeInfo(T) = TypeInfo(string) then
     result := IEqualityComparer<T>( IEqualityComparer<string>(TIStringComparer.Ordinal) )
+  { default equality comparer is ok for TRange
+  else
+  if TypeInfo(T) = TypeInfo(TRange) then
+    result := IEqualityComparer<T>( IEqualityComparer<TRange>(TRangeComparer.Ordinal) )}
   else
     result := TEqualityComparer<T>.Default;
 end;
@@ -6987,6 +7087,254 @@ end;
 procedure TVector2D<T>.SetWidth(y: integer; const Value: integer);
 begin
   Rows.Items[y].Count := Value;
+end;
+
+{ TRange }
+
+constructor TRange.Create(AValueMin, AValueMax: integer);
+begin
+  Init(AValueMin, AValueMax);
+end;
+
+procedure TRange.Init(AValueMin, AValueMax: integer);
+begin
+  Self := Default(TRange);
+  if AValueMin <= AValueMax then
+  begin
+    ValueMin := AValueMin;
+    ValueMax := AValueMax;
+  end
+  else
+  begin
+    ValueMin := AValueMax;
+    ValueMax := AValueMin;
+  end;
+end;
+
+procedure TRange.Clear;
+begin
+  Self := Default(TRange);
+  dec(FValueMax);
+end;
+
+function TRange.GetEmpty: boolean;
+begin
+  result := ValueMax < ValueMin;
+end;
+
+function TRange.GetEnumerator: TEnumerator;
+begin
+  result := TEnumerator.Create(Self);
+end;
+
+function TRange.GetLength: integer;
+begin
+  if ValueMax >= ValueMin then
+    result := ValueMax-ValueMin+1
+  else
+    result := 0;
+end;
+
+function TRange.GetAsString: string;
+begin
+  result := format('[%d,%d]', [ValueMin,ValueMax]);
+end;
+
+procedure TRange.SetAsString(const Value: string);
+var
+  a,b,c,i,j: integer;
+begin
+  a := Value.IndexOf('[');
+  if a >= 0 then
+  begin
+    b := Value.IndexOf(',', a);
+    if b >= 0 then
+    begin
+      c := Value.IndexOf(']', b);
+      if (c >= 0) and TryStrToInt(Value.Substring(a+1,b-a-1), i) and TryStrToInt(Value.Substring(b,c-b-1), j) then
+      begin
+        Init(i, j);
+        Exit;
+      end;
+    end;
+  end;
+  Clear;
+end;
+
+class operator TRange.Inc(const a: TRange): TRange;
+begin
+  result := TRange.Create(a.ValueMin+1, a.ValueMax+1);
+end;
+
+class operator TRange.Dec(const a: TRange): TRange;
+begin
+  result := TRange.Create(a.ValueMin-1, a.ValueMax-1);
+end;
+
+class operator TRange.Add(const a, b: TRange): TRange;
+begin
+  result := TRange.Create(Min(a.ValueMin, b.ValueMin), Max(a.ValueMax, b.ValueMax));
+end;
+
+class operator TRange.LogicalAnd(const a, b: TRange): TRange;
+begin
+  { [...XXX]
+       [XXX...]   -> [XXX] }
+  if a.Overlaps(b) then
+    result.Init(Max(a.ValueMin, b.ValueMin), Min(a.ValueMax, b.ValueMax))
+  else
+    result.Clear;
+end;
+
+class operator TRange.LogicalOr(const a, b: TRange): TRange;
+begin
+  { [...XXX]
+       [XXX...]   -> [...XXX...]
+    If a and b are overlapped, then A or B = A + B, otherwise A or B = empty unlike A + B }
+  if a.Overlaps(b) then
+    result.Init(Min(a.ValueMin, b.ValueMin), Max(a.ValueMax, b.ValueMax))
+  else
+    result.Clear;
+end;
+
+function TRange.Overlaps(const a: TRange): boolean;
+begin
+  result := (ValueMin <= a.ValueMax) and (a.ValueMin <= ValueMax);
+end;
+
+class operator TRange.In(const a: TRange; b: TRange): Boolean;
+begin
+  result := (a.ValueMin >= b.ValueMin) and (a.ValueMax <= b.ValueMax);
+end;
+
+class operator TRange.In(const a: integer; b: TRange): Boolean;
+begin
+  result := (a >= b.ValueMin) and (a <= b.ValueMax);
+end;
+
+class operator TRange.Equal(const a, b: TRange): Boolean;
+begin
+  result := (a.ValueMin=b.ValueMin) and (a.ValueMax=b.ValueMax);
+end;
+
+class operator TRange.NotEqual(const a, b: TRange): Boolean;
+begin
+  result := not (a=b);
+end;
+
+class operator TRange.LessThan(const a, b: TRange): Boolean;
+begin
+  if a.ValueMin < b.ValueMin then
+    result := True
+  else
+  if a.ValueMin > b.ValueMin then
+    result := False
+  else
+    result := a.Length < b.Length;
+end;
+
+class operator TRange.GreaterThanOrEqual(const a, b: TRange): Boolean;
+begin
+  result := not (a < b);
+end;
+
+class operator TRange.GreaterThan(const a, b: TRange): Boolean;
+begin
+  if a.ValueMin > b.ValueMin then
+    result := True
+  else
+  if a.ValueMin < b.ValueMin then
+    result := False
+  else
+    result := a.Length > b.Length;
+end;
+
+class operator TRange.LessThanOrEqual(const a, b: TRange): Boolean;
+begin
+  result := not (a > b);
+end;
+
+{ TRange.TEnumerator }
+
+constructor TRange.TEnumerator.Create(const R: TRange);
+begin
+  FCurValue := R.ValueMin;
+  FMaxValue := R.ValueMax;
+end;
+
+function TRange.TEnumerator.MoveNext: boolean;
+begin
+  result := FCurValue <= FMaxValue;
+  if result then
+    inc(FCurValue);
+end;
+
+function TRange.TEnumerator.GetCurrentValue: integer;
+begin
+  result := FCurValue-1;
+end;
+
+{ TRangeEnumerator }
+
+constructor TRangeEnumerator.Create(Src: TArray<integer>);
+begin
+  Self := Default(TRangeEnumerator);
+  Self.Src := Src;
+  TArray.Sort<integer>(Self.Src);
+end;
+
+function TRangeEnumerator.MoveNext: boolean;
+var
+  L: Integer;
+begin
+  L := Length(Src);
+  result := Cur < L;
+  if result then
+    repeat
+      inc(Cur);
+    until (Cur >= L) or (Src[Cur] <> Src[Cur-1]+1);
+end;
+
+function TRangeEnumerator.GetCurrent: TRange;
+var
+  I: integer;
+begin
+  I := Cur-1;
+  while (I > 0) and (Src[I]=Src[I-1]+1) do
+    dec(I);
+  result.Init(Src[I], Src[Cur-1]);
+end;
+
+{ TRangeEnumerable }
+
+constructor TRangeEnumerable.Create(Src: TArray<integer>);
+begin
+  Self := Default(TRangeEnumerable);
+  Self.Src := Src;
+end;
+
+function TRangeEnumerable.GetEnumerator: TRangeEnumerator;
+begin
+  result := TRangeEnumerator.Create(Src);
+end;
+
+{ TRangeComparer }
+
+class function TRangeComparer.Ordinal: IComparer<TRange>;
+begin
+  if FOrdinalComparer = nil then
+    FOrdinalComparer := TRangeComparer.Create;
+end;
+
+function TRangeComparer.Compare(const Left, Right: TRange): Integer;
+begin
+  if Left < Right then
+    result := -1
+  else
+  if Left = Right then
+    result := 0
+  else
+    result := 1;
 end;
 
 end.

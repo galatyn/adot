@@ -362,7 +362,8 @@ type
     class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure Randomize<T>(var Arr: TArray<T>); static;
     class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
-    class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); static;
+    class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); overload; static;
+    class procedure Delete<T>(var Arr: TArray<T>; Index: integer); overload; static;
     class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
     class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; static;
@@ -382,6 +383,9 @@ type
     class function Slice<T>(const Src: TArray<T>; Capacity,StartIndex,Count: integer): TArray<T>; overload; static;
     class function Slice<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>; overload; static;
     class function Slice<T>(const Src: TArray<T>; CopyValue: TFunc<T,boolean>): TArray<T>; overload; static;
+    { 9 1 7 2 5 8 -> [1-2] [5] [7-9] }
+    class function Ranges(Src: TArray<integer>): TRangeEnumerable; overload; static;
+    class function Ranges(Src: TEnumerable<integer>): TRangeEnumerable; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -481,7 +485,7 @@ type
     class function RemoveInvalidChars(const AFileName: string): string; static;
 
     class function FileModeToString(AMode: Integer): string; static;
-    class function IsLocked(const AFileName: string; AMode: word = fmOpenReadWrite or fmShareExclusive): boolean; static;
+    class function AccessAllowed(const AFileName: string; ADesiredAccess: word = fmOpenReadWrite or fmShareExclusive): boolean; static;
     class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean): TArray<string>; overload; static;
     class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean; Delim: string): string; overload; static;
     class function GetSize(const AFileName: string): int64; static;
@@ -523,9 +527,9 @@ type
         FileExists for every file : 31.65 sec
         Enumerate all files       :  4.19 sec }
     { Preload list of files into cache }
-    class procedure FileExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True); static;
+    class procedure ExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True); static;
     { Will use preloaded Cache when possible and FileExists function otherwise }
-    class function FileExists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
+    class function Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
   end;
 
   { Generic implementation of IfThen (to accept virtually any type). Example:
@@ -696,7 +700,7 @@ type
     procedure Read(out Value: Extended); overload; {$IFDEF UseInline}inline;{$ENDIF}
 
     { extentions }
-    procedure Read(var Buf; Count: integer); overload; {$IFDEF UseInline}inline;{$ENDIF}
+    procedure Read(var Buf; Count: integer); overload;
     procedure Read(out Value: TBytes); overload;
     procedure Read(out Value: string); overload;
   end;
@@ -715,15 +719,15 @@ type
           release configuration (internal error). Reproduced in Delphi 10.1 }
     function GetValue: T;
     procedure SetValue(const AValue: T);
-    function GetEmpty: boolean; //{$IFDEF UseInline}inline;{$ENDIF}
-    function GetPointer: PT; //{$IFDEF UseInline}inline;{$ENDIF}
+    function GetEmpty: boolean;
+    function GetPointer: PT;
   public
 
     { we use class functions because parameterless constructors are not allowed here }
-    class function Create: TBox<T>; overload; static; //{$IFDEF UseInline}inline;{$ENDIF}
+    class function Create: TBox<T>; overload; static;
     class function Create(const AValue: T): TBox<T>; overload; static;
 
-    procedure Clear; //{$IFDEF UseInline}inline;{$ENDIF}
+    procedure Clear;
 
     { assign operators }
     class operator Implicit(const AValue: TBox<T>): T;
@@ -1596,6 +1600,18 @@ begin
   SetLength(Arr, j);
 end;
 
+class procedure TArrayUtils.Delete<T>(var Arr: TArray<T>; Index: integer);
+var
+  I: Integer;
+begin
+  if (Index >= Low(Arr)) and (Index <= High(Arr)) then
+  begin
+    for I := Index to High(Arr)-1 do
+      Arr[I] := Arr[I+1];
+    SetLength(Arr, Length(Arr)-1);
+  end;
+end;
+
 class function TArrayUtils.Equal<T>(const A, B: TArray<T>; AComparer: IEqualityComparer<T>): Boolean;
 var
   i: Integer;
@@ -1744,6 +1760,16 @@ begin
     Arr[I] := Arr[J];
     Arr[J] := V;
   end;
+end;
+
+class function TArrayUtils.Ranges(Src: TEnumerable<integer>): TRangeEnumerable;
+begin
+  result := Ranges(Src.ToArray);
+end;
+
+class function TArrayUtils.Ranges(Src: TArray<integer>): TRangeEnumerable;
+begin
+  result := TRangeEnumerable.Create(Src);
 end;
 
 class procedure TArrayUtils.SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string);
@@ -2262,14 +2288,13 @@ begin
   {$WARN SYMBOL_PLATFORM ON}
 end;
 
-class function TFileUtils.IsLocked(const AFileName: string; AMode: word): boolean;
+class function TFileUtils.AccessAllowed(const AFileName: string; ADesiredAccess: word): boolean;
 begin
   try
-    if System.SysUtils.FileExists(AFileName) then
-      TFileStream.Create(AFileName, AMode).Free;
-    result := False;
-  except
+    TFileStream.Create(AFileName, ADesiredAccess).Free;
     result := True;
+  except
+    result := False;
   end;
 end;
 
@@ -2363,7 +2388,7 @@ begin
       Exit;
     Files := TDirectory.GetFiles(Dir, ExtractFileName(AFilesMask));
     for FileName in Files do
-      if not (FileName in AExceptions) and TFileUtils.IsLocked(FileName) then
+      if not (FileName in AExceptions) and not TFileUtils.AccessAllowed(FileName) then
         ADst.Add(FileName);
     if ARecursive then
     begin
@@ -2410,11 +2435,10 @@ begin
   if FindFirst(AFileName, faAnyfile, F)<>0 then
     result := 0
   else
-    try
-      result := F.Size;
-    finally
-      FindClose(F);
-    end;
+  begin
+    result := F.Size;
+    FindClose(F);
+  end;
 end;
 
 class function TFileUtils.RemoveInvalidChars(const AFileName: string): string;
@@ -2436,7 +2460,7 @@ begin
       Result := Result + vFile[I];
 end;
 
-class procedure TFileUtils.FileExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True);
+class procedure TFileUtils.ExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True);
 var
   SearchOption: TSearchOption;
 begin
@@ -2447,10 +2471,10 @@ begin
     Cache.Add(TDirectory.GetFiles(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)), '*.*', SearchOption));
 end;
 
-class function TFileUtils.FileExists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean;
+class function TFileUtils.Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean;
 begin
   if not AnsiLowerCase(FullFileName).StartsWith(AnsiLowerCase(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)))) then
-    result := System.SysUtils.FileExists(FullFileName)
+    result := FileExists(FullFileName)
   else
   begin
     { We check files when they should exist, non existing file is very rare case.
@@ -2460,7 +2484,7 @@ begin
       We report non existing file after double check only. }
     result := FullFileName in Cache;
     if not result then
-      result := System.SysUtils.FileExists(FullFileName);
+      result := FileExists(FullFileName);
   end;
 end;
 

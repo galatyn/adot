@@ -337,6 +337,14 @@ type
     class function GetProcessesLockingFile(FileName: string; var ProcessNames: TArray<string>): boolean; static;
   end;
 
+  TWinUtils = class
+  public
+
+    { Analog of AppActivate in VB:
+      https://msdn.microsoft.com/en-us/library/dyz95fhy%28v=vs.90%29.aspx?f=255&MSPPError=-2147217396 }
+    class function AppActivate(const AppName: string): Boolean; static;
+  end;
+
 // AH: We should remove it when Embarcadero include it into Winapi.Windows
 {$EXTERNALSYM QueryFullProcessImageName}
 function QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD;
@@ -1052,6 +1060,16 @@ begin
   finally
     RmEndSession(SessionHandle);
   end;
+end;
+
+{ TWinUtils }
+
+class function TWinUtils.AppActivate(const AppName: string): Boolean;
+var
+  W: HWND;
+begin
+  W := FindWindow(nil, PChar(AppName));
+  result := (W <> 0) and SetForegroundWindow(W);
 end;
 
 end.

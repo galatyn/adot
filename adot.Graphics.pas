@@ -211,13 +211,13 @@ type
     FArea: integer;
     FMassCenter: TPoint;
 
-    function GetCount: integer; inline;
+    function GetCount: integer; {$IFDEF UseInline}inline;{$ENDIF}
     procedure FindFilled(AImageBits: PByteList; ALineSize, x, y: integer); overload;
-    function GetWidth:integer; inline;
-    function GetHeight:integer; inline;
+    function GetWidth:integer; {$IFDEF UseInline}inline;{$ENDIF}
+    function GetHeight:integer; {$IFDEF UseInline}inline;{$ENDIF}
   public
     Constructor Create;
-    procedure GetSeg(index: integer; var x1,x2,y: integer); inline;
+    procedure GetSeg(index: integer; var x1,x2,y: integer); {$IFDEF UseInline}inline;{$ENDIF}
     procedure Offset(dx,dy: integer);
     procedure Clear;
 
