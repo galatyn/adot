@@ -386,6 +386,8 @@ type
     { 9 1 7 2 5 8 -> [1-2] [5] [7-9] }
     class function Ranges(Src: TArray<integer>): TRangeEnumerable; overload; static;
     class function Ranges(Src: TEnumerable<integer>): TRangeEnumerable; overload; static;
+    class function IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer; overload; static;
+    class function IndexOf<T>(const Item: T; const Src: TArray<T>): integer; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -405,13 +407,26 @@ type
     FData: T;
 
     function GetData: T;
-    procedure SetData(AData: T);
+    procedure SetData(const AData: T);
     function GetRefCount: integer;
   public
     constructor Create(AData: T);
     destructor Destroy; override;
 
     property Data: T read GetData write SetData;
+  end;
+
+  { TInterfacedType provides interfaced access to any type.
+    Unlike TInterfacedObject it will not destroy inner object (if T is object type). }
+  TInterfacedType<T> = class(TInterfacedObject, IInterfacedObject<T>)
+  protected
+    FData: T;
+
+    function GetData: T;
+    procedure SetData(const AData: T);
+    function GetRefCount: integer;
+  public
+    constructor Create(AData: T);
   end;
 
 
@@ -1557,10 +1572,20 @@ end;
 
 class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>);
 var
-  Vector: TVector<T>;
+  I: integer;
+  Value: T;
 begin
-  Vector := TVector<T>.Create(Dst);
-  Vector.Add(Src);
+  I := 0;
+  for Value in Src do
+    inc(I);
+  SetLength(dst, Length(dst) + I);
+  I := Length(dst) - I;
+  for Value in Src do
+  begin
+    Dst[I] := Value;
+    inc(I);
+  end;
+  Assert(I=Length(Dst));
 end;
 
 class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
@@ -1727,6 +1752,33 @@ begin
   SetLength(result, Length(Arr));
   for i := 0 to High(result) do
     result[i] := Arr[i];
+end;
+
+class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer;
+var
+  C: IEqualityComparer<T>;
+  V: T;
+begin
+  C := TComparerUtils.DefaultEqualityComparer<T>;
+  result := 0;
+  for V in Src do
+    if C.Equals(V, Item) then
+      Exit
+    else
+      inc(result);
+  result := -1;
+end;
+
+class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TArray<T>): integer;
+var
+  C: IEqualityComparer<T>;
+  I: integer;
+begin
+  C := TComparerUtils.DefaultEqualityComparer<T>;
+  for I := 0 to High(Src) do
+    if C.Equals(Src[I], Item) then
+      Exit(I);
+  result := -1;
 end;
 
 class procedure TArrayUtils.Inverse<T>(var Arr: TArray<T>; AStartIndex, ACount: integer);
@@ -1938,7 +1990,7 @@ begin
   result := FData;
 end;
 
-procedure TInterfacedObject<T>.SetData(AData: T);
+procedure TInterfacedObject<T>.SetData(const AData: T);
 begin
   if (FData<>nil) and (FData<>AData) then
     FreeAndNil(FData);
@@ -4327,6 +4379,29 @@ begin
   {$WARN SYMBOL_PLATFORM OFF}
   result := DebugHook <> 0;
   {$WARN SYMBOL_PLATFORM DEFAULT}
+end;
+
+{ TInterfacedType<T> }
+
+constructor TInterfacedType<T>.Create(AData: T);
+begin
+  inherited Create;
+  FData := AData;
+end;
+
+function TInterfacedType<T>.GetData: T;
+begin
+  result := FData;
+end;
+
+function TInterfacedType<T>.GetRefCount: integer;
+begin
+  result := RefCount;
+end;
+
+procedure TInterfacedType<T>.SetData(const AData: T);
+begin
+  FData := AData;
 end;
 
 end.

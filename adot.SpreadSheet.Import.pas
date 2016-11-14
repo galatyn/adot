@@ -8,28 +8,49 @@ uses
   adot.SpreadSheet.ExcelOle,
   System.SysUtils;
 
-var
-  ImportFactory: TXlsFactory;
+function ImportFactory: TXlsFactory;
+procedure SetNewImportFactory(AFactory: TXlsFactory);
 
 implementation
 
 type
-  TFactory = class(TXlsFactory)
+  TDefaultImportFactory = class(TXlsFactory)
   protected
     function DoNewBook: TXLSBook; override;
   end;
 
-{ TFactory }
+{ TDefaultImportFactory }
 
-function TFactory.DoNewBook: TXLSBook;
+function TDefaultImportFactory.DoNewBook: TXLSBook;
 begin
+  { for import we don't need to use Excel over OLE, it is faster to use DevExpress }
   result := TXLSExportDevExpress.Create;
 end;
 
+{ ImportFactory / SetNewImportFactory }
+
+var
+  ImportFactoryInst: TXlsFactory;
+
+procedure SetNewImportFactory(AFactory: TXlsFactory);
+begin
+  if ImportFactoryInst <> AFactory then
+  begin
+    FreeAndNil(ImportFactoryInst);
+    ImportFactoryInst := AFactory;
+  end;
+end;
+
+function ImportFactory: TXlsFactory;
+begin
+  if ImportFactoryInst = nil then
+    SetNewImportFactory(TDefaultImportFactory.Create);
+  result := ImportFactoryInst;
+end;
+
 initialization
-  ImportFactory := TFactory.Create;
 
 finalization
-  FreeAndNil(ImportFactory);
+  SetNewImportFactory(nil);
 
 end.

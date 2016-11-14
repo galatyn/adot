@@ -74,6 +74,8 @@ type
     class function VarOrArrayToStr(const V: variant; const ArrElemDelimeter: string = #13#10): string; static;
     class function IsEmpty(const V: variant): Boolean; { Null, Unassigned }
     class function VarIsBoolean(const Src: variant): boolean; static;
+    class function GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean; overload;
+    class function GetArrayBounds(const DataArray: Variant; var ALow1,AHigh1,ALow2,AHigh2: Integer): boolean; overload;
   end;
 
   TEnumFloatProc = reference to procedure(var AValue: Double; const ADim: TArray<integer>);
@@ -964,6 +966,20 @@ end;
 class function TVar.IsEmpty(const V: variant): Boolean;
 begin
   result := VarIsNull(v) or VarIsEmpty(v);
+end;
+
+class function TVar.GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean;
+begin
+  ALow  := VarArrayLowBound (DataArray, 1);
+  AHigh := VarArrayHighBound(DataArray, 1);
+end;
+
+class function TVar.GetArrayBounds(const DataArray: Variant; var ALow1, AHigh1, ALow2, AHigh2: Integer): boolean;
+begin
+  ALow1  := VarArrayLowBound (DataArray, 1);
+  AHigh1 := VarArrayHighBound(DataArray, 1);
+  ALow2  := VarArrayLowBound (DataArray, 2);
+  AHigh2 := VarArrayHighBound(DataArray, 2);
 end;
 
 { TVarArray.TDimEnumerator }

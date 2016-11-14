@@ -43,29 +43,52 @@ uses
       FreeAndNil(Book);
     end; *)
 
-var
-  ExportFactory: TXlsFactory;
+function ExportFactory: TXlsFactory;
+procedure SetNewExportFactory(AFactory: TXlsFactory);
 
 implementation
 
 type
-  TFactory = class(TXlsFactory)
+  TDefaultExportFactory = class(TXlsFactory)
   protected
     function DoNewBook: TXLSBook; override;
   end;
 
-{ TFactory }
+{ TDefaultExportFactory }
 
-function TFactory.DoNewBook: TXLSBook;
+function TDefaultExportFactory.DoNewBook: TXLSBook;
 begin
-  //result := TXLSExportDevExpress.Create;
-  result := TXLSExportExcelOle.Create;
+  { We use Excel OLE when it is available (most convenient for users), DevExpress otherwise. }
+  if TXLSExportExcelOle.IsAvailable then
+    result := TXLSExportExcelOle.Create
+  else
+    result := TXLSExportDevExpress.Create;
+end;
+
+{ ExportFactory / SetNewExportFactory }
+
+var
+  ExportFactoryInst: TXlsFactory;
+
+procedure SetNewExportFactory(AFactory: TXlsFactory);
+begin
+  if ExportFactoryInst <> AFactory then
+  begin
+    FreeAndNil(ExportFactoryInst);
+    ExportFactoryInst := AFactory;
+  end;
+end;
+
+function ExportFactory: TXlsFactory;
+begin
+  if ExportFactoryInst = nil then
+    SetNewExportFactory(TDefaultExportFactory.Create);
+  result := ExportFactoryInst;
 end;
 
 initialization
-  ExportFactory := TFactory.Create;
 
 finalization
-  FreeAndNil(ExportFactory);
+  SetNewExportFactory(nil);
 
 end.

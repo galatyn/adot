@@ -15,23 +15,22 @@ uses
   Excel2000,
   Vcl.Graphics,
   Winapi.ActiveX,
+  Winapi.Windows,
   System.Classes,
   System.SysUtils,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.Types,
   System.IOUtils,
-  System.Variants;
+  System.Variants,
+  System.Math;
 
 type
-  { Class defined as abstract only to disable direct instantiating. Use fabric of classes from SpreadSheet.Export 
+  { Class defined as abstract only to disable direct instantiating. Use fabric of classes from FellesKlasser.SpreadSheet.Export 
     unit, it allows to switch underlying engine from DevExpress to anything else with zero changes in code of apps. }
   TXLSExportExcelOle = class abstract(TXLSBook)
   protected
     const
-      lcid_no = 1044;
-      cp_no   = 1252;
-
       BorderStyleTranslation: array[TXLSBorderStyle] of TOleEnum = (
         xlContinuous, xlContinuous{xebsHair}, xlDot, xlDashDotDot, xlDashDot, xlDash,
         xlContinuous, xlDashDotDot, xlSlantDashDot, xlDashDot, xlDash, xlContinuous,
@@ -47,6 +46,12 @@ type
 
       AlignVertTranslation: array[TXLSAlignVert] of TOleEnum = (
         xlTop, xlCenter, xlBottom, xlJustify, xlDistributed );
+
+    var
+      FNumberFormat: string;
+      FMoneyFormat: String;
+      FDateFormat: string;
+      FDateTimeFormat: string;
 
     type
       TCompareCells = function(A,B: TXlsCell):boolean of object;
@@ -80,16 +85,25 @@ type
       const DataRect       : TRect);
     procedure ExportSheetStyles(Src: TXLSSheet; Dst: _Worksheet; const DataRect: TRect; BeforeApplyBestFit: boolean);
 
+    procedure ExportToNewWorkbook(var App: TExcelApplication; var WorkBook: _Workbook; ShowBook: boolean);
+
     procedure DoSaveToStream(Dst: TStream; const FileType: string); override;
-    procedure DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean); override;
+    function DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus; override;
 
     { should not be used for import, load is not supported yet}
     procedure DoLoadFromStream(Src: TStream); override;
     procedure DoLoadFromFile(const FileName: string); override;
+    procedure DoPrint(const Options: TXLSPrintOptions); override;
+
     class function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean; override;
     class function DoIsValidPassword(const SpreadsheetFileName,Password: string): boolean; override;
 
+    function GetExcelNumberFormat(App: TExcelApplication): String;
+    function GetExcelMoneyFormat(App: TExcelApplication): String;
+    function GetExcelDateFormat(App: TExcelApplication): String;
+    function GetExcelDateTimeFormat(App: TExcelApplication): String;
   public
+    class function IsAvailable: boolean; static;
   end;
 
 implementation
@@ -111,24 +125,51 @@ begin
   result := result + IntToStr(Row+1);
 end;
 
-procedure TXLSExportExcelOle.DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean);
+procedure TXLSExportExcelOle.ExportToNewWorkbook(var App: TExcelApplication; var WorkBook: _Workbook; ShowBook: boolean);
+begin
+  App := TExcelApplication.Create(nil);
+  App.Connect;
+  WorkBook := App.Workbooks.Add(xlWBatWorkSheet, LOCALE_USER_DEFAULT);
+  try
+    FNumberFormat := GetExcelNumberFormat(App);
+    FMoneyFormat  := GetExcelMoneyFormat(App);
+    FDateFormat   := GetExcelDateFormat(App);
+    FDateTimeFormat := GetExcelDateTimeFormat(App);
+    ExportToWorkBook(WorkBook);
+  finally
+    if ShowBook then
+    begin
+      App.Visible[LOCALE_USER_DEFAULT] := True; { show Excel }
+      if Workbook.Sheets.Count > 0 then
+        try
+          (Workbook.Sheets.Item[Workbook.Sheets.Count] as _Worksheet).Activate(LOCALE_USER_DEFAULT);
+
+          { If there is more than 1 open workbook in Excel, then .Activate may not work. Workarounds:
+            - Minimize and then restore Excel application (in some tests works "time to time").
+            - Find window by title and activate it by direct WinApi call (seems to be most reliable workaround). }
+          TWinUtils.AppActivate(App.Caption);
+
+        except
+        end;
+    end;
+  end;
+end;
+
+function TXLSExportExcelOle.DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
 var
-  ExApp: TExcelApplication;
+  App: TExcelApplication;
   WorkBook: _Workbook;
 begin
-  ExApp := TExcelApplication.Create(nil);
+  App := nil;
+  WorkBook := nil;
   try
-    ExApp.Connect;
-    WorkBook := ExApp.Workbooks.Add(xlWBatWorkSheet, lcid_no);
-    try
-      ExportToWorkBook(WorkBook);
-    finally
-      ExApp.Visible[lcid_no] := True; { show Excel }
-    end;
-    {WorkBook.SaveAs(FileName, xlDefaultAutoFormat, null, null, null, null, null, null, null, cp_no, null, lcid_no);}
+    ExportToNewWorkbook(App, WorkBook, True);
+    {WorkBook.SaveAs(FileName, xlDefaultAutoFormat, null, null, null, null, null, null, null, cp_xxx, null, LOCALE_USER_DEFAULT);}
+    FileName := '';
+    result := ssOpened;
   finally
     WorkBook := nil;
-    FreeAndNil(ExApp);
+    FreeAndNil(App);
   end;
 end;
 
@@ -147,7 +188,7 @@ begin
       FreeAndNil(Stream);
     end;
   finally
-    DeleteFile(TempFileName);
+    System.SysUtils.DeleteFile(TempFileName);
   end;
 end;
 
@@ -157,20 +198,20 @@ var
   Sheet: _Worksheet;
 begin
   Assert(SheetCount > 0);
-  I := SheetCount - WorkBook.Worksheets.Count;
-  if I > 0 then
-    WorkBook.Worksheets.Add(null, null, I, xlWBatWorkSheet, lcid_no);
   for I := 0 to SheetCount-1 do
   begin
-    Sheet := WorkBook.Worksheets.Item[I+1] as _Worksheet;
+    if I >= WorkBook.Worksheets.Count
+      then Sheet := WorkBook.Worksheets.Add(null, null, I, xlWBatWorkSheet, LOCALE_USER_DEFAULT) as _Worksheet
+      else Sheet := WorkBook.Worksheets.Item[I+1] as _Worksheet;
+    Sheet.Name := Sheets[I].SheetName;
     if Password<>'' then
-      Sheet.Protect(Password, True, True, True, True, lcid_no);
+      Sheet.Protect(Password, True, True, True, True, LOCALE_USER_DEFAULT);
     ExportSheet(Sheets[I], Sheet);
   end;
   if (ActiveSheetIndex >= 0) and (ActiveSheetIndex < WorkBook.Worksheets.Count) then
   begin
     Sheet := WorkBook.Worksheets.Item[ActiveSheetIndex+1] as _Worksheet;
-    Sheet.Activate(lcid_no);
+    Sheet.Activate(LOCALE_USER_DEFAULT);
   end;
 end;
 
@@ -179,6 +220,10 @@ var
   DataRect: TRect;
   MergeRegion: TRect;
   Range: ExcelRange;
+  FrozenColumnCnt,FrozenRowCnt: Integer;
+  CW: TPair<integer, TXLSCellWidth>;
+  CH: TPair<integer, integer>;
+  R: TRange;
 begin
   DataRect := Src.DataRect;
 
@@ -198,9 +243,22 @@ begin
   end;
 
   { ColWidth / RowHeight }
-  { Src.ColWidthCollection returns original values, we use }
+  { Src.ColWidthCollection returns original values, we should add HorOffset/VertOffset.
+    It is not mentioned in MSDN, but ColumnWidth/RowHeight may fail if assigned value is too big. }
+  for CW in Src.ColWidthCollection do
+  try
+    Dst.Range[GetExcelAddress(CW.Key + Src.HorOffset, 0), GetExcelAddress(CW.Key + Src.HorOffset, 0)].ColumnWidth := CW.Value.CharSize;
+  except
+  end;
+  for CH in Src.RowHeightCollection do
+  try
+    Dst.Range[GetExcelAddress(0, CW.Key + Src.VertOffset), GetExcelAddress(0, CW.Key + Src.VertOffset)].RowHeight := CH.Value;
+  except
+  end;
 
   { ApplyBestFit }
+  for R in TArrayUtils.Ranges(Src.ApplyBestFitCollection.ToArray) do
+    Dst.Range[GetExcelAddress(R.Start, 0), GetExcelAddress(R.Finish, 0)].EntireColumn.AutoFit;
 
   { Cells where ConsiderWhenApplyBestFit=False should be moved after ApplyBestFit }
   if (DataRect.Width >= 0) and (DataRect.Height >= 0) then
@@ -210,8 +268,34 @@ begin
   end;
 
   { OptionsView }
+  FrozenColumnCnt := Max(Src.OptionsView.FrozenColumns + Src.HorOffset, 0);
+  FrozenRowCnt    := Max(Src.OptionsView.FrozenRows + Src.HorOffset, 0);
+  if (FrozenRowCnt > 0) or (FrozenColumnCnt > 0) then
+  begin
+    Dst.Application.ActiveWindow.SplitColumn := FrozenColumnCnt;
+    Dst.Application.ActiveWindow.SplitRow := FrozenRowCnt;
+    Dst.Application.ActiveWindow.FreezePanes := True;
+  end;
+
+  { For one sheet it fails with OLE exception when we try to hide.
+    For now we do not implement Visible for tabs.
+  if Src.OptionsView.Visible then
+    Dst.Visible[0] := xlSheetVisible
+  else
+    Dst.Visible[0] := xlSheetVeryHidden; }
 
   { OptionsPrint }
+  if (Src.OptionsPrint.FitToPagesWide > 0) or (Src.OptionsPrint.FitToPagesTall > 0) then
+    Dst.PageSetup.Zoom := False;
+  if Src.OptionsPrint.FitToPagesWide > 0 then
+    Dst.PageSetup.FitToPagesWide := Src.OptionsPrint.FitToPagesWide;
+  if Src.OptionsPrint.FitToPagesTall > 0 then
+    Dst.PageSetup.FitToPagesTall := Src.OptionsPrint.FitToPagesTall;
+  case Src.OptionsPrint.Orientation of
+    poDefault   : ;
+    poPortrait  : Dst.PageSetup.Orientation := xlPortrait;
+    poLandscape : Dst.PageSetup.Orientation := xlLandscape;
+  end;
 end;
 
 procedure TXLSExportExcelOle.ApplyCellStyleToRange(Src: TXLSCell; Range: ExcelRange);
@@ -286,6 +370,69 @@ begin
   with Src.Style.AlignVert do
     if not Empty then
       Range.VerticalAlignment := AlignVertTranslation[Value];
+
+  {$IF [Low(Src.DisplayFormat)..High(Src.DisplayFormat)]<>[dfDefault, dfCurrency, dfFloatNumber, dfIntNumber, dfDateTime, dfDate, dfBoolean, dfString]}
+    {$Message Error 'Support of new DisplayFormat must be implemented here'}
+  {$ENDIF}
+  case Src.DisplayFormat of
+    dfDefault     : ;
+    dfCurrency    : Range.NumberFormat := FMoneyFormat;
+    dfFloatNumber : Range.NumberFormat := FNumberFormat;
+    dfIntNumber   : Range.NumberFormat := '0';
+    dfDateTime    : Range.NumberFormat := FDateTimeFormat;
+    dfDate        : Range.NumberFormat := FDateFormat;
+    dfBoolean     : Range.NumberFormat := '" ";"+"';
+    dfString      :
+      if Src.PreserveStringType then
+        Range.NumberFormat := '@'; { keep string as string even if it looks like number/date etc }
+    //xevtCellPercent: Result := '0%';
+  end;
+
+end;
+
+function TXLSExportExcelOle.GetExcelNumberFormat(App: TExcelApplication): String;
+begin
+  Result := Format('#%s##0', [
+    App.International[xlThousandsSeparator, LOCALE_USER_DEFAULT]
+  ]);
+end;
+
+function TXLSExportExcelOle.GetExcelMoneyFormat(App: TExcelApplication): String;
+begin
+  Result := Format('#%s##0%s%s', [
+    App.International[xlThousandsSeparator, LOCALE_USER_DEFAULT],
+    App.International[xlDecimalSeparator, LOCALE_USER_DEFAULT],
+    StringOfChar('0', Integer(App.International[xlCurrencyDigits, LOCALE_USER_DEFAULT]))
+  ]);
+end;
+
+function TXLSExportExcelOle.GetExcelDateFormat(App: TExcelApplication): String;
+var
+  d, m, y: Integer;
+begin
+  if App.International[xlDayLeadingZero, LOCALE_USER_DEFAULT] then d := 2 else d := 1;
+  if App.International[xlMonthLeadingZero, LOCALE_USER_DEFAULT] then m := 2 else m := 1;
+  if App.International[xl4DigitYears, LOCALE_USER_DEFAULT] then y := 4 else y := 2;
+
+  Result := Format('%1:s%0:s%2:s%0:s%3:s', [
+    App.International[xlDateSeparator, LOCALE_USER_DEFAULT],
+    StringOfChar(VarToStr(App.International[xlDayCode, LOCALE_USER_DEFAULT])[1], d),
+    StringOfChar(VarToStr(App.International[xlMonthCode, LOCALE_USER_DEFAULT])[1], m),
+    StringOfChar(VarToStr(App.International[xlYearCode, LOCALE_USER_DEFAULT])[1], y)
+  ]);
+end;
+
+function TXLSExportExcelOle.GetExcelDateTimeFormat(App: TExcelApplication): String;
+begin
+  Result :=
+    GetExcelDateFormat(App) + ' ' +
+    Format('%s%s%s%s%s', [
+    App.International[xlHourCode, LOCALE_USER_DEFAULT],
+    App.International[xlHourCode, LOCALE_USER_DEFAULT],
+    App.International[xlTimeSeparator, LOCALE_USER_DEFAULT],
+    App.International[xlMinuteCode, LOCALE_USER_DEFAULT],
+    App.International[xlMinuteCode, LOCALE_USER_DEFAULT]
+  ]);
 end;
 
 function TXLSExportExcelOle.GetValueFromCell(Cell: TXLSCell): Variant;
@@ -337,7 +484,7 @@ end;
 
 function TXLSExportExcelOle.ExportSheetStyles_RgnCompare(A,B: TXlsCell): boolean;
 begin
-  result := A.Style = B.Style;
+  result := (A.Style = B.Style) and (A.ValueType = B.ValueType);
 end;
 
 procedure TXLSExportExcelOle.ExportSheetStyles_RgnProcess(
@@ -430,6 +577,16 @@ begin
 
 end;
 
+class function TXLSExportExcelOle.IsAvailable: boolean;
+begin
+  try
+    TExcelApplication.Create(nil).Free;
+    result := True;
+  except
+    result := False;
+  end;
+end;
+
 class function TXLSExportExcelOle.DoIsPasswordProtected(const SpreadsheetFileName: string): boolean;
 begin
   raise Exception.Create('Not implemented');
@@ -448,6 +605,22 @@ end;
 procedure TXLSExportExcelOle.DoLoadFromStream(Src: TStream);
 begin
   raise Exception.Create('Not implemented');
+end;
+
+procedure TXLSExportExcelOle.DoPrint(const Options: TXLSPrintOptions);
+var
+  App: TExcelApplication;
+  WorkBook: _Workbook;
+begin
+  App := nil;
+  WorkBook := nil;
+  try
+    ExportToNewWorkbook(App, WorkBook, False);
+    WorkBook.PrintOut(EmptyParam, EmptyParam, EmptyParam, Options.SettingsUI, Options.PrinterName, False, True, EmptyParam, LOCALE_USER_DEFAULT);
+  finally
+    WorkBook := nil;
+    FreeAndNil(App);
+  end;
 end;
 
 end.

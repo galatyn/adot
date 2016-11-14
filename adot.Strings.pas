@@ -190,7 +190,7 @@ type
     class function CharsCount(const AChars: TAnsiChars): integer;
     class function SetToString(const AChars: TAnsiChars): string;
     class function StringToSet(const s: string): TAnsiChars;
-    class function IntToString(const N: int64; MinResLen: integer = -1): string; static;
+    class function IntToString(const N: int64; MinResLen: integer = -1; LeadingSpaceChar: char = '0'): string; static;
 
     { make string printable (replace all unprintable/control chars):
         GetPrintable( 'line1' + #13#10 + 'line2' + #8 + 'qqq' ) = 'line1  line2?qqq' }
@@ -211,23 +211,6 @@ type
 
     { Returns max possible encoded substring for specified bufer. }
     class function GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes; static;
-    { Write/read max possible part of the string to the buffer (default encoding is UTF8). Example:
-      TRec = record
-        LenBytes : integer;
-        TextUtf8 : array[0..9] of byte;
-      end;
-
-      function TRec.GetText(var R: TRec): string;
-      begin
-        result := TStr.BufToString(R.TextUtf8, R.LenBytes);
-      end;
-
-      procedure TRec.SetText(const Value: string; var R: TRec);
-      begin
-        R.LenBytes := TStr.StringToBuf(Value, R.TextUtf8, SizeOf(R.TextUtf8));
-      end; }
-    class function StringToBuf(const S: string; var Buf; BufSizeBytes: integer; Encoding: TEncoding = nil): integer; static;
-    class function BufToString(const Buf; CountBytes: integer; Encoding: TEncoding = nil): string; static;
 
     { Trancates string without breakig a words. }
     class function TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string; static;
@@ -923,14 +906,14 @@ begin
     inc(result);
 end;
 
-class function TStr.IntToString(const N: int64; MinResLen: integer): string;
+class function TStr.IntToString(const N: int64; MinResLen: integer = -1; LeadingSpaceChar: char = '0'): string;
 begin
   result := IntToStr(N);
   if Length(result) < MinResLen then
-    if N < 0 then
+    if (LeadingSpaceChar = '0') and (N < 0) then
       result := result.Substring(0, 1) + StringOfChar('0', MinResLen-Length(result)) + result.Substring(1)
     else
-      result := StringOfChar('0', MinResLen-Length(result)) + result;
+      result := StringOfChar(LeadingSpaceChar, MinResLen-Length(result)) + result;
 end;
 
 class function TStr.StringToSet(const s: string): TAnsiChars;
@@ -1224,30 +1207,6 @@ begin
   end;
   Result := Encoding.GetBytes(S.Substring(0, N));
   Assert(Length(Result) = M);
-end;
-
-class function TStr.StringToBuf(const S: string; var Buf; BufSizeBytes: integer; Encoding: TEncoding): integer;
-var
-  B: TBytes;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  B := GetMaxEncodedBytes(S, BufSizeBytes, Encoding);
-  result := Length(B);
-  if result > 0 then
-    Move(B[0], Buf, result);
-end;
-
-class function TStr.BufToString(const Buf; CountBytes: integer; Encoding: TEncoding): string;
-var
-  B: TBytes;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  SetLength(B, CountBytes);
-  if CountBytes > 0 then
-    Move(Buf, B[0], CountBytes);
-  result := Encoding.GetString(B);
 end;
 
 class function TStr.SubstringDistance(const a,b: String; var Dist: integer):Boolean;

@@ -1,10 +1,11 @@
-unit adot.SpreadSheet.ExcelDevExpress;
+unit adot.SpreadSheet.DevExpress;
 
 interface
 
 uses
   adot.SpreadSheet.Types,
   adot.SpreadSheet.Classes,
+  adot.SpreadSheet.DevExpress.Print,
   adot.Collections,
   adot.Tools,
   adot.Strings,
@@ -23,10 +24,10 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   System.Types,
-  Vcl.Graphics;
+  Vcl.Graphics, dxSpreadSheetPrinting;
 
 type
-  { Class defined as abstract only to disable direct instantiating. Use fabric of classes from SpreadSheet.Export 
+  { Class defined as abstract only to disable direct instantiating. Use fabric of classes from FellesKlasser.SpreadSheet.Export 
     unit, it allows to switch underlying engine from DevExpress to anything else with zero changes in code of apps. }
   TXLSExportDevExpress = class abstract(TXLSBook)
   protected
@@ -36,7 +37,7 @@ type
       private
         FPassword: string;
 
-        function OnGetPsw(Sender: TObject; out Password: string): Boolean;
+        function OnGetPsw(Sender: TObject; var Password: string): Boolean;
         function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean;
         function DoIsValidPassword(const SpreadsheetFileName,Password: string): boolean;
       public
@@ -46,7 +47,7 @@ type
 
     const
 
-      { SpreadSheet -> TdxSpreadSheet convertion }
+      { FellesKlasser.SpreadSheet -> TdxSpreadSheet convertion }
 
       BorderStyleTranslation: array[TXLSBorderStyle] of TdxSpreadSheetCellBorderStyle = (
         sscbsDefault, sscbsHair, sscbsDotted, sscbsDashDotDot, sscbsDashDot, sscbsDashed, sscbsThin,
@@ -59,7 +60,7 @@ type
       AlignVertTranslation: array[TXLSAlignVert] of TdxSpreadSheetDataAlignVert = (
         ssavTop, ssavCenter, ssavBottom, ssavJustify, ssavDistributed );
 
-      { TdxSpreadSheet -> SpreadSheet convertion }
+      { TdxSpreadSheet -> FellesKlasser.SpreadSheet convertion }
 
       BorderTypeTranslationBack: array[TdxSpreadSheetCellBorderStyle] of TXLSBorderStyle = (
         xebsDefault, xebsHair, xebsDotted, xebsDashDotDot, xebsDashDot, xebsDashed,
@@ -71,6 +72,9 @@ type
 
       AlignVertTranslationBack: array[TdxSpreadSheetDataAlignVert] of TXLSAlignVert = (
         xeavTop, xeavCenter, xeavBottom, xeavJustify, xeavDistributed );
+
+    var
+      FLockAutoOpenFile: integer;
 
     { export }
     procedure ExportToSpreadSheet(SpreadSheet: TdxSpreadSheet);
@@ -86,11 +90,13 @@ type
     procedure SetExcelCellFormat(Src: TXLSCell; Dst: TdxSpreadSheetCell);
 
     procedure DoSaveToStream(Dst: TStream; const FileType: string); override;
-    { Basic class has implementation of DoSaveToFile via DoSaveToStream. }
-    {procedure DoSaveToFile(const FileName: string); override;}
+    { Basic class has implementation of DoSaveToFile via DoSaveToStream.
+    procedure DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean); override;}
     procedure DoLoadFromStream(Src: TStream); override;
     { we override LoadFromFile to avoid format detection by file content (it is bit faster to check just ext) }
     procedure DoLoadFromFile(const FileName: string); override;
+    procedure DoPrint(const Options: TXLSPrintOptions); override;
+
     class function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean; override;
     class function DoIsValidPassword(const SpreadsheetFileName,Password: string): boolean; override;
 
@@ -120,6 +126,7 @@ var
   SpreadSheetFormat: TdxSpreadSheetCustomFormatClass;
 begin
   SpreadSheet := TdxSpreadSheet.Create(nil);
+  inc(FLockAutoOpenFile);
   try
     ExportToSpreadSheet(SpreadSheet);
 
@@ -129,6 +136,7 @@ begin
       raise EdxSpreadSheetFormatError.Create(cxGetResourceString(@sdxErrorUnsupportedDocumentFormat));
     SpreadSheet.SaveToStream(Dst, SpreadSheetFormat);
   finally
+    dec(FLockAutoOpenFile);
     FreeAndNil(SpreadSheet);
   end;
 end;
@@ -147,6 +155,7 @@ begin
       if I < SpreadSheet.SheetCount
         then Sheet := SpreadSheet.Sheets[I]
         else Sheet := SpreadSheet.AddSheet(Sheets[I].SheetName);
+      Sheet.Caption := Sheets[I].SheetName;
       ExportSheet(Sheets[I], Sheet as TdxSpreadSheetTableView);
     end;
     if ActiveSheetIndex >= 0 then
@@ -172,10 +181,14 @@ begin
 end;
 
 procedure TXLSExportDevExpress.ExportSheet(Src: TXLSSheet; Dst: TdxSpreadSheetTableView);
+const
+  Orientation: array[TXLSSheet.TPrintOrientation] of TdxSpreadSheetTableViewOptionsPrintPageOrientation = (
+    oppoDefault, oppoPortrait, oppoLandscape);
 var
   MergeRegion: TRect;
   Col: integer;
-  CW: TPair<integer, integer>;
+  CW: TPair<integer, TXLSCellWidth>;
+  CH: TPair<integer, integer>;
 begin
   Dst.BeginUpdate;
   try
@@ -196,10 +209,10 @@ begin
     { Src.ColWidthCollection returns original values, we use }
     for CW in Src.ColWidthCollection do
       if Dst.Columns[CW.Key + Src.HorOffset]<>nil then
-        Dst.Columns[CW.Key + Src.HorOffset].Size := CW.Value;
-    for CW in Src.RowHeightCollection do
+        Dst.Columns[CW.Key + Src.HorOffset].Size := CW.Value.PixelSize;
+    for CH in Src.RowHeightCollection do
       if Dst.Rows[CW.Key + Src.VertOffset]<>nil then
-        Dst.Rows[CW.Key + Src.VertOffset].Size := CW.Value;
+        Dst.Rows[CW.Key + Src.VertOffset].Size := CH.Value;
 
     { ApplyBestFit }
     for Col in Src.ApplyBestFitCollection do
@@ -210,15 +223,20 @@ begin
     ExportSheetCells(Src, Dst, False);
 
     { OptionsView }
-    Dst.FrozenColumn := Src.OptionsView.FrozenColumns + Src.HorOffset - 1;
-    Dst.FrozenRow := Src.OptionsView.FrozenRows + Src.HorOffset - 1;
-    Dst.Visible := Src.OptionsView.Visible;
+    try
+      Dst.FrozenColumn := Src.OptionsView.FrozenColumns + Src.HorOffset - 1;
+      Dst.FrozenRow := Src.OptionsView.FrozenRows + Src.HorOffset - 1;
+      Dst.Visible := Src.OptionsView.Visible;
+    except
+    end;
 
     { OptionsPrint }
     if Src.OptionsPrint.FitToPagesWide > 0 then
       Dst.OptionsPrint.Page.FitToWidth := Src.OptionsPrint.FitToPagesWide;
     if Src.OptionsPrint.FitToPagesTall > 0 then
       Dst.OptionsPrint.Page.FitToHeight := Src.OptionsPrint.FitToPagesTall;
+
+    Dst.OptionsPrint.Page.Orientation := Orientation[Src.OptionsPrint.Orientation];
   finally
     Dst.EndUpdate;
   end;
@@ -246,7 +264,7 @@ begin
   { Columns.Size / Rows.Size }
   for Col in TdxEnumerators.SpreadSheetColumns(Src) do
     if not Col.DefaultSize then
-      Dst.ColWidth[Col.Index] := Col.Size;
+      Dst.ColWidthPixels[Col.Index] := Col.Size;
   for Row in TdxEnumerators.SpreadSheetRows(Src) do
     if not Row.DefaultSize then
       Dst.RowHeight[Row.Index] := Row.Size;
@@ -295,6 +313,7 @@ begin
       xevtNull     : ;
       xevtBoolean  : Dst.AsBoolean  := Src.AsBoolean;
       xevtInteger  : Dst.AsInteger  := Src.AsInteger;
+      { should not show fixed 2 decimal point, it is float, not currency! }
       xevtFloat    : Dst.AsFloat    := Src.AsFloat;
       xevtCurrency : Dst.AsCurrency := Src.AsCurrency;
       xevtDateTime : Dst.AsDateTime := Src.AsDateTime;
@@ -395,6 +414,26 @@ begin
   try
     SpreadSheet.LoadFromStream(Src);
     ImportFromSpreadSheet(SpreadSheet);
+  finally
+    FreeAndNil(SpreadSheet);
+  end;
+end;
+
+procedure TXLSExportDevExpress.DoPrint(const Options: TXLSPrintOptions);
+var
+  SpreadSheet: TdxSpreadSheet;
+  PrintSpreadSheet: TPrintSpreadsheetDevExpress;
+begin
+  inherited;
+  SpreadSheet := TdxSpreadSheet.Create(nil);
+  try
+    ExportToSpreadSheet(SpreadSheet);
+    PrintSpreadSheet := TPrintSpreadsheetDevExpress.Create(nil);
+    try
+      PrintSpreadSheet.Print(SpreadSheet, Options);
+    finally
+      FreeAndNil(PrintSpreadSheet);
+    end;
   finally
     FreeAndNil(SpreadSheet);
   end;
@@ -514,7 +553,7 @@ begin
   end;
 end;
 
-function TXLSExportDevExpress.TPswValidation.OnGetPsw(Sender: TObject; out Password: string): Boolean;
+function TXLSExportDevExpress.TPswValidation.OnGetPsw(Sender: TObject; var Password: string): Boolean;
 begin
   Password := FPassword;
   result := True;

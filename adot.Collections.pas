@@ -280,8 +280,8 @@ type
   public
     class function Default: IEqualityComparer<TCompound<TypeA,TypeB>>; reintroduce;
     constructor Create(
-      const ComparerA: IEqualityComparer<TypeA>;
-      const ComparerB: IEqualityComparer<TypeB>
+      ComparerA: IEqualityComparer<TypeA>;
+      ComparerB: IEqualityComparer<TypeB>
     );
     function Equals(const Left, Right: TCompound<TypeA,TypeB>): Boolean; overload; override;
     function GetHashCode(const Value: TCompound<TypeA,TypeB>): Integer; overload; override;
@@ -299,9 +299,9 @@ type
   public
     class function Default: IEqualityComparer<TCompound<TypeA,TypeB,TypeC>>; reintroduce;
     constructor Create(
-      const ComparerA: IEqualityComparer<TypeA>;
-      const ComparerB: IEqualityComparer<TypeB>;
-      const ComparerC: IEqualityComparer<TypeC>
+      ComparerA: IEqualityComparer<TypeA>;
+      ComparerB: IEqualityComparer<TypeB>;
+      ComparerC: IEqualityComparer<TypeC>
     );
     function Equals(const Left, Right: TCompound<TypeA,TypeB,TypeC>): Boolean; overload; override;
     function GetHashCode(const Value: TCompound<TypeA,TypeB,TYpeC>): Integer; overload; override;
@@ -334,9 +334,9 @@ type
   public
     class function Default: IComparer<TCompound<TypeA,TypeB,TypeC>>; reintroduce;
     constructor Create(
-      const ComparerA: IComparer<TypeA>;
-      const ComparerB: IComparer<TypeB>;
-      const ComparerC: IComparer<TypeC>
+      ComparerA: IComparer<TypeA>;
+      ComparerB: IComparer<TypeB>;
+      ComparerC: IComparer<TypeC>
     );
     function Compare(const Left, Right: TCompound<TypeA,TypeB,TypeC>): Integer; override;
   end;
@@ -372,10 +372,10 @@ type
     function GetAsString: string;
 
   public
-    constructor Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil); overload;
-    constructor Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil); overload;
-    constructor Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil); overload;
-    constructor Create(const AOperands: TArray<TSetClass<TValue>>; ASetOp: TSetOp; const AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(const AValues: array of TValue; AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(const AValues: TEnumerable<TValue>; AComparer: IEqualityComparer<TValue> = nil); overload;
+    constructor Create(const AOperands: TArray<TSetClass<TValue>>; ASetOp: TSetOp; AComparer: IEqualityComparer<TValue> = nil); overload;
 
     destructor Destroy; override;
     function GetEnumerator: TEnumerator; reintroduce;
@@ -435,7 +435,7 @@ type
   private
     FSetInt: IInterfacedObject<TSetClass<T>>;
 
-    procedure CreateSet(ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+    procedure CreateSet(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 
     function GetReadonly: TSetClass<T>;
     function GetReadWrite: TSetClass<T>;
@@ -455,11 +455,11 @@ type
 
     { Record type TSet<T> can be used without constructor, use constructor only if you
       need some customization: set Capacity, provide custom comparer etc. }
-    constructor Create(ACapacity: integer; const AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: array of T; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: TEnumerable<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(V: TSet<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
 
     function GetEnumerator: TEnumerator;
 
@@ -564,9 +564,9 @@ type
     class function EscapeStrVal(const S: string): string; static;
 
   public
-    constructor Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const AValues: array of TPair<TKey,TValue>; const AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const AValues: TEnumerable<TPair<TKey,TValue>>; const AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const AValues: array of TPair<TKey,TValue>; AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const AValues: TEnumerable<TPair<TKey,TValue>>; AComparer: IEqualityComparer<TKey> = nil); overload;
 
     procedure Add(const AValues: array of TPair<TKey,TValue>); overload;
     procedure Add(const AValues: TEnumerable<TPair<TKey,TValue>>); overload;
@@ -602,7 +602,7 @@ type
   private
     FMapInt: IInterfacedObject<TMapClass<TKey,TValue>>;
 
-    procedure CreateMap(ACapacity: integer = 0; const AComparer: IEqualityComparer<TKey> = nil);
+    procedure CreateMap(ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil);
 
     function GetReadonly: TMapClass<TKey,TValue>;
     function GetReadWrite: TMapClass<TKey,TValue>;
@@ -627,10 +627,10 @@ type
 
     { Record type TMap<TKey,TValue> can be used without constructor, use constructor only if you
       need some customization: set Capacity, provide custom comparer etc. }
-    constructor Create(ACapacity: integer; const AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const V: array of TPair<TKey,TValue>; ACapacity: integer = 0; const AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const V: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; const AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(V: TMap<TKey,TValue>; ACapacity: integer = 0; const AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer; AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const V: array of TPair<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(const V: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(V: TMap<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
 
     function Copy: TMap<TKey,TValue>;
 
@@ -761,8 +761,8 @@ type
 
   public
     constructor Create; overload;
-    constructor Create(const AComparer: IEqualityComparer<TKey>); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IEqualityComparer<TKey> = nil); overload;
+    constructor Create(AComparer: IEqualityComparer<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; AComparer: IEqualityComparer<TKey> = nil); overload;
     destructor Destroy; override;
 
     procedure Clear;
@@ -1831,15 +1831,15 @@ end;
 { TCompoundEqualityComparer<TypeA, TypeB> }
 
 constructor TCompoundEqualityComparer<TypeA, TypeB>.Create(
-  const ComparerA: IEqualityComparer<TypeA>;
-  const ComparerB: IEqualityComparer<TypeB>);
+  ComparerA: IEqualityComparer<TypeA>;
+  ComparerB: IEqualityComparer<TypeB>);
 begin
   FComparerA := ComparerA;
   FComparerB := ComparerB;
   if FComparerA=nil then
-    FComparerA := TEqualityComparer<TypeA>.Default;
+    FComparerA := TComparerUtils.DefaultEqualityComparer<TypeA>;
   if FComparerB=nil then
-    FComparerB := TEqualityComparer<TypeB>.Default;
+    FComparerB := TComparerUtils.DefaultEqualityComparer<TypeB>;
 end;
 
 class function TCompoundEqualityComparer<TypeA, TypeB>.Default: IEqualityComparer<TCompound<TypeA, TypeB>>;
@@ -1875,19 +1875,19 @@ end;
 { TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
 
 constructor TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Create(
-  const ComparerA: IEqualityComparer<TypeA>;
-  const ComparerB: IEqualityComparer<TypeB>;
-  const ComparerC: IEqualityComparer<TypeC>);
+  ComparerA: IEqualityComparer<TypeA>;
+  ComparerB: IEqualityComparer<TypeB>;
+  ComparerC: IEqualityComparer<TypeC>);
 begin
   FComparerA := ComparerA;
   FComparerB := ComparerB;
   FComparerC := ComparerC;
   if FComparerA=nil then
-    FComparerA := TEqualityComparer<TypeA>.Default;
+    FComparerA := TComparerUtils.DefaultEqualityComparer<TypeA>;
   if FComparerB=nil then
-    FComparerB := TEqualityComparer<TypeB>.Default;
+    FComparerB := TComparerUtils.DefaultEqualityComparer<TypeB>;
   if FComparerC=nil then
-    FComparerC := TEqualityComparer<TypeC>.Default;
+    FComparerC := TComparerUtils.DefaultEqualityComparer<TypeC>;
 end;
 
 class function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Default: IEqualityComparer<TCompound<TypeA, TypeB, TypeC>>;
@@ -1934,9 +1934,9 @@ begin
   FComparerA := ComparerA;
   FComparerB := ComparerB;
   if FComparerA=nil then
-    FComparerA := TComparer<TypeA>.Default;
+    FComparerA := TComparerUtils.DefaultComparer<TypeA>;
   if FComparerB=nil then
-    FComparerB := TComparer<TypeB>.Default;
+    FComparerB := TComparerUtils.DefaultComparer<TypeB>;
 end;
 
 class function TCompoundComparer<TypeA, TypeB>.Default: IComparer<TCompound<TypeA, TypeB>>;
@@ -1967,19 +1967,19 @@ end;
 { TCompoundComparer<TypeA, TypeB, TypeC> }
 
 constructor TCompoundComparer<TypeA, TypeB, TypeC>.Create(
-  const ComparerA: IComparer<TypeA>;
-  const ComparerB: IComparer<TypeB>;
-  const ComparerC: IComparer<TypeC>);
+  ComparerA: IComparer<TypeA>;
+  ComparerB: IComparer<TypeB>;
+  ComparerC: IComparer<TypeC>);
 begin
   FComparerA := ComparerA;
   FComparerB := ComparerB;
   FComparerC := ComparerC;
   if FComparerA=nil then
-    FComparerA := TComparer<TypeA>.Default;
+    FComparerA := TComparerUtils.DefaultComparer<TypeA>;
   if FComparerB=nil then
-    FComparerB := TComparer<TypeB>.Default;
+    FComparerB := TComparerUtils.DefaultComparer<TypeB>;
   if FComparerC=nil then
-    FComparerC := TComparer<TypeC>.Default;
+    FComparerC := TComparerUtils.DefaultComparer<TypeC>;
 end;
 
 class function TCompoundComparer<TypeA, TypeB, TypeC>.Default: IComparer<TCompound<TypeA, TypeB, TypeC>>;
@@ -2028,27 +2028,27 @@ end;
 
 { TSetClass<TValue> }
 
-constructor TSetClass<TValue>.Create(ACapacity: integer = 0; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSetClass<TValue>.Create(ACapacity: integer = 0; AComparer: IEqualityComparer<TValue> = nil);
 begin
   inherited Create;
   FSet := TSetObjectDictionary<TValue, TEmptyRec>.Create(ACapacity, AComparer);
   FComparerCopy := AComparer;
 end;
 
-constructor TSetClass<TValue>.Create(const AValues: array of TValue; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSetClass<TValue>.Create(const AValues: array of TValue; AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
-constructor TSetClass<TValue>.Create(const AValues: TEnumerable<TValue>; const AComparer: IEqualityComparer<TValue> = nil);
+constructor TSetClass<TValue>.Create(const AValues: TEnumerable<TValue>; AComparer: IEqualityComparer<TValue> = nil);
 begin
   Create(0, AComparer);
   Add(AValues);
 end;
 
 constructor TSetClass<TValue>.Create(const AOperands: TArray<TSetClass<TValue>>; ASetOp: TSetOp;
-  const AComparer: IEqualityComparer<TValue>);
+  AComparer: IEqualityComparer<TValue>);
 var
   FoundInAll: Boolean;
   Value: TValue;
@@ -2317,20 +2317,20 @@ end;
 
 { TMapClass<TKey, TValue> }
 
-constructor TMapClass<TKey, TValue>.Create(ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
+constructor TMapClass<TKey, TValue>.Create(ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
   inherited Create(ACapacity, AComparer);
   FComparerCopy := AComparer;
 end;
 
-constructor TMapClass<TKey, TValue>.Create(const AValues: array of TPair<TKey, TValue>; const AComparer: IEqualityComparer<TKey>);
+constructor TMapClass<TKey, TValue>.Create(const AValues: array of TPair<TKey, TValue>; AComparer: IEqualityComparer<TKey>);
 begin
   inherited Create(AComparer);
   FComparerCopy := AComparer;
   Add(AValues);
 end;
 
-constructor TMapClass<TKey, TValue>.Create(const AValues: TEnumerable<TPair<TKey, TValue>>; const AComparer: IEqualityComparer<TKey>);
+constructor TMapClass<TKey, TValue>.Create(const AValues: TEnumerable<TPair<TKey, TValue>>; AComparer: IEqualityComparer<TKey>);
 begin
   inherited Create(AComparer);
   FComparerCopy := AComparer;
@@ -2363,8 +2363,8 @@ var
   Buf: TStringBuffer;
 begin
   Arr := ToArray;
-  KeyComparer := TComparer<TKey>.Default;
-  ValueComparer := TComparer<TValue>.Default;
+  KeyComparer := TComparerUtils.DefaultComparer<TKey>;
+  ValueComparer := TComparerUtils.DefaultComparer<TValue>;
   PairComparer := TDelegatedComparer<TPair<TKey, TValue>>.Create(
     function (const L,R: TPair<TKey, TValue>): integer
     begin
@@ -2485,14 +2485,16 @@ begin
   Create(IEqualityComparer<TKey>(nil));
 end;
 
-constructor TMultimapClass<TKey, TValue>.Create(const AComparer: IEqualityComparer<TKey>);
+constructor TMultimapClass<TKey, TValue>.Create(AComparer: IEqualityComparer<TKey>);
 begin
   inherited Create;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultEqualityComparer<TKey>;
   FCount := TDictionary<TKey, integer>.Create(AComparer);
   FValues := TDictionary<TMultimapKey, TValue>.Create(TMultimapKeyEqualityComparer.Create(AComparer));
 end;
 
-constructor TMultimapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; const AComparer: IEqualityComparer<TKey> = nil);
+constructor TMultimapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; AComparer: IEqualityComparer<TKey> = nil);
 begin
   Create(AComparer);
   Add(ACollection);
@@ -2597,7 +2599,7 @@ var
   V: TValue;
 begin
   if AComparer=nil then
-    AComparer := TEqualityComparer<TValue>.Default;
+    AComparer := TComparerUtils.DefaultEqualityComparer<TValue>;
   for V in Values[AKey] do
     if AComparer.Equals(AValue, V) then
       Exit(True);
@@ -2611,7 +2613,7 @@ var
   i: Integer;
 begin
   if AComparer=nil then
-    AComparer := TEqualityComparer<TValue>.Default;
+    AComparer := TComparerUtils.DefaultEqualityComparer<TValue>;
   ValueSet := TSetClass<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
@@ -2644,7 +2646,7 @@ var
   V: TValue;
 begin
   if AComparer=nil then
-    AComparer := TEqualityComparer<TValue>.Default;
+    AComparer := TComparerUtils.DefaultEqualityComparer<TValue>;
   ValueSet := TSetClass<TValue>.Create(0, AComparer);
   try
     case AContainsCheckType of
@@ -2840,7 +2842,7 @@ constructor TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.Create(AKe
 begin
   FKeyComparer := AKeyComparer;
   if FKeyComparer=nil then
-    FKeyComparer := TEqualityComparer<TKey>.Default;
+    FKeyComparer := TComparerUtils.DefaultEqualityComparer<TKey>;
 end;
 
 function TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.Equals(const Left,
@@ -2977,7 +2979,7 @@ begin
   result := FSetInt.Data;
 end;
 
-procedure TSet<T>.CreateSet(ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+procedure TSet<T>.CreateSet(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 var
   C: IEqualityComparer<T>;
 begin
@@ -3162,24 +3164,24 @@ begin
   result := ReadOnly.Count;
 end;
 
-constructor TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+constructor TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 begin
   CreateSet(ACapacity, AComparer);
   Add(v);
 end;
 
-constructor TSet<T>.Create(const V: array of T; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+constructor TSet<T>.Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 begin
   CreateSet(ACapacity, AComparer);
   Add(v);
 end;
 
-constructor TSet<T>.Create(ACapacity: integer; const AComparer: IEqualityComparer<T> = nil);
+constructor TSet<T>.Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil);
 begin
   CreateSet(ACapacity, AComparer);
 end;
 
-constructor TSet<T>.Create(V: TSet<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+constructor TSet<T>.Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 begin
   CreateSet(ACapacity, AComparer);
   Add(v);
@@ -3196,7 +3198,7 @@ begin
   end;
 end;
 
-constructor TSet<T>.Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; const AComparer: IEqualityComparer<T> = nil);
+constructor TSet<T>.Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 begin
   CreateSet(ACapacity, AComparer);
   Add(v);
@@ -3426,30 +3428,30 @@ end;
 
 { TMap<TKey, TValue> }
 
-constructor TMap<TKey, TValue>.Create(const V: array of TPair<TKey, TValue>; ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
+constructor TMap<TKey, TValue>.Create(const V: array of TPair<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
   CreateMap(ACapacity, AComparer);
   Add(V);
 end;
 
-constructor TMap<TKey, TValue>.Create(ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
+constructor TMap<TKey, TValue>.Create(ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
   CreateMap(ACapacity, AComparer);
 end;
 
-constructor TMap<TKey, TValue>.Create(V: TMap<TKey, TValue>; ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
-begin
-  CreateMap(ACapacity, AComparer);
-  Add(V);
-end;
-
-constructor TMap<TKey, TValue>.Create(const V: TEnumerable<TPair<TKey, TValue>>; ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
+constructor TMap<TKey, TValue>.Create(V: TMap<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
   CreateMap(ACapacity, AComparer);
   Add(V);
 end;
 
-procedure TMap<TKey, TValue>.CreateMap(ACapacity: integer; const AComparer: IEqualityComparer<TKey>);
+constructor TMap<TKey, TValue>.Create(const V: TEnumerable<TPair<TKey, TValue>>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+begin
+  CreateMap(ACapacity, AComparer);
+  Add(V);
+end;
+
+procedure TMap<TKey, TValue>.CreateMap(ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 var
   C: IEqualityComparer<TKey>;
 begin
@@ -3922,7 +3924,7 @@ begin
   inherited Create;
   FComparer := AComparer;
   if FComparer=nil then
-    FComparer := TComparer<TKey>.Default;
+    FComparer := TComparerUtils.DefaultComparer<TKey>;
   FBottom := AllocNewItem;
   FBottom.Level := 0;
   FBottom.Left := FBottom;
@@ -4516,7 +4518,7 @@ var
   h: TItemHandle;
 begin
   if AEqualityComparer=nil then
-    AEqualityComparer := TEqualityComparer<TValue>.Default;
+    AEqualityComparer := TComparerUtils.DefaultEqualityComparer<TValue>;
   if not First(h) then
     result := False
   else

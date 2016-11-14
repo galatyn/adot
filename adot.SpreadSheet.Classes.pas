@@ -109,18 +109,44 @@ type
 
   TXLSBook = class;
 
+  TXLSCellSizeUnits = (xsuPixels, xsuChars);
+
+  TXLSCellWidth = record
+  private
+    const
+      PixelsPerChar = 7;
+
+    var
+      FUnits: TXLSCellSizeUnits;
+      FSize: integer;
+
+    function GetCharSize: integer;
+    function GetPixelSize: integer;
+  public
+    constructor Create(AUnits: TXLSCellSizeUnits; ASize: integer);
+
+    { result of PixelSize/CharSize is more accurate if it matches units }
+    property Units: TXLSCellSizeUnits read FUnits;
+    property PixelSize: integer read GetPixelSize;
+    property CharSize: integer read GetCharSize;
+  end;
+
   TXLSSheet = class
   public
     type
+      TPrintOrientation = (poDefault, poPortrait, poLandscape);
+
       TOptionsPrint = class
       protected
         FFitToPagesWide: integer;
         FFitToPagesTall: integer;
+        FOrientation: TPrintOrientation;
       public
 
         { limit the number of pages on which all the worksheet content is printed }
         property FitToPagesWide: integer read FFitToPagesWide write FFitToPagesWide;
         property FitToPagesTall: integer read FFitToPagesTall write FFitToPagesTall;
+        property Orientation: TPrintOrientation read FOrientation write FOrientation;
       end;
 
       TOptionsView = class
@@ -154,7 +180,7 @@ type
     FColumns, FRows: TArray<integer>;
     FMerge: TSet<TRect>;
     FApplyBestFit: TSet<integer>;
-    FColWidth: TMap<integer, integer>;
+    FColWidth: TMap<integer, TXLSCellWidth>;
     FRowHeight: TMap<integer, integer>;
     FSheetIndex: integer;
     FWriteCursor: TXLSPos; { used by WriteCell/WritelnCell functions }
@@ -171,11 +197,13 @@ type
     procedure SetApplyBestFit(Col: integer; const Value: Boolean);
     function GetCellAtCursorPos: TXLSCell; overload;
     function WriteVarArray(const Value: variant; FontStyle: TFontStyles = []; FontSize: integer = -1): TXLSCell;
-    function GetColWidth(Col: integer): integer;
+    function GetColWidthPixels(Col: integer): integer;
+    function GetColWidthChars(Col: integer): integer;
     function GetRowHeight(Row: integer): integer;
-    procedure SetColWidth(Col: integer; const Value: integer);
+    procedure SetColWidthPixels(Col: integer; const Value: integer);
+    procedure SetColWidthChars(Col: integer; const Value: integer);
     procedure SetRowHeight(Row: integer; const Value: integer);
-    function GetColWidthCollection: TEnumerable<TPair<integer,integer>>;
+    function GetColWidthCollection: TEnumerable<TPair<integer,TXLSCellWidth>>;
     function GetRowHeightCollection: TEnumerable<TPair<integer,integer>>;
     function GetColCollection: TEnumerable<integer>;
     function GetRowCollection: TEnumerable<integer>;
@@ -217,9 +245,10 @@ type
     procedure ApplyBestFitForAllColumns;
 
     { Default value: -1 (do not assign custom width). Ignored if ApplyBestFit[Col]=True. }
-    property ColWidth[Col: integer]: integer read GetColWidth write SetColWidth;
+    property ColWidthPixels[Col: integer]: integer read GetColWidthPixels write SetColWidthPixels;
+    property ColWidthChars[Col: integer]: integer read GetColWidthChars write SetColWidthChars;
     { Enumerates pairs [Col;Width] assigned by ColWidth property. }
-    property ColWidthCollection: TEnumerable<TPair<integer,integer>> read GetColWidthCollection;
+    property ColWidthCollection: TEnumerable<TPair<integer,TXLSCellWidth>> read GetColWidthCollection;
     property Columns: TArray<integer> read GetColumnsArray;
     property ColumnCount: integer read GetColumnCount;
     { Enumerates all columns. }
@@ -250,9 +279,46 @@ type
     property AsVariantArray: variant read GetAsVariantArray write SetAsVariantArray;
   end;
 
-  { Basic class to import/export (or both). Use CreateExporter from SpreadSheet.Export.pas to create instance. }
+  TXlsBookEventType = (
+    xetBeforeSaveFile,
+    xetAfterSaveFile,
+    xetBeforeSaveStream,
+    xetAfterSaveStream
+  );
+
+  TSaveStatus = (
+    ssUnknown,   { In event Before* we don't know status of the operation yet.                     }
+    ssSaved,     { Data is saved to file (DevExpress-based implementation saves data to the file). }
+    ssOpened,    { Data is opened in the app (Excel OLE-based implementation opens data in Excel). }
+    ssCanceled   { Operation has canceled (by user or from registered event listener).             }
+  );
+
+  TXlsBookEvent = record
+  private
+    FEventType: TXlsBookEventType;
+    FData: string;
+    FBook: TXLSBook;
+    FSaveStatus: TSaveStatus;
+  public
+    constructor Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus);
+
+    property EventType: TXlsBookEventType read FEventType write FEventType;
+    property Data: string read FData write FData;
+    property SaveStatus: TSaveStatus read FSaveStatus write FSaveStatus;
+    property Book: TXLSBook read FBook write FBook;
+  end;
+
+  TXlsBookEventProc = reference to procedure(const Event: TXlsBookEvent; var Cancel: boolean);
+
+  { Basic class to import/export (or both). Use CreateExporter from FellesKlasser.SpreadSheet.Export.pas to create instance. }
   TXLSBook = class abstract
   private
+    class var
+      FEventsListenersIdCnt: int64;
+      FEventsListeners: TDictionary<int64, TXlsBookEventProc>;
+
+    class function SendEvent(const Event: TXlsBookEvent): boolean; static;
+    class destructor Destroy;
   protected
     FAutoFreeCollection: TAutoFreeCollection;
     FSheetMap: TMap<string, TXLSSheet>;
@@ -260,6 +326,7 @@ type
     FCellDefaults: TXLSCellDefaults;
     FActiveSheetIndex: integer;
     FPassword: string;
+    FLockStreamEvents: integer;
 
     { Must be implemented by descendents }
     class function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean; virtual; abstract;
@@ -267,8 +334,10 @@ type
     procedure DoSaveToStream(Dst: TStream; const FileType: string = '.xlsx'); virtual; abstract;
     procedure DoLoadFromStream(Src: TStream); virtual; abstract;
 
-    procedure DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean); virtual;
+    function DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus; virtual;
     procedure DoLoadFromFile(const FileName: string); virtual;
+    procedure DoPrint(const Options: TXLSPrintOptions); virtual; abstract;
+
     function CreateSheet(AIndex: integer): TXLSSheet; virtual;
     function GetSaveDialog(const FileNameNoExt: string): TSaveDialog; virtual;
     procedure RenameSheet(Sheet: TXLSSheet; const OldName,NewName: string);
@@ -287,9 +356,15 @@ type
     procedure RemoveSheet(const SheetName: string);
 
     procedure SaveToStream(Dst: TStream; const FileType: string = '.xlsx');
-    procedure SaveToFile(const FileName: string; ShowSaveDialog: Boolean);
+    function SaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
     procedure LoadFromStream(Src: TStream);
     procedure LoadFromFile(const FileName: string);
+
+    procedure Print(const Options: TXLSPrintOptions);
+
+    { global listeners, they will receive events from all instances/all implementations of TXlsBook }
+    class function AddEventsListener(Proc: TXlsBookEventProc): int64; static;
+    class procedure DelEventsListener(const ListenerId: int64); static;
 
     class function IsPasswordProtected(const SpreadsheetFileName: string): boolean;
     class function IsValidPassword(const SpreadsheetFileName,Password: string): boolean;
@@ -717,9 +792,23 @@ begin
   result := FRowsSet.Count;
 end;
 
-function TXLSSheet.GetColWidth(Col: integer): integer;
+function TXLSSheet.GetColWidthPixels(Col: integer): integer;
+var
+  W: TXLSCellWidth;
 begin
-  if not FColWidth.TryGetValue(Col, result) then
+  if FColWidth.TryGetValue(Col, W) then
+    result := W.PixelSize
+  else
+    result := -1;
+end;
+
+function TXLSSheet.GetColWidthChars(Col: integer): integer;
+var
+  W: TXLSCellWidth;
+begin
+  if FColWidth.TryGetValue(Col, W) then
+    result := W.CharSize
+  else
     result := -1;
 end;
 
@@ -729,7 +818,7 @@ begin
     result := -1;
 end;
 
-function TXLSSheet.GetColWidthCollection: TEnumerable<TPair<integer,integer>>;
+function TXLSSheet.GetColWidthCollection: TEnumerable<TPair<integer,TXLSCellWidth>>;
 begin
   result := FColWidth.Collection;
 end;
@@ -758,12 +847,20 @@ begin
   result := FRowHeight.Collection;
 end;
 
-procedure TXLSSheet.SetColWidth(Col: integer; const Value: integer);
+procedure TXLSSheet.SetColWidthPixels(Col: integer; const Value: integer);
 begin
   if Value < 0 then
     FColWidth.Remove(Col)
   else
-    FColWidth.AddOrSetValue(Col, Value);
+    FColWidth.AddOrSetValue(Col, TXLSCellWidth.Create(xsuPixels, Value));
+end;
+
+procedure TXLSSheet.SetColWidthChars(Col: integer; const Value: integer);
+begin
+  if Value < 0 then
+    FColWidth.Remove(Col)
+  else
+    FColWidth.AddOrSetValue(Col, TXLSCellWidth.Create(xsuChars, Value));
 end;
 
 procedure TXLSSheet.SetRowHeight(Row: integer; const Value: integer);
@@ -955,6 +1052,17 @@ begin
   FWriteCursor.Col := 0;
 end;
 
+{ TXlsBookEvent }
+
+constructor TXlsBookEvent.Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus);
+begin
+  Self := Default(TXlsBookEvent);
+  Book := ABook;
+  EventType := AEventType;
+  Data := AData;
+  SaveStatus := Res;
+end;
+
 { TXLSBook }
 
 constructor TXLSBook.Create;
@@ -971,6 +1079,41 @@ begin
   FSheets.Clear;
   FCellDefaults.Clear;
   FActiveSheetIndex := -1;
+end;
+
+class function TXLSBook.SendEvent(const Event: TXlsBookEvent): boolean;
+var
+  P: TPair<int64, TXlsBookEventProc>;
+  Cancel: boolean;
+begin
+  result := True;
+  if FEventsListeners <> nil then
+    for P in FEventsListeners do
+    begin
+      Cancel := False;
+      P.Value(Event, Cancel);
+      result := result and not Cancel;
+    end;
+end;
+
+class function TXLSBook.AddEventsListener(Proc: TXlsBookEventProc): int64;
+begin
+  inc(FEventsListenersIdCnt);
+  result := FEventsListenersIdCnt;
+  if FEventsListeners = nil then
+    FEventsListeners := TDictionary<int64, TXlsBookEventProc>.Create;
+  FEventsListeners.Add(result, Proc);
+end;
+
+class procedure TXLSBook.DelEventsListener(const ListenerId: int64);
+begin
+  if FEventsListeners <> nil then
+    FEventsListeners.Remove(ListenerId);
+end;
+
+class destructor TXLSBook.Destroy;
+begin
+  FreeAndNil(FEventsListeners);
 end;
 
 function TXLSBook.CreateSheet(AIndex: integer): TXLSSheet;
@@ -1044,24 +1187,25 @@ begin
   Result.FileName := FileNameNoExt;
 end;
 
-procedure TXLSBook.DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean);
+function TXLSBook.DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
 var
   M: TMemoryStream;
   D: TSaveDialog;
-  S: string;
 begin
+  result := ssCanceled;
   M := TMemoryStream.Create;
   try
     if ShowSaveDialog then D := GetSaveDialog(ChangeFileExt(FileName, ''))
       else D := nil;
     try
-      if not ShowSaveDialog then
-        S := FileName
-      else
-        if D.Execute then S := D.FileName
-          else Exit;
-      SaveToStream(M, Trim(ExtractFileExt(S)));
-      M.SaveToFile(S);
+      if ShowSaveDialog then
+        if D.Execute then
+          FileName := D.FileName
+        else
+          Exit;
+      SaveToStream(M, Trim(ExtractFileExt(FileName)));
+      M.SaveToFile(FileName);
+      result := ssSaved;
     finally
       FreeAndNil(D);
     end;
@@ -1070,14 +1214,29 @@ begin
   end;
 end;
 
-procedure TXLSBook.SaveToFile(const FileName: string; ShowSaveDialog: Boolean);
+function TXLSBook.SaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
 begin
-  DoSaveToFile(FileName, ShowSaveDialog);
+  { internally may call SaveToStream }
+  inc(FLockStreamEvents);
+  try
+    if SendEvent(TXlsBookEvent.Create(Self, xetBeforeSaveFile, FileName, ssUnknown)) then
+      result := DoSaveToFile(FileName, ShowSaveDialog)
+    else
+      result := ssCanceled;
+    SendEvent(TXlsBookEvent.Create(Self, xetAfterSaveFile, FileName, result));
+  finally
+    dec(FLockStreamEvents);
+  end;
 end;
 
 procedure TXLSBook.SaveToStream(Dst: TStream; const FileType: string);
 begin
-  DoSaveToStream(Dst, FileType);
+  if (FLockStreamEvents > 0) or SendEvent(TXlsBookEvent.Create(Self, xetBeforeSaveStream, FileType, ssUnknown)) then
+  begin
+    DoSaveToStream(Dst, FileType);
+    if FLockStreamEvents = 0 then
+      SendEvent(TXlsBookEvent.Create(Self, xetAfterSaveStream, FileType, ssSaved));
+  end;
 end;
 
 procedure TXLSBook.SetActiveSheetIndex(const Value: integer);
@@ -1110,6 +1269,11 @@ begin
   DoLoadFromStream(Src);
 end;
 
+procedure TXLSBook.Print(const Options: TXLSPrintOptions);
+begin
+  DoPrint(Options);
+end;
+
 procedure TXLSBook.CheckSheetName(const NewName: string);
 begin
   if SheetExists(NewName) then
@@ -1138,6 +1302,33 @@ end;
 function TXlsFactory.NewBook: TXLSBook;
 begin
   result := DoNewBook;
+end;
+
+{ TXLSCellWidth }
+
+constructor TXLSCellWidth.Create(AUnits: TXLSCellSizeUnits; ASize: integer);
+begin
+  Self := Default(TXLSCellWidth);
+  FUnits := AUnits;
+  FSize := ASize;
+end;
+
+function TXLSCellWidth.GetCharSize: integer;
+begin
+  case Units of
+    xsuPixels : result := FSize div PixelsPerChar;
+    xsuChars  : result := FSize;
+    else raise Exception.Create('Error');
+  end;
+end;
+
+function TXLSCellWidth.GetPixelSize: integer;
+begin
+  case Units of
+    xsuPixels : result := FSize;
+    xsuChars  : result := FSize * PixelsPerChar;
+    else raise Exception.Create('Error');
+  end;
 end;
 
 end.

@@ -124,6 +124,15 @@ type
     property ConsiderWhenApplyBestFit: boolean read FConsiderWhenApplyBestFit write FConsiderWhenApplyBestFit;
   end;
 
+  TXLSPrintOptions = record
+  private
+  public
+    PrinterName: string;
+    SettingsUI: boolean;
+
+    constructor Create(APrinterName: string; ASettingsUI: boolean);
+  end;
+
 implementation
 
 { TXLSFont }
@@ -266,5 +275,13 @@ begin
   FFormat[ValueType] := Value;
 end;
 
+{ TXLSPrintOptions }
+
+constructor TXLSPrintOptions.Create(APrinterName: string; ASettingsUI: boolean);
+begin
+  Self := Default(TXLSPrintOptions);
+  PrinterName := APrinterName;
+  SettingsUI := ASettingsUI;
+end;
 
 end.

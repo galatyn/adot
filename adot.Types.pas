@@ -42,8 +42,10 @@ type
   { interfaces }
 
   IInterfacedObject<T> = interface(IInterface)
+    ['{A6E4E6FF-DE6E-41E8-9B30-69365C0C397C}']
+
     function GetData: T;
-    procedure SetData(AData: T);
+    procedure SetData(const AData: T);
     function GetRefCount: integer;
 
     property Data: T read GetData write SetData;
@@ -51,6 +53,8 @@ type
   end;
 
   IArithmetic<T> = interface(IInterface)
+    ['{EA1E0AFC-90E4-4497-9194-ACCDF3012E08}']
+
     function Add(Left: T; Right: T): T;
     function Subtract(Left: T; Right: T): T;
     function Multiply(Left: T; Right: T): T;
