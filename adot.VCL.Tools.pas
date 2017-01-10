@@ -36,7 +36,9 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   System.StrUtils,
+  System.Types,
   Vcl.ActnList,
+  Vcl.ExtCtrls,
   Vcl.Forms,
   Vcl.Graphics,
   Vcl.Menus,
@@ -79,7 +81,7 @@ type
   public
     class function FindMDIChild(ParentForm:TForm; BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
     class function FindMDIChild(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
-    //class function MdiParentClientArea(AParent: TForm = nil): TRect; static;
+    class function MdiClientArea(ScreenCoordinates: boolean): TRect; static;
   end;
 
   { Get all "executable" components of form (TMenu/TAction/...).
@@ -179,6 +181,7 @@ type
     class function GetAll(AStart: TControl): TArray<TControl>; static;
     class function FindControlAtPos(AScreenPos: TPoint): TControl; static;
     class function FindControlAtMousePos: TControl; static;
+    class procedure HideBorder(c: TPanel); static;
   end;
 
   { Copy streams without locking UI etc }
@@ -251,13 +254,22 @@ begin
   Result := FindMDIChild(Application.MainForm, BringToFront, Sjekk);
 end;
 
-//class function TMDIHelper<T>.MdiParentClientArea(AParent: TForm): TRect;
-//begin
-//  if AParent=nil then
-//    AParent := Application.MainForm;
-//  if (AParent=nil) or not GetClientRect(AParent.ClientHandle, Result) then
-//    result := TRect.Empty;
-//end;
+class function TMDIHelper<T>.MdiClientArea(ScreenCoordinates: boolean): TRect;
+var
+  Frm: TForm;
+  Ptn: TPoint;
+begin
+  Frm := Application.MainForm;
+  if (Frm = nil) or not Winapi.Windows.GetClientRect(Frm.ClientHandle, Result) then
+    result := TRect.Empty
+  else
+  if ScreenCoordinates then
+  begin
+    Ptn := TPoint.Create(0,0);
+    Winapi.Windows.ClientToScreen(Frm.ClientHandle, Ptn);
+    result.Offset(Ptn.X, Ptn.Y);
+  end;
+end;
 
 { TVerb }
 
@@ -799,6 +811,14 @@ begin
     Caption.Substring(0, FixedHeadChars+L) +
     Separator +
     Caption.Substring(Length(Caption)-FixedTailChars,FixedTailChars);
+end;
+
+class procedure TControlUtils.HideBorder(c: TPanel);
+begin
+  c.BevelInner  := bvNone;
+  c.BevelOuter  := bvNone;
+  c.BevelKind   := bkNone;
+  c.BorderStyle := bsNone;
 end;
 
 type

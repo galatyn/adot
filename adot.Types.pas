@@ -21,7 +21,9 @@ type
 
   { types }
 
+  TBoolean = (BoolTrue, BoolFalse, BoolAny);
   TCycleAction = (caContinue, caBreak);
+  TIEMode = (iemIE7, iemIE8, iemIE9, iemIE10, iemIE11, iemIEInstalled);
 
   TEmptyRec = record end;
   TSetOfByte = set of Byte;

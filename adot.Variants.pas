@@ -38,6 +38,9 @@ type
     class function IsArrayOrRef(const v: variant): boolean;
     class function IsStr(const v: variant): boolean;
     class function IsDateTime(const v: variant): boolean;
+    class function IsBoolean(const v: variant): boolean;
+    class function IsNumeric(const v: variant): boolean;
+    class function IsInteger(const v: variant): boolean;
 
     { simple conversion (raises exception in case of errors) }
     class function ToInteger(const Src: variant): int64; static;
@@ -958,6 +961,11 @@ begin
   result := VarType(v) and (varArray or varByRef)<>0;
 end;
 
+class function TVar.IsBoolean(const v: variant): boolean;
+begin
+  result := (VarType(v) and varTypeMask)=varBoolean;
+end;
+
 class function TVar.IsDateTime(const v: variant): boolean;
 begin
   result := VarType(v) and varTypeMask = varDate;
@@ -966,6 +974,24 @@ end;
 class function TVar.IsEmpty(const V: variant): Boolean;
 begin
   result := VarIsNull(v) or VarIsEmpty(v);
+end;
+
+class function TVar.IsNumeric(const v: variant): boolean;
+var
+  vt: Word;
+begin
+  vt := VarType(v) and varTypeMask;
+  result := (vt=varSmallint) or (vt=varInteger) or (vt=varSingle) or (vt=varDouble) or (vt=varCurrency) or
+    (vt=varShortInt) or (vt=varByte) or (vt=varWord) or (vt=varLongWord) or (vt=varInt64) or (vt=varUInt64);
+end;
+
+class function TVar.IsInteger(const v: variant): boolean;
+var
+  vt: Word;
+begin
+  vt := VarType(v) and varTypeMask;
+  result := (vt=varSmallint) or (vt=varInteger) or (vt=varShortInt) or (vt=varByte) or
+    (vt=varWord) or (vt=varLongWord) or (vt=varInt64) or (vt=varUInt64);
 end;
 
 class function TVar.GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean;

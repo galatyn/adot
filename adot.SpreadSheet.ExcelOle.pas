@@ -11,6 +11,7 @@ uses
   adot.Tools,
   adot.Strings,
   adot.Graphics,
+  adot.Windows.Tools,
   MsCxTools,
   Excel2000,
   Vcl.Graphics,

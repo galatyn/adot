@@ -44,9 +44,6 @@
   TGUIDUtils = class
     IsValid and other utils.
 
-  THashHelperFunctions = class
-    Conversion routines etc. to be available in THashes and internal classes (THashes.DataHash etc)
-
   THashes = class
     Simple API for hashing functions (including CRC32/Adler32)
 
@@ -199,6 +196,47 @@ type
     class function HexToWord(const HexEncodedWord: String):Word; static;
   end;
 
+  THashData = TArray<byte>;
+
+  { Abstract class for hashes }
+  TCustomHash = class abstract
+  protected
+
+    { used by CRC/Adler to transform 32bit hash to TBytes }
+    class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
+
+    { single call }
+    class function DoEncode(const Buf; ByteBufSize: integer): TBytes; overload; virtual; abstract;
+    class function DoEncode(S: TStream): TBytes; overload; virtual; abstract;
+
+    { streaming }
+    class procedure DoInit(out Hash: THashData); virtual; abstract;
+    class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); virtual; abstract;
+    class function DoDone(var Hash: THashData): TBytes; virtual; abstract;
+  public
+
+    { single call functions }
+    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload;
+    class function Encode(S: TStream): TBytes; overload;
+    class function Encode(const S: TBytes; StartIndex,Count: integer): TBytes; overload;
+    class function Encode(const S: TBytes): TBytes; overload;
+    class function Encode(const S: string): TBytes; overload;
+    class function EncodeAnsiString(const S: AnsiString): TBytes;
+    class function EncodeFile(const AFileName: string): TBytes; overload;
+
+    { streaming functions }
+    class procedure Init(out Hash: THashData);
+    class procedure Update(const Buf; ByteBufSize: integer; var Hash: THashData);
+    class function Done(var Hash: THashData): TBytes;
+
+    { general }
+    class function HashToString(const AHash: TBytes): string; static;
+    class function Mix(const HashA,HashB: integer): integer; overload; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
+    class function Mix(const HashA,HashB: TBytes): TBytes; overload; static;
+
+  end;
+
   { AH: Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
     http://qc.embarcadero.com/wc/qcmain.aspx?d=132100
     AH (update from 05.04.2016): The issue is fixed, in Delphi 10 Seattle it works correctly.
@@ -206,40 +244,29 @@ type
     - Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
     - In object model it is much easier to introduce new functions (like hash file/stream etc)
     - If other issues will be discovered in Delphi hash, we can fix it witghout changes in our code }
-  { Simple API for hashing functions (including CRC32/Adler32) }	
+  { Simple API for hashing functions (including CRC32/Adler32) }
   THashes = class
   public
     const
       StreamingBufSize = 64*1024;
 
     type
-      { Abstract class for hashes }
-      TCustomHash = class abstract
-      protected
-        { used by CRC/Adler to transform 32bit hash to TBytes }
-        class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
-        
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; overload; virtual; abstract;
-        class function DoEncode(S: TStream): TBytes; overload; virtual; abstract;
-      public
-        class function Encode(const Buf; ByteBufSize: integer): TBytes; overload;
-        class function Encode(S: TStream): TBytes; overload; 
-        class function Encode(const S: TBytes): TBytes; overload;
-        class function Encode(const S: string): TBytes; overload;
-        class function EncodeAnsiString(const S: AnsiString): TBytes;
-        class function EncodeFile(const AFileName: string): TBytes; overload;
-      end;
-
       MD5 = class(TCustomHash)
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       SHA1 = class(TCustomHash)
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       { we use default 256bit hash (use THashSHA2 directly for other options - 224bit,384bit,...) }
@@ -247,24 +274,36 @@ type
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       CRC32 = class(TCustomHash)
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       Adler32 = class(TCustomHash)
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       BobJenkins32 = class(TCustomHash)
       protected
         class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
         class function DoEncode(S: TStream): TBytes; override;
+        class procedure DoInit(out Hash: THashData); override;
+        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
+        class function DoDone(var Hash: THashData): TBytes; override;
       end;
 
       { Strong hash for critical parts (password checksum etc).
@@ -278,11 +317,6 @@ type
         We use Adler32, it's two times faster than Crc32 and still quite good. }
       Fastest = Adler32;
 
-    {class function HashToCardinal(const AHash: TBytes): Cardinal; static;}
-    class function HashToString(const AHash: TBytes): string; static;
-    class function Mix(const HashA,HashB: integer): integer; overload; static; {$IFDEF UseInline}inline;{$ENDIF}
-    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
-    class function Mix(const HashA,HashB: TBytes): TBytes; overload; static;
   end;
 
   TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
@@ -547,6 +581,7 @@ type
     class function Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
   end;
 
+  { Deprecated, use Sys.IfThen instead }
   { Generic implementation of IfThen (to accept virtually any type). Example:
      A := TIfThen.Get(Visible, fsMDIChild, fsNormal); }
   TIfThen = class
@@ -556,16 +591,30 @@ type
 
   TFun = class
     class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
-    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; static;
-    class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
     class procedure Exchange<T>(var A,B: T); static; {$IFDEF UseInline}inline;{$ENDIF}
-    class function BoolToStr(Value: boolean): string; static;
+
+    { Typified version of FreeAndNil. Much safe than regular FreeAndNil, accepts classes only.
+      Example: Sys.FreeAndNil(Obj); }
+    class procedure FreeAndNil<T: class>(var Obj: T); static;
+
+    { Safer replacement for FillChar:
+      - strictly typified (filling of managed type will be reported in compile type)
+      - doesn't create memory leaks for record types (fields of managed types will be freed correctly) }
+    class procedure FillRec<T: record>(var Rec: T); overload; static;
+    class procedure FillRec<T: record>(var Rec: T; Pattern: byte); overload; static;
+    class procedure FillRec<T: record>(var Rec: T; Pattern: AnsiChar); overload; static;
 
     class function Min3(const A,B,C: integer): integer; overload; static;
     class function Min3(const A,B,C: double): double; overload; static;
     class function Max3(const A,B,C: integer): integer; overload; static;
     class function Max3(const A,B,C: double): double; overload; static;
+
+    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; overload; static;
+    class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
   end;
+
+  { Shortcut to TFun ("Sys.FreeAndNil" looks more natural than "TFun.FreeAndNil"). }
+  Sys = TFun;
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
 
@@ -2888,13 +2937,13 @@ end;
 
 class function TBox<T>.Create(const AValue: T): TBox<T>;
 begin
+  Result.Clear;
   result.Value := AValue;
 end;
 
 procedure TBox<T>.Clear;
 begin
-  FValue := Default(T);
-  FHasValue := '';
+  Self := Default(TBox<T>);
 end;
 
 function TBox<T>.GetValue: T;
@@ -3434,41 +3483,47 @@ end;
 
 { TCustomHash }
 
-class function THashes.TCustomHash.Encode(const S: TBytes): TBytes;
-begin
-  if Length(S)=0 then
-    SetLength(result, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S));
-end;
-
-class function THashes.TCustomHash.Encode(const S: string): TBytes;
-begin
-  if Length(S)=0 then
-    SetLength(result, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
-end;
-
-class function THashes.TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
+class function TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
 begin
   result := DoEncode(Buf, ByteBufSize);
 end;
 
-class function THashes.TCustomHash.Encode(S: TStream): TBytes;
+class function TCustomHash.Encode(S: TStream): TBytes;
 begin
   result := DoEncode(S);
 end;
 
-class function THashes.TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
+class function TCustomHash.Encode(const S: TBytes; StartIndex,Count: integer): TBytes;
+begin
+  Assert((StartIndex >= 0) and (StartIndex + Count <= Length(S)));
+  if Count <= 0 then
+    result := DoEncode(nil^, 0)
+  else
+    result := DoEncode(S[StartIndex], Count);
+end;
+
+class function TCustomHash.Encode(const S: TBytes): TBytes;
+begin
+  result := Encode(S, 0, Length(S));
+end;
+
+class function TCustomHash.Encode(const S: string): TBytes;
 begin
   if Length(S)=0 then
-    SetLength(result, 0)
+    result := DoEncode(nil^, 0)
   else
     result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
 end;
 
-class function THashes.TCustomHash.EncodeFile(const AFileName: string): TBytes;
+class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
+begin
+  if Length(S)=0 then
+    result := DoEncode(nil^, 0)
+  else
+    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
 var
   S: TFileStream;
 begin
@@ -3480,40 +3535,43 @@ begin
   end;
 end;
 
-class function THashes.TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
+class function TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
 begin
   SetLength(Result, 4);
   PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
 end;
 
-{ THashes }
-
-{class function THashes.HashToCardinal(const AHash: TBytes): Cardinal;
+class procedure TCustomHash.Init(out Hash: TArray<byte>);
 begin
-  Assert(Length(AHash)=4);
-  result :=
-    (Cardinal(AHash[0]) shl 24) or
-    (Cardinal(AHash[1]) shl 16) or
-    (Cardinal(AHash[2]) shl  8) or
-    (Cardinal(AHash[3]));
-end;}
+  DoInit(Hash);
+end;
 
-class function THashes.HashToString(const AHash: TBytes): string;
+class procedure TCustomHash.Update(const Buf; ByteBufSize: integer; var Hash: TArray<byte>);
+begin
+  DoUpdate(Buf, ByteBufSize, Hash);
+end;
+
+class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;
+begin
+  result := DoDone(Hash);
+end;
+
+class function TCustomHash.HashToString(const AHash: TBytes): string;
 begin
   Result := THex.Encode(AHash);
 end;
 
-class function THashes.Mix(const HashA, HashB, HashC: integer): integer;
+class function TCustomHash.Mix(const HashA, HashB, HashC: integer): integer;
 begin
   result := Mix(Mix(HashA, HashB), HashC);
 end;
 
-class function THashes.Mix(const HashA, HashB: integer): integer;
+class function TCustomHash.Mix(const HashA, HashB: integer): integer;
 begin
   result := (HashA*1103515245 + 12345) xor HashB;
 end;
 
-class function THashes.Mix(const HashA, HashB: TBytes): TBytes;
+class function TCustomHash.Mix(const HashA, HashB: TBytes): TBytes;
 var
   V,L1,L2,LR: Integer;
   Src1,Src2,Dst: pointer;
@@ -3591,13 +3649,9 @@ class function THashes.MD5.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   Hash: THashMD5;
 begin
-  try
-    Hash := THashMD5.Create;
-    Hash.Update(@Buf, ByteBufSize);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
+  Hash.Update(@Buf, ByteBufSize);
+  Result := Hash.HashAsBytes;
 end;
 
 class function THashes.MD5.DoEncode(S: TStream): TBytes;
@@ -3606,14 +3660,30 @@ var
   Hash: THashMD5;
 begin
   Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
-  Hash := THashMD5.Create;
-  try
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
+  while Reader.ReadNext do
+    Hash.Update(Reader.Bytes, Reader.Count);
+  Result := Hash.HashAsBytes;
+end;
+
+class procedure THashes.MD5.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(THashMD5));
+  THashMD5((@Hash[0])^) := THashMD5.Create;
+end;
+
+class procedure THashes.MD5.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(THashMD5));
+  THashMD5((@Hash[0])^).Update(Buf, ByteBufSize);
+end;
+
+class function THashes.MD5.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(THashMD5));
+  result := THashMD5((@Hash[0])^).HashAsBytes;
+  THashMD5((@Hash[0])^) := Default(THashMD5);
+  SetLength(Hash, 0);
 end;
 
 { THashes.SHA1 }
@@ -3622,13 +3692,9 @@ class function THashes.SHA1.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   Hash: THashSHA1;
 begin
-  try
-    Hash := THashSHA1.Create;
-    Hash.Update(@Buf, ByteBufSize);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  Hash := THashSHA1.Create;
+  Hash.Update(@Buf, ByteBufSize);
+  Result := Hash.HashAsBytes;
 end;
 
 class function THashes.SHA1.DoEncode(S: TStream): TBytes;
@@ -3638,13 +3704,29 @@ var
 begin
   Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
   Hash := THashSHA1.Create;
-  try
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  while Reader.ReadNext do
+    Hash.Update(Reader.Bytes, Reader.Count);
+  Result := Hash.HashAsBytes;
+end;
+
+class procedure THashes.SHA1.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(THashSHA1));
+  THashSHA1((@Hash[0])^) := THashSHA1.Create;
+end;
+
+class procedure THashes.SHA1.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(THashSHA1));
+  THashSHA1((@Hash[0])^).Update(Buf, ByteBufSize);
+end;
+
+class function THashes.SHA1.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(THashSHA1));
+  result := THashSHA1((@Hash[0])^).HashAsBytes;
+  THashSHA1((@Hash[0])^) := Default(THashSHA1);
+  SetLength(Hash, 0);
 end;
 
 { THashes.SHA2 }
@@ -3653,13 +3735,9 @@ class function THashes.SHA2.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   Hash: THashSHA2;
 begin
-  try
-    Hash := THashSHA2.Create;
-    Hash.Update(@Buf, ByteBufSize);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  Hash := THashSHA2.Create;
+  Hash.Update(@Buf, ByteBufSize);
+  Result := Hash.HashAsBytes;
 end;
 
 class function THashes.SHA2.DoEncode(S: TStream): TBytes;
@@ -3669,13 +3747,29 @@ var
 begin
   Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
   Hash := THashSHA2.Create;
-  try
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  while Reader.ReadNext do
+    Hash.Update(Reader.Bytes, Reader.Count);
+  Result := Hash.HashAsBytes;
+end;
+
+class procedure THashes.SHA2.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(THashSHA2));
+  THashSHA2((@Hash[0])^) := THashSHA2.Create;
+end;
+
+class procedure THashes.SHA2.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(THashSHA2));
+  THashSHA2((@Hash[0])^).Update(Buf, ByteBufSize);
+end;
+
+class function THashes.SHA2.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(THashSHA2));
+  result := THashSHA2((@Hash[0])^).HashAsBytes;
+  THashSHA2((@Hash[0])^) := Default(THashSHA2);
+  SetLength(Hash, 0);
 end;
 
 { THashes.CRC32 }
@@ -3701,6 +3795,26 @@ begin
   Result := Hash32ToBytes(Crc);
 end;
 
+class procedure THashes.CRC32.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(cardinal));
+  cardinal((@Hash[0])^) := System.ZLib.crc32(0, nil, 0);
+end;
+
+class procedure THashes.CRC32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(cardinal));
+  cardinal((@Hash[0])^) := System.ZLib.crc32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
+end;
+
+class function THashes.CRC32.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(cardinal));
+  Result := Hash32ToBytes(cardinal((@Hash[0])^));
+  cardinal((@Hash[0])^) := Default(cardinal);
+  SetLength(Hash, 0);
+end;
+
 { THashes.Adler32 }
 
 class function THashes.Adler32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
@@ -3724,19 +3838,35 @@ begin
   Result := Hash32ToBytes(Crc);
 end;
 
+class procedure THashes.Adler32.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(cardinal));
+  cardinal((@Hash[0])^) := System.ZLib.adler32(0, nil, 0);
+end;
+
+class procedure THashes.Adler32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(cardinal));
+  cardinal((@Hash[0])^) := System.ZLib.adler32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
+end;
+
+class function THashes.Adler32.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(cardinal));
+  Result := Hash32ToBytes(cardinal((@Hash[0])^));
+  cardinal((@Hash[0])^) := Default(cardinal);
+  SetLength(Hash, 0);
+end;
+
 { THashes.BobJenkins32 }
 
 class function THashes.BobJenkins32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
 var
   h: THashBobJenkins;
 begin
-  try
-    h := THashBobJenkins.Create;
-    h.Update(@Buf, ByteBufSize);
-    Result := h.HashAsBytes;
-  finally
-    h.Reset;
-  end;
+  h := THashBobJenkins.Create;
+  h.Update(@Buf, ByteBufSize);
+  Result := h.HashAsBytes;
 end;
 
 class function THashes.BobJenkins32.DoEncode(S: TStream): TBytes;
@@ -3746,13 +3876,29 @@ var
 begin
   Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
   Hash := THashBobJenkins.Create;
-  try
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Hash.Reset;
-  end;
+  while Reader.ReadNext do
+    Hash.Update(Reader.Bytes, Reader.Count);
+  Result := Hash.HashAsBytes;
+end;
+
+class procedure THashes.BobJenkins32.DoInit(out Hash: THashData);
+begin
+  SetLength(Hash, SizeOf(THashBobJenkins));
+  THashBobJenkins((@Hash[0])^) := THashBobJenkins.Create;
+end;
+
+class procedure THashes.BobJenkins32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+begin
+  Assert(Length(Hash)=SizeOf(THashBobJenkins));
+  THashBobJenkins((@Hash[0])^).Update(Buf, ByteBufSize);
+end;
+
+class function THashes.BobJenkins32.DoDone(var Hash: THashData): TBytes;
+begin
+  Assert(Length(Hash)=SizeOf(THashBobJenkins));
+  Result := THashBobJenkins((@Hash[0])^).HashAsBytes;
+  THashBobJenkins((@Hash[0])^) := Default(THashBobJenkins);
+  SetLength(Hash, 0);
 end;
 
 { TBuffer }
@@ -3970,18 +4116,37 @@ end;
 
 { TFun }
 
-class function TFun.BoolToStr(Value: boolean): string;
-begin
-  if Value then result := 'True'
-    else result := 'False';
-end;
-
 class procedure TFun.Exchange<T>(var A, B: T);
 var C: T;
 begin
   C := A;
   A := B;
   B := C;
+end;
+
+class procedure TFun.FillRec<T>(var Rec: T);
+begin
+  Rec := Default(T);
+end;
+
+class procedure TFun.FillRec<T>(var Rec: T; Pattern: byte);
+begin
+  Rec := Default(T);
+  if Pattern<>0 then
+    FillChar(Rec, SizeOf(Rec), Pattern);
+end;
+
+class procedure TFun.FillRec<T>(var Rec: T; Pattern: AnsiChar);
+begin
+  Rec := Default(T);
+  if Byte(Pattern)<>0 then
+    FillChar(Rec, SizeOf(Rec), Pattern);
+end;
+
+class procedure TFun.FreeAndNil<T>(var Obj: T);
+begin
+  Obj.Free;
+  Obj := nil;
 end;
 
 class function TFun.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;

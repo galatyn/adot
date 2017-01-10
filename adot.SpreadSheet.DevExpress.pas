@@ -9,6 +9,7 @@ uses
   adot.Collections,
   adot.Tools,
   adot.Strings,
+  adot.Variants,
   adot.DevExpress,
   dxSpreadSheet,
   dxSpreadSheetCore,
@@ -18,18 +19,22 @@ uses
   dxSpreadSheetStrs,
   dxSpreadSheetTypes,
   dxOLECryptoContainer,
-  dxHashUtils,
+  dxSpreadSheetPrinting,
+  dxSpreadSheetFormatCSV,
   System.Classes,
   System.SysUtils,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.Types,
-  Vcl.Graphics, dxSpreadSheetPrinting;
+  System.Character,
+  Vcl.Graphics;
 
 type
   { Class defined as abstract only to disable direct instantiating. Use fabric of classes from FellesKlasser.SpreadSheet.Export 
     unit, it allows to switch underlying engine from DevExpress to anything else with zero changes in code of apps. }
   TXLSExportDevExpress = class abstract(TXLSBook)
+  private
+
   protected
     type
 
@@ -99,6 +104,8 @@ type
 
     class function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean; override;
     class function DoIsValidPassword(const SpreadsheetFileName,Password: string): boolean; override;
+    class function GetCellDataType(Cell: TdxSpreadSheetCell): TdxSpreadSheetCellDataType; static;
+    class function DetectTxtFieldSeparator(const FileName: string): Char; static;
 
   public
   end;
@@ -137,7 +144,7 @@ begin
     SpreadSheet.SaveToStream(Dst, SpreadSheetFormat);
   finally
     dec(FLockAutoOpenFile);
-    FreeAndNil(SpreadSheet);
+    Sys.FreeAndNil(SpreadSheet);
   end;
 end;
 
@@ -393,16 +400,135 @@ begin
   result := TPswValidation.IsValidPassword(SpreadsheetFileName, Password);
 end;
 
+function IsStrOfChar(const S: string; C: char): Boolean;
+var
+  I: Integer;
+begin
+  for I := Low(S) to High(S) do
+    if S[I]<>C then
+      Exit(False);
+  result := True;
+end;
+
+class function TXLSExportDevExpress.DetectTxtFieldSeparator(const FileName: string): Char;
+const
+  SeparatorsByPriority = #9':|, ;';
+  { "," is supposted to be most common, but we use it in captions too often, so we prioritize other chars higher }
+var
+  Lines: TStringList;
+  Candidates, Temp: TMap<Char, integer>;
+  I, J, K, L: integer;
+  PossibleSeparators: TSet<Char>;
+  P: TPair<Char, integer>;
+  S: string;
+begin
+
+  PossibleSeparators.Clear;
+  for I := Low(SeparatorsByPriority) to High(SeparatorsByPriority) do
+    PossibleSeparators.Add(SeparatorsByPriority[I]);
+
+  { we try to detect separator automatically:
+    - it should be same count N of separator in every line
+    - N > 0 (normally we do import several fields)
+    - for chars with same N we have priority list
+    - default separator is TAB }
+  Lines := TStringList.Create;
+  try
+    Lines.LoadFromFile(FileName);
+
+    { skip empty lines }
+    L := -1;
+    for I := 0 to Lines.Count-1 do
+      { we don't use Trim because it deletes control chars, we want to skip only regular whitespaces }
+      if not IsStrOfChar(Lines[I], ' ') then
+      begin
+        L := I;
+        Break;
+      end;
+    if L < 0 then
+      Exit(#9);
+
+    { find N for every candidate in first line }
+    S := Lines[L];
+    Candidates.Clear;
+    for J := Low(S) to High(S) do
+      if S[J] in PossibleSeparators then
+      begin
+        if not Candidates.TryGetValue(S[J], K) then
+          K := 0;
+        Candidates.AddOrSetValue(S[J], K + 1);
+      end;
+
+    { scan other lines and delete bad candidates (N should be same in every line) }
+    for I := L+1 to Lines.Count - 1 do
+    begin
+      S := Lines[I];
+      if S = '' then
+        Continue;
+      if not Candidates.ContainsKey(' ') and IsStrOfChar(S, ' ') then
+        Continue;
+
+      Temp.Clear;
+      for J := Low(S) to High(S) do
+        if Candidates.ContainsKey(S[J]) then
+        begin
+          if not Temp.TryGetValue(S[J], K) then
+            K := 0;
+          Temp.AddOrSetValue(S[J], K + 1);
+        end;
+
+      for P in Temp do
+        if Candidates[P.Key] <> P.Value then
+          Candidates.Remove(P.Key);
+    end;
+
+  finally
+    Sys.FreeAndNil(Lines);
+  end;
+
+  { get best candidate according to priority list }
+  for I := Low(SeparatorsByPriority) to High(SeparatorsByPriority) do
+    if Candidates.ContainsKey(SeparatorsByPriority[I]) then
+      Exit(SeparatorsByPriority[I]);
+
+  { no candidates from priority list -> take first one }
+  for P in Candidates do
+    Exit(P.Key);
+
+  { no candidates at all -> use TAB }
+  result := #9;
+end;
+
 procedure TXLSExportDevExpress.DoLoadFromFile(const FileName: string);
 var
   SpreadSheet: TdxSpreadSheet;
+  FileStream: TFileStream;
+  ValueSeparator: Char;
 begin
   SpreadSheet := TdxSpreadSheet.Create(nil);
   try
-    SpreadSheet.LoadFromFile(FileName);
+
+    { For TXT files we also use CSV importer }
+    if TArrayUtils.IndexOf<string>(ExtractFileExt(FileName), ['.txt','.csv']) >= 0 then
+    begin
+      ValueSeparator := dxSpreadSheetCSVFormatSettings.ValueSeparator;
+      try
+        dxSpreadSheetCSVFormatSettings.ValueSeparator := DetectTxtFieldSeparator(FileName);
+        FileStream := TFileStream.Create(FileName, fmOpenRead);
+        try
+          SpreadSheet.LoadFromStream(FileStream, TdxSpreadSheetCSVFormat);
+        finally
+          Sys.FreeAndNil(FileStream);
+        end;
+      finally
+        dxSpreadSheetCSVFormatSettings.ValueSeparator := ValueSeparator;
+      end;
+    end
+    else
+      SpreadSheet.LoadFromFile(FileName);
     ImportFromSpreadSheet(SpreadSheet);
   finally
-    FreeAndNil(SpreadSheet);
+    Sys.FreeAndNil(SpreadSheet);
   end;
 end;
 
@@ -415,27 +541,21 @@ begin
     SpreadSheet.LoadFromStream(Src);
     ImportFromSpreadSheet(SpreadSheet);
   finally
-    FreeAndNil(SpreadSheet);
+    Sys.FreeAndNil(SpreadSheet);
   end;
 end;
 
 procedure TXLSExportDevExpress.DoPrint(const Options: TXLSPrintOptions);
 var
   SpreadSheet: TdxSpreadSheet;
-  PrintSpreadSheet: TPrintSpreadsheetDevExpress;
 begin
   inherited;
   SpreadSheet := TdxSpreadSheet.Create(nil);
   try
     ExportToSpreadSheet(SpreadSheet);
-    PrintSpreadSheet := TPrintSpreadsheetDevExpress.Create(nil);
-    try
-      PrintSpreadSheet.Print(SpreadSheet, Options);
-    finally
-      FreeAndNil(PrintSpreadSheet);
-    end;
+    TPrintExcelFiles.Ordinal.Print(SpreadSheet, Options);
   finally
-    FreeAndNil(SpreadSheet);
+    Sys.FreeAndNil(SpreadSheet);
   end;
 end;
 
@@ -461,7 +581,57 @@ begin
   end;
 end;
 
+class function TXLSExportDevExpress.GetCellDataType(Cell: TdxSpreadSheetCell): TdxSpreadSheetCellDataType;
+begin
+  result := Cell.DataType;
+  { If format of the cells is defined as "date" from cell's format settings (in Excel), then
+    control shows correct date values, but DataType is cdtFloat.
+    It is known behaviour: https://www.devexpress.com/Support/Center/Question/Details/T351822
+    We have to use workaround to detect correct cell type in such case. Related task: 17427 }
+  if result = cdtFloat then
+    case Cell.Style.DataFormat.FormatCodeID of
+      $00: ; //GENERAL
+      $01: ; //0
+      $02: ; //0.00
+      $03: ; //#,##0
+      $04: ; //#,##0.00
+      $05: ; //$#,##0_);($#,##0)
+      $06: ; //$#,##0_);[Red]($#,##0)
+      $07: ; //$#,##0.00_);($#,##0.00)
+      $08: ; //$#,##0.00_);[Red]($#,##0.00)
+      $09: ; //0%
+      $0a: ; //0.00%
+      $0b: ; //0.00E+00
+      $0c: ; //# ?/?
+      $0d: ; //# ??/??
+      $0e: result := cdtDateTime; //m/d/yy
+      $0f: result := cdtDateTime; //d-mmm-yy
+      $10: result := cdtDateTime; //d-mmm
+      $11: result := cdtDateTime; //mmm-yy
+      $12: result := cdtDateTime; //h:mm AM/PM
+      $13: result := cdtDateTime; //h:mm:ss AM/PM
+      $14: result := cdtDateTime; //h:mm
+      $15: result := cdtDateTime; //h:mm:ss
+      $16: result := cdtDateTime; //m/d/yy h:mm
+      $25: ; //#,##0_);(#,##0)
+      $26: ; //#,##0_);[Red](#,##0)
+      $27: ; //#,##0.00_);(#,##0.00)
+      $28: ; //#,##0.00_);[Red](#,##0.00)
+      $29: ; //_(* #,##0_);_(* (#,##0);_(* “-“_);_(@_)
+      $2a: ; //_($* #,##0_);_($* (#,##0);_($* “-“_);_
+      $2b: ; //_(* #,##0.00_);_(* (#,##0.00);_(* “-“??_);_(@_)
+      $2c: ; //_($* #,##0.00);_($* (#,##0.00);_($* “-“??_);_(@_)
+      $2d: result := cdtDateTime; //mm:ss
+      $2e: result := cdtDateTime; //[h]:mm:ss
+      $2f: result := cdtDateTime; //mm:ss.0
+      $30: ; //##0.0E+0
+      $31: ; //@
+    end;
+end;
+
 procedure TXLSExportDevExpress.ImportCell(Src: TdxSpreadSheetCell; Dst: TXLSCell);
+var
+  v: Variant;
 begin
 
   { Src.Style.Format / Src.Value}
@@ -469,16 +639,36 @@ begin
     [cdtBlank, cdtBoolean, cdtError, cdtCurrency, cdtFloat, cdtDateTime, cdtInteger, cdtString, cdtFormula]}
     implement support for new types bellow!
   {$ENDIF}
-  case Src.DataType of
+  case GetCellDataType(Src) of
     cdtBlank    : ;
     cdtBoolean  : Dst.AsBoolean  := Src.AsBoolean;
     cdtError    : ;
     cdtCurrency : Dst.AsCurrency := Src.AsCurrency; { format? }
-    cdtFloat    : Dst.AsFloat    := Src.AsFloat;    { format? }
+    cdtFloat    : Dst.AsFloat    := Src.AsFloat;
     cdtDateTime : Dst.AsDateTime := Src.AsDateTime; { format? }
     cdtInteger  : Dst.AsInteger  := Src.AsInteger;
     cdtString   : Dst.AsString   := Src.AsString;
-    cdtFormula  : Src.AsString   := Src.AsFormula.AsText;
+    cdtFormula  :
+      {AH: for now we don't need to import formulas, we always need calculated value}
+      if Src.Style.DataFormat.IsDateTime then
+        Dst.AsDateTime := Src.AsDateTime
+      else
+      begin
+        v := Src.AsFormula.Value;
+        if TVar.IsNumeric(v) then
+          if TVar.IsInteger(v) then
+            Dst.AsInteger := TVar.ToIntegerDef(v)
+          else
+            Dst.AsFloat := TVar.ToFloatDef(v)
+        else
+        if TVar.IsDateTime(v) then
+          Dst.AsDateTime := TVar.ToDateTimeDef(v)
+        else
+        if TVar.IsBoolean(v) then
+          Dst.AsBoolean := TVar.ToBooleanDef(v)
+        else
+          Dst.AsString := TVar.ToStringDef(v);
+      end;
   end;
 
   { Src.Style.Font }

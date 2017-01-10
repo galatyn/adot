@@ -23,6 +23,9 @@
   TWinFileUtils = class
     CopyFile using WinAPI with callback etc.
 
+  TWebBrowserUtils = class
+    SetWebBrowserMode
+
 }
 interface
 
@@ -40,7 +43,8 @@ uses
   System.SyncObjs,
   System.Math,
   System.Threading,
-  System.Classes;
+  System.Classes,
+  Registry;
 
 type
 
@@ -345,22 +349,38 @@ type
     class function AppActivate(const AppName: string): Boolean; static;
   end;
 
-// AH: We should remove it when Embarcadero include it into Winapi.Windows
-{$EXTERNALSYM QueryFullProcessImageName}
-function QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD;
-  lpFilename: LPCWSTR; var nSize: DWORD): BOOL; stdcall;
-{$EXTERNALSYM QueryFullProcessImageNameA}
-function QueryFullProcessImageNameA(hProcess: THandle; dwFlags: DWORD;
-  lpFilename: LPCSTR; var nSize: DWORD): BOOL; stdcall;
-{$EXTERNALSYM QueryFullProcessImageNameW}
-function QueryFullProcessImageNameW(hProcess: THandle; dwFlags: DWORD;
-  lpFilename: LPCWSTR; var nSize: DWORD): BOOL; stdcall;
+  TWebBrowserUtils = class
+  public
+    class function SetWebBrowserMode(Mode: TIEMode; AppName: string): boolean; static;
+  end;
 
 implementation
 
-function QueryFullProcessImageName; external kernel32 name 'QueryFullProcessImageNameW';
-function QueryFullProcessImageNameA; external kernel32 name 'QueryFullProcessImageNameA';
-function QueryFullProcessImageNameW; external kernel32 name 'QueryFullProcessImageNameW';
+type
+  TApiExt = class
+  private
+    class var
+      FOrdinal: TApiExt;
+    var
+      Kernel32Module: HModule;
+      varQueryFullProcessImageName: function (hProcess: THandle; dwFlags: DWORD;
+        lpFilename: LPCWSTR; var nSize: DWORD): BOOL; stdcall;
+      varQueryFullProcessImageNameA: function (hProcess: THandle; dwFlags: DWORD;
+        lpFilename: LPCSTR; var nSize: DWORD): BOOL; stdcall;
+      varQueryFullProcessImageNameW: function (hProcess: THandle; dwFlags: DWORD;
+        lpFilename: LPCWSTR; var nSize: DWORD): BOOL; stdcall;
+
+    class function GetOrdinal: TApiExt; static;
+    class destructor ClassDestroy; static;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD; lpFilename: LPCWSTR; var nSize: DWORD): Boolean;
+
+    class property Ordinal: TApiExt read GetOrdinal;
+  end;
 
 { TProcess }
 
@@ -572,7 +592,7 @@ begin
     try
       SetLength(Result, AMaxLen);
       l := length(Result)-1;
-      if QueryFullProcessImageName(p, 0, PChar(Result), l) then
+      if TApiExt.Ordinal.QueryFullProcessImageName(p, 0, PChar(Result), l) then
       begin
         SetLength(Result, l);
         Exit;
@@ -1070,6 +1090,155 @@ var
 begin
   W := FindWindow(nil, PChar(AppName));
   result := (W <> 0) and SetForegroundWindow(W);
+end;
+
+{ TWebBrowserUtils }
+
+class function TWebBrowserUtils.SetWebBrowserMode(Mode: TIEMode; AppName: string): boolean;
+const
+  REG_KEY = 'Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION';
+
+var
+  Reg: TRegistry;
+  ValSet, ValRead, PPos : integer;
+  VersionStr : string;
+
+begin
+  Result := False;
+  ValRead := 0;
+  ValSet := 10000;
+
+  if AppName = '' then
+    Exit;
+
+   case Mode of
+     iemIE7 : ValSet := 7000;
+     iemIE8 : ValSet := 8000;
+     iemIE9 : ValSet := 9000;
+     iemIE10 : ValSet := 10000;
+     iemIE11 : ValSet := 11000;
+   end;
+
+
+  if Mode = iemIEInstalled then
+  begin
+    Reg := TRegistry.Create(KEY_READ or KEY_WOW64_64KEY);
+    try
+      Reg.RootKey := HKEY_LOCAL_MACHINE;
+
+      if Reg.OpenKey('SOFTWARE\Microsoft\Internet Explorer', false) then
+      begin
+        if Reg.ValueExists('svcVersion') then
+        begin
+          VersionStr := Reg.ReadString('svcVersion');
+          PPos := Pos('.', VersionStr);
+          if PPos > 0 then
+          begin
+            VersionStr := Copy(VersionStr, 1, PPos - 1);
+            if TryStrToInt(VersionStr, ValSet) then
+            begin
+              ValSet := 1000*ValSet
+            end
+            else
+            begin
+              ValSet := 10000;
+            end;
+          end;
+        end;
+      end;
+
+    finally
+      Reg.Free;
+    end;
+  end;
+
+  try
+    Reg := TRegistry.Create(KEY_READ or KEY_WOW64_64KEY);
+    try
+      Reg.RootKey := HKEY_CURRENT_USER;
+      if Reg.OpenKey(REG_KEY, false) then
+      begin
+        if Reg.ValueExists(AppName) then
+        begin
+          ValRead := Reg.ReadInteger(AppName);
+        end;
+
+        Reg.CloseKey;
+      end;
+    finally
+      Reg.Free;
+    end;
+
+    if  ValSet > ValRead then
+    begin
+      Reg := TRegistry.Create(KEY_WRITE or KEY_WOW64_64KEY);
+      try
+        if Reg.OpenKey(REG_KEY, True) then
+        begin
+          Reg.WriteInteger(AppName, ValSet);
+          Reg.CloseKey;
+          Result:=True;
+        end;
+
+      finally
+        Reg.Free;
+      end;
+    end
+    else
+    begin
+      Result:=True;
+    end;
+
+  except;
+    Result:=false;
+  end;
+
+end;
+
+{ TApiExt }
+
+constructor TApiExt.Create;
+begin
+  Kernel32Module := LoadLibrary(kernel32);
+  if (Kernel32Module <> 0) then
+  begin
+    varQueryFullProcessImageNameA := GetProcAddress(Kernel32Module, 'QueryFullProcessImageNameA');
+    varQueryFullProcessImageNameW := GetProcAddress(Kernel32Module, 'QueryFullProcessImageNameW');
+    varQueryFullProcessImageName := varQueryFullProcessImageNameW;
+  end;
+end;
+
+destructor TApiExt.Destroy;
+begin
+  if Kernel32Module <> 0 then
+  begin
+    FreeLibrary(Kernel32Module);
+    Kernel32Module := 0;
+  end;
+  varQueryFullProcessImageName := nil;
+  varQueryFullProcessImageNameA := nil;
+  varQueryFullProcessImageNameW := nil;
+  inherited;
+end;
+
+class destructor TApiExt.ClassDestroy;
+begin
+  FreeAndNil(FOrdinal);
+end;
+
+class function TApiExt.GetOrdinal: TApiExt;
+begin
+  if FOrdinal = nil then
+    FOrdinal := TApiExt.Create;
+  result := FOrdinal;
+end;
+
+function TApiExt.QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD; lpFilename: LPCWSTR; var nSize: DWORD): Boolean;
+begin
+  if Assigned(varQueryFullProcessImageName) then
+    result := varQueryFullProcessImageName(hProcess, dwFlags, lpFilename, nSize)
+  else
+    result := False;
 end;
 
 end.

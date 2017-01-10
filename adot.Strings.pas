@@ -217,6 +217,26 @@ type
 
     { Replaces any sequence of any space/control chars by single space. }
     class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
+
+    class function FixDecimalSeparator(const Src: string): string; static;
+
+    class function ToInteger(const Src: string): int64; static;
+    class function ToFloat(const Src: string): double; static;
+    class function ToBoolean(const Src: string): boolean; static;
+    class function ToDateTime(const Src: string): TDateTime; static;
+
+    class function ToIntegerDef(const Src: string; DefValue: int64 = 0): int64; static;
+    class function ToFloatDef(const Src: string; DefValue: int64 = 0): double; static;
+    class function ToBooleanDef(const Src: string; DefValue: boolean = False): boolean; static;
+    class function ToDateTimeDef(const Src: string; DefValue: TDateTime = 0): TDateTime; static;
+
+    class function TryToInteger(const Src: string; var Value: int64): boolean; overload; static;
+    class function TryToInteger(const Src: string; var Value: integer): boolean; overload; static;
+    class function TryToFloat(const Src: string; var Value: double): boolean; overload; static;
+    class function TryToFloat(const Src: string; var Value: single): boolean; overload; static;
+    class function TryToFloat(const Src: string; var Value: extended): boolean; overload; static;
+    class function TryToBoolean(const Src: string; var Value: boolean): boolean; static;
+    class function TryToDateTime(const Src: string; var Value: TDateTime): boolean; static;
   end;
 
   { Usually all chars of text belong to one code page.
@@ -1389,6 +1409,110 @@ begin
   end;
 end;
 
+class function TStr.FixDecimalSeparator(const Src: string): string;
+begin
+  Result := Src;
+  if FormatSettings.DecimalSeparator<>'.' then
+    Result := Result.Replace('.', FormatSettings.DecimalSeparator);
+  if FormatSettings.DecimalSeparator<>',' then
+    Result := Result.Replace(',', FormatSettings.DecimalSeparator);
+end;
+
+class function TStr.ToFloatDef(const Src: string; DefValue: int64): double;
+begin
+  if not TryToFloat(Src, result) then
+    result := DefValue;
+end;
+
+class function TStr.ToInteger(const Src: string): int64;
+begin
+  result := StrToInt64(Src);
+end;
+
+class function TStr.ToFloat(const Src: string): double;
+begin
+  result := StrToFloat(FixDecimalSeparator(Src));
+end;
+
+class function TStr.ToBoolean(const Src: string): boolean;
+begin
+  if not TryToBoolean(Src, Result) then
+    raise Exception.Create('Error');
+end;
+
+class function TStr.ToBooleanDef(const Src: string; DefValue: boolean): boolean;
+begin
+  if not TryToBoolean(Src, Result) then
+    Result := DefValue;
+end;
+
+class function TStr.ToDateTime(const Src: string): TDateTime;
+begin
+  result := StrToDateTime(Src);
+end;
+
+class function TStr.ToDateTimeDef(const Src: string; DefValue: TDateTime): TDateTime;
+begin
+  if not TryToDateTime(Src, result) then
+    result := DefValue;
+end;
+
+class function TStr.ToIntegerDef(const Src: string; DefValue: int64): int64;
+begin
+  if not TryToInteger(Src, result) then
+    result := DefValue;
+end;
+
+class function TStr.TryToFloat(const Src: string; var Value: double): boolean;
+begin
+  result := TryStrToFloat(FixDecimalSeparator(Src), Value);
+end;
+
+class function TStr.TryToFloat(const Src: string; var Value: single): boolean;
+begin
+  result := TryStrToFloat(FixDecimalSeparator(Src), Value);
+end;
+
+class function TStr.TryToBoolean(const Src: string; var Value: boolean): boolean;
+var
+  S: string;
+begin
+  S := Trim(Src).ToLower;
+  if (S='1') or (S='y') or (S='yes') or (S='j') or (S='ja') or (s='t') or (S='true') then
+  begin
+    Value := True;
+    Result := True;
+  end
+  else
+  if (S='0') or (S='n') or (S='no') or (S='nei') or (s='f') or (S='false') then
+  begin
+    Value := False;
+    Result := True;
+  end
+  else
+    result := False;
+end;
+
+class function TStr.TryToDateTime(const Src: string; var Value: TDateTime): boolean;
+begin
+  result := TryStrToDateTime(Src, Value);
+end;
+
+class function TStr.TryToFloat(const Src: string; var Value: extended): boolean;
+begin
+  result := TryStrToFloat(FixDecimalSeparator(Src), Value);
+end;
+
+class function TStr.TryToInteger(const Src: string; var Value: int64): boolean;
+begin
+  result := TryStrToInt64(Src, Value);
+end;
+
+class function TStr.TryToInteger(const Src: string; var Value: integer): boolean;
+begin
+  result := TryStrToInt(Src, Value);
+end;
+
 class function TStr.TruncSpaces(const Src: string; TrimRes: boolean = True): string;
 type
   TState = (sStart, sWord, sSpace);
@@ -1503,12 +1627,18 @@ class function TStr.Load(Src: TStream; Encoding: TEncoding): string;
 var
   B: TArray<System.Byte>;
 begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
   Src.Position := 0;
   SetLength(B, Src.Size);
   Src.ReadBuffer(B, Length(B));
-  Result := Encoding.GetString(B);
+  if Encoding <> nil then
+    Result := Encoding.GetString(B)
+  else
+    try
+      TEncoding.GetBufferEncoding(B, Encoding, Encoding.UTF8);
+      Result := Encoding.GetString(B);
+    except
+      Result := Encoding.ANSI.GetString(B);
+    end;
 end;
 
 class function TStr.Load(const FileName: string; Encoding: TEncoding): string;
@@ -2999,11 +3129,7 @@ end;
 
 procedure TStringEditor.TReplace.Clear;
 begin
-  SrcText      := '';
-  SrcPos.Start := 0;
-  SrcPos.Len   := 0;
-  DstPos.Start := 0;
-  DstPos.Len   := 0;
+  Self := Default(TReplace);
 end;
 
 { TStringEditor }
@@ -3145,7 +3271,7 @@ begin
       if result=0 then
         result := A.Order-B.Order;
     end);
-  TArray.Sort<TReplace>(Instructions.Items, Comparer);
+  TArray.Sort<TReplace>(Instructions.Items, Comparer, 0,Instructions.Count);
 end;
 
 function TStringEditor.Apply(const Src: string): string;

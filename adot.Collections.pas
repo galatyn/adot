@@ -258,6 +258,7 @@ type
     B: TypeB;
 
     constructor Create(const A: TypeA; const B: TypeB);
+    procedure Init(const A: TypeA; const B: TypeB);
   end;
 
   { Compound record with three fields. Provides constructor and comparers for use in collections. }
@@ -267,6 +268,7 @@ type
     C: TypeC;
 
     constructor Create(const A: TypeA; const B: TypeB; const C: TypeC);
+    procedure Init(const A: TypeA; const B: TypeB; const C: TypeC);
   end;
 
   { Equality comparer for compound of two fields. }
@@ -1813,6 +1815,11 @@ uses
 
 constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
 begin
+  Init(A,B);
+end;
+
+procedure TCompound<TypeA, TypeB>.Init(const A: TypeA; const B: TypeB);
+begin
   Self := Default(TCompound<TypeA, TypeB>);
   Self.A := A;
   Self.B := B;
@@ -1821,6 +1828,11 @@ end;
 { TCompound<TypeA, TypeB, TypeC> }
 
 constructor TCompound<TypeA, TypeB, TypeC>.Create(const A: TypeA; const B: TypeB; const C: TypeC);
+begin
+  Init(A,B,C);
+end;
+
+procedure TCompound<TypeA, TypeB, TypeC>.Init(const A: TypeA; const B: TypeB; const C: TypeC);
 begin
   Self := Default(TCompound<TypeA, TypeB, TypeC>);
   Self.A := A;
@@ -1869,7 +1881,7 @@ end;
 
 function TCompoundEqualityComparer<TypeA, TypeB>.GetHashCode(const Value: TCompound<TypeA, TypeB>): Integer;
 begin
-  result := THashes.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
+  result := TCustomHash.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
 end;
 
 { TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
@@ -1924,7 +1936,7 @@ end;
 function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.GetHashCode(
   const Value: TCompound<TypeA, TypeB, TYpeC>): Integer;
 begin
-  result := THashes.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B), FComparerC.GetHashCode(Value.C));
+  result := TCustomHash.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B), FComparerC.GetHashCode(Value.C));
 end;
 
 { TCompoundComparer<TypeA, TypeB> }
@@ -2854,7 +2866,7 @@ end;
 function TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
   const Value: TMultimapKey): Integer;
 begin
-  result := THashes.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
+  result := TCustomHash.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
 end;
 
 { TMultimapClass<TKey, TValue>.TPairEnumerator }
