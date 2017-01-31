@@ -226,7 +226,9 @@ type
 
     { streaming functions }
     class procedure Init(out Hash: THashData);
-    class procedure Update(const Buf; ByteBufSize: integer; var Hash: THashData);
+    class procedure Update(const Buf; ByteBufSize: integer; var Hash: THashData); overload;
+    class procedure Update(const S: TBytes; var Hash: THashData); overload;
+    class procedure Update(const S: string; var Hash: THashData); overload;
     class function Done(var Hash: THashData): TBytes;
 
     { general }
@@ -590,27 +592,55 @@ type
   end;
 
   TFun = class
+  public
+
+    { Generic IfThen, compatible with any type.
+      Example: Rect := Sys.IfThen(Condition, Rect1, Rect2); }
     class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
+
+    { Generic swap function, compatible with any type.
+      Example: Sys.Exchange(Rect1,Rect2); }
     class procedure Exchange<T>(var A,B: T); static; {$IFDEF UseInline}inline;{$ENDIF}
 
-    { Typified version of FreeAndNil. Much safe than regular FreeAndNil, accepts classes only.
+    { Generic version of FreeAndNil. Much safe than regular FreeAndNil, it accepts classes
+      only and wrong use with other type will be reported as error in compile time.
       Example: Sys.FreeAndNil(Obj); }
     class procedure FreeAndNil<T: class>(var Obj: T); static;
 
-    { Safer replacement for FillChar:
-      - strictly typified (filling of managed type will be reported in compile type)
-      - doesn't create memory leaks for record types (fields of managed types will be freed correctly) }
-    class procedure FillRec<T: record>(var Rec: T); overload; static;
-    class procedure FillRec<T: record>(var Rec: T; Pattern: byte); overload; static;
-    class procedure FillRec<T: record>(var Rec: T; Pattern: AnsiChar); overload; static;
+    { Safe generic implementation of FillChar(A,SizeOf(A),0) :
+      - Strictly typified, size is calculated by compiler.
+      - Supports managed types (strings, interfaces, dynamic arrays and other managed
+        types will be freed correctly) }
+    class procedure Clear<T>(var R: T); static;
 
-    class function Min3(const A,B,C: integer): integer; overload; static;
-    class function Min3(const A,B,C: double): double; overload; static;
-    class function Max3(const A,B,C: integer): integer; overload; static;
-    class function Max3(const A,B,C: double): double; overload; static;
+    { Generic function to check if value is withing range }
+    class function ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean; static;
 
-    class function InRange<T>(AValue, AValueMin,AValueMax: T): boolean; overload; static;
-    class function Overlapped<T>(AFrom,ATo, BFrom,BTo: T): boolean; static;
+    { Type specific functions to check if value is withing range (more efficient than generic ValueInRange) }
+    class function InRange(const AValue, AValueFrom, AValueTo: integer): boolean; overload; static;
+    class function InRange(const AValue, AValueFrom, AValueTo: double): boolean; overload; static;
+
+    { Type specific functions to check if two ranges are overlapped }
+    class function Overlapped(const AFrom,ATo, BFrom,BTo: integer): boolean; overload; static;
+    class function Overlapped(const AFrom,ATo, BFrom,BTo: double): boolean; overload; static;
+
+    class function Min(const A,B: integer): integer; overload; static;
+    class function Min(const A,B,C: integer): integer; overload; static;
+    class function Min(const Values: array of integer): integer; overload; static;
+    class function Min(const Values: TArray<integer>): integer; overload; static;
+    class function Max(const A,B: integer): integer; overload; static;
+    class function Max(const A,B,C: integer): integer; overload; static;
+    class function Max(const Values: array of integer): integer; overload; static;
+    class function Max(const Values: TArray<integer>): integer; overload; static;
+
+    class function Min(const A,B: double): double; overload; static;
+    class function Min(const A,B,C: double): double; overload; static;
+    class function Min(const Values: array of double): double; overload; static;
+    class function Min(const Values: TArray<double>): double; overload; static;
+    class function Max(const A,B: double): double; overload; static;
+    class function Max(const A,B,C: double): double; overload; static;
+    class function Max(const Values: array of double): double; overload; static;
+    class function Max(const Values: TArray<double>): double; overload; static;
   end;
 
   { Shortcut to TFun ("Sys.FreeAndNil" looks more natural than "TFun.FreeAndNil"). }
@@ -660,7 +690,7 @@ type
 
     class function GetTimeStack: TStack<TStopwatch>; static;
     class function GetTotalTimes: TDictionary<string, TTotalStat>; static;
-    class procedure Finilaze; static;
+    class destructor DestroyClass; static;
 
     class property TimeStack: TStack<TStopwatch> read GetTimeStack;
     class property TotalTimes: TDictionary<string, TTotalStat> read GetTotalTimes;
@@ -1073,6 +1103,112 @@ type
 
     { returns True if application is started from IDE for example }
     class function DebuggerIsAttached: boolean; static;
+  end;
+
+  { Used internally by TSmartComponentPtr/TWeakComponentPtr.
+    They are simpler to use, but sometimes class type is prefered over record type. }
+  TSharedComponentPtrClass<T: TComponent> = class(TComponent)
+  protected
+    FComponent: T;
+    FWeak: boolean;
+
+    procedure SetComponent(AComponent: T);
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
+
+  public
+    constructor Create(AComponent: T; AWeak: boolean = False); reintroduce;
+    destructor Destroy; override;
+
+    property Component: T read FComponent write SetComponent;
+  end;
+
+  { Smart pointer features (~shared_ptr in C++):
+    - Maintains reference counting ownership of its contained component in cooperation with all copies of the TSharedComponent.
+      An component referenced by the contained pointer will be destroyed when all copies of the TSharedComponent have been destroyed.
+    - Contained component can be also destroyed explicitly, then all copies of the TSharedComponent became empty.
+    - If an new component is assigned, then the old one is destroyed and all copies of the TSharedComponent get the new component.
+    }
+  TSharedComponentPtr<T: TComponent> = record
+  private
+    FComponentPtr: IInterfacedObject<TSharedComponentPtrClass<T>>;
+
+    function GetValue: T;
+    procedure SetValue(const Value: T);
+    function GetIsEmpty: boolean;
+  public
+
+    { TSharedComponentPtr should be initialized with Create/Init/Copy, otherwise its content is undefined.
+      Create and Init does the same, but have different syntax. Next two lines are equivalent:
+        A := TSharedComponentPtr<TLabel>.Create(Lbl);
+        A.Init(Lbl);
+      TSharedComponentPtr can be initialized as empty:
+        "A := TSharedComponentPtr<TLabel>.Create(nil)" or "A.Init(nil)".  }
+    constructor Create(AValue: T);
+    procedure Init(AValue: T);
+
+    { Makes the TSharedComponentPtr empty and uninitialized. Connection with other copies of the TSharedComponentPtr
+      will be lost. If it is the last copy of TSharedComponentPtr, then the contained object will be destroyed. }
+    procedure Clear;
+
+    { TSharedComponentPtr must be initialized before "Copy" call is made.
+      Otherwise content of the created copy of the TSharedComponentPtr is undefined too.
+      It is allowed to create copies of empty container, after assigning of component to
+      any instance of TSharedComponentPtr, the all copies will get that value. }
+    function Copy: TSharedComponentPtr<T>;
+
+    { Access to the contained component. It can be destroyed explicitly and then all copies of the TSharedComponentPtr
+      became empty: "SharedComponent.Value.Free;" }
+    property Value: T read GetValue write SetValue;
+
+    { Returns True if the TSharedComponentPtr contains nil.
+      If the TSharedComponentPtr is not initialized by Create/Init/Copy and not cleared by Clear,
+      then result of IsEmpty is undefined. }
+    property IsEmpty: boolean read GetIsEmpty;
+  end;
+
+  { Smart pointer features (~weak_ptr in C++):
+    - Does not take ownership of its contained component.
+    - If contained component is destroyed, then all copies of the TWeakComponent became empty.
+    - If an new component is assigned, then all copies of the TSharedComponentPtr get the new component.
+    }
+  TWeakComponentPtr<T: TComponent> = record
+  private
+    FComponentPtr: IInterfacedObject<TSharedComponentPtrClass<T>>;
+
+    function GetValue: T;
+    procedure SetValue(const Value: T);
+    function GetIsEmpty: boolean;
+  public
+
+    { TWeakComponentPtr should be initialized with Create/Init/Copy, otherwise its content is undefined.
+      Create and Init does the same, but have different syntax. Next two lines are equivalent:
+        A := TWeakComponentPtr<TLabel>.Create(Lbl);
+        A.Init(Lbl);
+      TWeakComponentPtr can be initialized as empty:
+        "A := TWeakComponentPtr<TLabel>.Create(nil)" or "A.Init(nil)".  }
+    constructor Create(AValue: T); overload;
+    //constructor Create(ASharedValue: TSharedComponentPtr<T>); overload;
+    procedure Init(AValue: T); overload;
+    //procedure Init(ASharedValue: TSharedComponentPtr<T>); overload;
+
+    { Makes the TWeakComponentPtr empty and uninitialized. Connection with other copies
+      of the TWeakComponentPtr will be lost. }
+    procedure Clear;
+
+    { TWeakComponentPtr must be initialized before "Copy" call is made.
+      Otherwise content of the created copy of the TWeakComponentPtr is undefined too.
+      It is allowed to create copies of empty container, after assigning of component to
+      any instance of TWeakComponentPtr, the all copies will get that value. }
+    function Copy: TWeakComponentPtr<T>;
+
+    { Access to the contained component. It can be destroyed explicitly and then all copies of the TWeakComponentPtr
+      became empty: "WeakComponent.Value.Free;" }
+    property Value: T read GetValue write SetValue;
+
+    { Returns True if the TWeakComponentPtr contains nil.
+      If the TWeakComponentPtr is not initialized by Create/Init/Copy and not cleared by Clear,
+      then result of IsEmpty is undefined. }
+    property IsEmpty: boolean read GetIsEmpty;
   end;
 
 implementation
@@ -2030,7 +2166,7 @@ end;
 
 destructor TInterfacedObject<T>.Destroy;
 begin
-  FreeAndNil(FData);
+  Sys.FreeAndNil(FData);
   inherited;
 end;
 
@@ -2042,7 +2178,7 @@ end;
 procedure TInterfacedObject<T>.SetData(const AData: T);
 begin
   if (FData<>nil) and (FData<>AData) then
-    FreeAndNil(FData);
+    Sys.FreeAndNil(FData);
   FData := AData;
 end;
 
@@ -2297,7 +2433,7 @@ begin
           Dec(TotalCount);
         end;
   finally
-    FreeAndNil(List);
+    Sys.FreeAndNil(List);
   end;
 end;
 
@@ -2514,7 +2650,7 @@ begin
       FindOpenFiles(FilesMask, Exc, Recursive, FoundFiles);
     result := FoundFiles.ToArray;
   finally
-    FreeAndNil(FoundFiles);
+    Sys.FreeAndNil(FoundFiles);
   end;
 end;
 
@@ -2626,10 +2762,10 @@ end;
 
 { TTiming }
 
-class procedure TTiming.Finilaze;
+class destructor TTiming.DestroyClass;
 begin
-  FreeAndNil(FTimeStack);
-  FreeAndNil(FTotalTimes);
+  Sys.FreeAndNil(FTimeStack);
+  Sys.FreeAndNil(FTotalTimes);
 end;
 
 class function TTiming.GetTimeStack: TStack<TStopwatch>;
@@ -2747,7 +2883,7 @@ end;
 
 destructor TPIWriter.Destroy;
 begin
-  FreeAndNil(Writer);
+  Sys.FreeAndNil(Writer);
   inherited;
 end;
 
@@ -2841,7 +2977,7 @@ end;
 
 destructor TPIReader.Destroy;
 begin
-  FreeAndNil(Reader);
+  Sys.FreeAndNil(Reader);
   inherited;
 end;
 
@@ -3551,6 +3687,20 @@ begin
   DoUpdate(Buf, ByteBufSize, Hash);
 end;
 
+class procedure TCustomHash.Update(const S: TBytes; var Hash: THashData);
+begin
+  Update(S, 0, Hash);
+end;
+
+class procedure TCustomHash.Update(const S: string; var Hash: THashData);
+begin
+  if Length(S) = 0 then
+    DoUpdate(nil^, 0, Hash)
+  else
+    DoUpdate(S[Low(S)], length(S)*SizeOf(S[Low(S)]), Hash);
+end;
+
+
 class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;
 begin
   result := DoDone(Hash);
@@ -3977,7 +4127,7 @@ end;
 procedure TBuffer.CheckCapacity(MinCapacity: integer);
 begin
   if Capacity < MinCapacity then
-    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 16);
+    Capacity := TFun.Max(MinCapacity, Capacity shl 1, 16);
 end;
 
 procedure TBuffer.SetSize(Value: integer);
@@ -4116,31 +4266,17 @@ end;
 
 { TFun }
 
+class procedure TFun.Clear<T>(var R: T);
+begin
+  R := Default(T);
+end;
+
 class procedure TFun.Exchange<T>(var A, B: T);
 var C: T;
 begin
   C := A;
   A := B;
   B := C;
-end;
-
-class procedure TFun.FillRec<T>(var Rec: T);
-begin
-  Rec := Default(T);
-end;
-
-class procedure TFun.FillRec<T>(var Rec: T; Pattern: byte);
-begin
-  Rec := Default(T);
-  if Pattern<>0 then
-    FillChar(Rec, SizeOf(Rec), Pattern);
-end;
-
-class procedure TFun.FillRec<T>(var Rec: T; Pattern: AnsiChar);
-begin
-  Rec := Default(T);
-  if Byte(Pattern)<>0 then
-    FillChar(Rec, SizeOf(Rec), Pattern);
 end;
 
 class procedure TFun.FreeAndNil<T>(var Obj: T);
@@ -4154,15 +4290,34 @@ begin
   if ACondition then result := AValueTrue else result := AValueFalse;
 end;
 
-class function TFun.InRange<T>(AValue, AValueMin, AValueMax: T): boolean;
+class function TFun.InRange(const AValue, AValueFrom, AValueTo: integer): boolean;
+begin
+  if AValueFrom <= AValueTo then
+    result := (AValue >= AValueFrom) and (AValue <= AValueTo)
+  else
+    result := (AValue >= AValueTo) and (AValue <= AValueFrom);
+end;
+
+class function TFun.InRange(const AValue, AValueFrom, AValueTo: double): boolean;
+begin
+  if AValueFrom <= AValueTo then
+    result := (AValue >= AValueFrom) and (AValue <= AValueTo)
+  else
+    result := (AValue >= AValueTo) and (AValue <= AValueFrom);
+end;
+
+class function TFun.ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean;
 var
   Comparer: IComparer<T>;
 begin
   Comparer := TComparerUtils.DefaultComparer<T>;
-  Result := (Comparer.Compare(AValue, AValueMin) >= 0) and (Comparer.Compare(AValue, AValueMax) <= 0);
+  if Comparer.Compare(AValueFrom, AValueTo) <= 0 then
+    Result := (Comparer.Compare(AValue, AValueFrom) >= 0) and (Comparer.Compare(AValue, AValueTo) <= 0)
+  else
+    Result := (Comparer.Compare(AValue, AValueTo) >= 0) and (Comparer.Compare(AValue, AValueFrom) <= 0);
 end;
 
-class function TFun.Max3(const A, B, C: double): double;
+class function TFun.Max(const A, B, C: double): double;
 begin
   Result := A;
   if B > Result then
@@ -4171,7 +4326,63 @@ begin
     Result := C;
 end;
 
-class function TFun.Max3(const A, B, C: integer): integer;
+class function TFun.Max(const A, B: double): double;
+begin
+  if A >= B then
+    result := A
+  else
+    result := B;
+end;
+
+class function TFun.Max(const A, B: integer): integer;
+begin
+  if A >= B then
+    result := A
+  else
+    result := B;
+end;
+
+class function TFun.Min(const Values: array of integer): integer;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] < result then
+      result := Values[I];
+end;
+
+class function TFun.Min(const Values: TArray<integer>): integer;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] < result then
+      result := Values[I];
+end;
+
+class function TFun.Max(const Values: array of integer): integer;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] > result then
+      result := Values[I];
+end;
+
+class function TFun.Max(const Values: TArray<integer>): integer;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] > result then
+      result := Values[I];
+end;
+
+class function TFun.Max(const A, B, C: integer): integer;
 begin
   Result := A;
   if B > Result then
@@ -4180,7 +4391,7 @@ begin
     Result := C;
 end;
 
-class function TFun.Min3(const A, B, C: double): double;
+class function TFun.Min(const A, B, C: double): double;
 begin
   Result := A;
   if B < Result then
@@ -4189,7 +4400,23 @@ begin
     Result := C;
 end;
 
-class function TFun.Min3(const A, B, C: integer): integer;
+class function TFun.Min(const A, B: double): double;
+begin
+  if A <= B then
+    result := A
+  else
+    result := B;
+end;
+
+class function TFun.Min(const A, B: integer): integer;
+begin
+  if A <= B then
+    result := A
+  else
+    result := B;
+end;
+
+class function TFun.Min(const A, B, C: integer): integer;
 begin
   Result := A;
   if B < Result then
@@ -4198,12 +4425,72 @@ begin
     Result := C;
 end;
 
-class function TFun.Overlapped<T>(AFrom, ATo, BFrom, BTo: T): boolean;
-var
-  Comparer: IComparer<T>;
+class function TFun.Overlapped(const AFrom, ATo, BFrom, BTo: integer): boolean;
 begin
-  Comparer := TComparerUtils.DefaultComparer<T>;
-  result := (Comparer.Compare(BTo, AFrom)>=0) and (Comparer.Compare(BFrom, ATo)<=0);
+  if AFrom <= ATo then
+    if BFrom <= BTo then
+      result := (AFrom <= BTo) and (BFrom <= ATo)
+    else
+      result := (AFrom <= BFrom) and (BTo <= ATo)
+  else
+    if BFrom <= BTo then
+      result := (ATo <= BTo) and (BFrom <= AFrom)
+    else
+      result := (ATo <= BFrom) and (BTo <= AFrom);
+end;
+
+class function TFun.Overlapped(const AFrom, ATo, BFrom, BTo: double): boolean;
+begin
+  if AFrom <= ATo then
+    if BFrom <= BTo then
+      result := (AFrom <= BTo) and (BFrom <= ATo)
+    else
+      result := (AFrom <= BFrom) and (BTo <= ATo)
+  else
+    if BFrom <= BTo then
+      result := (ATo <= BTo) and (BFrom <= AFrom)
+    else
+      result := (ATo <= BFrom) and (BTo <= AFrom);
+end;
+
+class function TFun.Min(const Values: array of double): double;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] < result then
+      result := Values[I];
+end;
+
+class function TFun.Min(const Values: TArray<double>): double;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] < result then
+      result := Values[I];
+end;
+
+class function TFun.Max(const Values: array of double): double;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] > result then
+      result := Values[I];
+end;
+
+class function TFun.Max(const Values: TArray<double>): double;
+var I: integer;
+begin
+  Assert(Length(Values)>0);
+  Result := Values[Low(Values)];
+  for I := Low(Values)+1 to High(Values) do
+    if Values[I] > result then
+      result := Values[I];
 end;
 
 { TDataSize }
@@ -4569,6 +4856,140 @@ begin
   FData := AData;
 end;
 
+{ TSharedComponentPtrClass }
+
+constructor TSharedComponentPtrClass<T>.Create(AComponent: T; AWeak: boolean = False);
+begin
+  Component := AComponent;
+  FWeak := AWeak;
+end;
+
+destructor TSharedComponentPtrClass<T>.Destroy;
+begin
+  Component := nil;
+  inherited;
+end;
+
+procedure TSharedComponentPtrClass<T>.Notification(AComponent: TComponent; Operation: TOperation);
+begin
+  inherited;
+  if (Operation = opRemove) and (AComponent = pointer(FComponent)) then
+    Component := nil;
+end;
+
+procedure TSharedComponentPtrClass<T>.SetComponent(AComponent: T);
+var
+  C: TComponent;
+begin
+  if AComponent = FComponent then
+    exit;
+
+  if FComponent <> nil then
+  begin
+    C := FComponent;
+    FComponent := nil;
+    C.RemoveFreeNotification(Self);
+    if not FWeak and not (csDestroying in C.ComponentState) then
+      C.Destroy;
+  end;
+
+  if AComponent <> nil then
+    AComponent.FreeNotification(Self);
+  FComponent := AComponent;
+end;
+
+{ TSharedComponentPtr }
+
+constructor TSharedComponentPtr<T>.Create(AValue: T);
+begin
+  Init(AValue);
+end;
+
+procedure TSharedComponentPtr<T>.Init(AValue: T);
+begin
+  FComponentPtr := TInterfacedObject<TSharedComponentPtrClass<T>>.Create(
+    TSharedComponentPtrClass<T>.Create(AValue)
+  );
+end;
+
+function TSharedComponentPtr<T>.Copy: TSharedComponentPtr<T>;
+begin
+  if FComponentPtr = nil then
+    Init(nil);
+  result := Self;
+end;
+
+procedure TSharedComponentPtr<T>.Clear;
+begin
+  FComponentPtr := nil;
+end;
+
+function TSharedComponentPtr<T>.GetValue: T;
+begin
+  if FComponentPtr = nil then
+    result := nil
+  else
+    result := FComponentPtr.Data.Component;
+end;
+
+function TSharedComponentPtr<T>.GetIsEmpty: boolean;
+begin
+  result := Value = nil;
+end;
+
+procedure TSharedComponentPtr<T>.SetValue(const Value: T);
+begin
+  if FComponentPtr = nil then
+    Init(Value)
+  else
+    FComponentPtr.Data.Component := Value;
+end;
+
+{ TWeakComponentPtr<T> }
+
+constructor TWeakComponentPtr<T>.Create(AValue: T);
+begin
+  Init(T);
+end;
+
+procedure TWeakComponentPtr<T>.Init(AValue: T);
+begin
+  FComponentPtr := TInterfacedObject<TSharedComponentPtrClass<T>>.Create(
+    TSharedComponentPtrClass<T>.Create(AValue, True)
+  );
+end;
+
+function TWeakComponentPtr<T>.Copy: TWeakComponentPtr<T>;
+begin
+  if FComponentPtr = nil then
+    Init(nil);
+  result := Self;
+end;
+
+procedure TWeakComponentPtr<T>.Clear;
+begin
+  FComponentPtr := nil;
+end;
+
+function TWeakComponentPtr<T>.GetValue: T;
+begin
+  if FComponentPtr = nil then
+    result := nil
+  else
+    result := FComponentPtr.Data.Component;
+end;
+
+function TWeakComponentPtr<T>.GetIsEmpty: boolean;
+begin
+  result := Value = nil;
+end;
+
+procedure TWeakComponentPtr<T>.SetValue(const Value: T);
+begin
+  if FComponentPtr = nil then
+    Init(Value)
+  else
+    FComponentPtr.Data.Component := Value;
+end;
+
 end.
-
-

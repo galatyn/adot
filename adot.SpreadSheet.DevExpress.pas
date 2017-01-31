@@ -19,6 +19,7 @@ uses
   dxSpreadSheetStrs,
   dxSpreadSheetTypes,
   dxOLECryptoContainer,
+  dxHashUtils,
   dxSpreadSheetPrinting,
   dxSpreadSheetFormatCSV,
   System.Classes,
@@ -298,8 +299,12 @@ begin
     dfCurrency    : Dst.Style.DataFormat.FormatCodeID := $4; { #,##0.00 (see TdxSpreadSheetCustomDataFormat.FormatCodeID) }
     dfFloatNumber : Dst.Style.DataFormat.FormatCodeID := $0; { GENERAL (see TdxSpreadSheetCustomDataFormat.FormatCodeID) }
     dfIntNumber   : Dst.Style.DataFormat.FormatCodeID := $0;
-    dfDateTime    : Dst.Style.DataFormat.FormatCodeID := $0;
-    dfDate        : Dst.Style.DataFormat.FormatCodeID := $0;
+    dfDateTime    : Dst.Style.DataFormat.FormatCodeID := $16;
+//      if not (Dst.Style.DataFormat.FormatCodeID in [$0e+1..$16, $2d..$2f]) then
+//        Dst.Style.DataFormat.FormatCodeID := $16;
+    dfDate        : Dst.Style.DataFormat.FormatCodeID := $0e;
+//      if not (Dst.Style.DataFormat.FormatCodeID in [$0e..$16-1, $2d..$2f]) then
+//        Dst.Style.DataFormat.FormatCodeID := $0e;
     dfBoolean     : Dst.Style.DataFormat.FormatCodeID := $0;
     dfString      :
       if Src.PreserveStringType then

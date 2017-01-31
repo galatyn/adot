@@ -370,6 +370,7 @@ type
     class procedure Parse(const AText: string; var ADst: TArray<String>); overload;
     class procedure Parse(const AText: string; var ADst: TArray<TTokenPos>); overload;
     class procedure Parse(const AText: string; const ADelimiter: string; var ADst: string); overload;
+    class function  Parse(const AText: string): string; overload;
 
     { Parse text and find number of tokens }
     property TokenCount: integer read GetTokenCount;
@@ -1606,11 +1607,11 @@ begin
         else
           cost := 1;
         if flip then
-          buf[j] := TFun.min3((buf[cuthalf + j] + 1),
+          buf[j] := TFun.min((buf[cuthalf + j] + 1),
             (buf[j - 1] + 1),
             (buf[cuthalf + j - 1] + cost))
         else
-          buf[cuthalf + j] := TFun.min3((buf[j] + 1),
+          buf[cuthalf + j] := TFun.min((buf[j] + 1),
             (buf[cuthalf + j - 1] + 1),
             (buf[j - 1] + cost));
       end;
@@ -2247,6 +2248,11 @@ begin
   finally
     T.Free;
   end;
+end;
+
+class function TTokCustom.Parse(const AText: string): string;
+begin
+  Parse(AText, '', result);
 end;
 
 { TTokCompound }
@@ -3333,7 +3339,7 @@ end;
 procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
 begin
   if Capacity < MinCapacity then
-    Capacity := TFun.Max3(MinCapacity, Capacity shl 1, 32);
+    Capacity := TFun.Max(MinCapacity, Capacity shl 1, 32);
 end;
 
 procedure TStringBuffer.Clear;

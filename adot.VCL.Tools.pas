@@ -77,11 +77,11 @@ type
        MVA := TMDIHelper<TMVAAvstemmingForm>.FindMDIChild;
      end; }
   { FindMDIChild etc }	 
-  TMDIHelper<T: class> = class
+  TMDIHelper = class
   public
-    class function FindMDIChild(ParentForm:TForm; BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
-    class function FindMDIChild(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
-    class function MdiClientArea(ScreenCoordinates: boolean): TRect; static;
+    class function FindMDIChild<T: TCustomForm>(ParentForm: TForm; BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T; overload; static;
+    class function FindMDIChild<T: TCustomForm>(BringToFront: Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil): T; overload; static;
+    class function MdiClientArea(MainForm: TForm; ScreenCoordinates: boolean): TRect; static;
   end;
 
   { Get all "executable" components of form (TMenu/TAction/...).
@@ -231,7 +231,7 @@ uses
 
 { MDIHelper }
 
-class function TMDIHelper<T>.FindMDIChild(ParentForm: TForm; BringToFront: Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil): T;
+class function TMDIHelper.FindMDIChild<T>(ParentForm: TForm; BringToFront: Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil): T;
 var
   I: integer;
 begin
@@ -249,25 +249,26 @@ begin
   result := nil;
 end;
 
-class function TMDIHelper<T>.FindMDIChild(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T;
+class function TMDIHelper.FindMDIChild<T>(BringToFront : Boolean = True; Sjekk: TFunc<TForm,Boolean> = nil):T;
 begin
-  Result := FindMDIChild(Application.MainForm, BringToFront, Sjekk);
+  Result := FindMDIChild<T>(Application.MainForm, BringToFront, Sjekk);
 end;
 
-class function TMDIHelper<T>.MdiClientArea(ScreenCoordinates: boolean): TRect;
+class function TMDIHelper.MdiClientArea(MainForm: TForm; ScreenCoordinates: boolean): TRect;
 var
-  Frm: TForm;
-  Ptn: TPoint;
+  P1,P2: TPoint;
 begin
-  Frm := Application.MainForm;
-  if (Frm = nil) or not Winapi.Windows.GetClientRect(Frm.ClientHandle, Result) then
-    result := TRect.Empty
-  else
+  if (MainForm = nil) or not Winapi.Windows.GetClientRect(MainForm.ClientHandle, Result) then
+    Exit(TRect.Empty);
+  P1 := TPoint.Create(0,0);
+  Winapi.Windows.ClientToScreen(MainForm.ClientHandle, P1);
   if ScreenCoordinates then
+    result.Offset(P1.X, P1.Y)
+  else
   begin
-    Ptn := TPoint.Create(0,0);
-    Winapi.Windows.ClientToScreen(Frm.ClientHandle, Ptn);
-    result.Offset(Ptn.X, Ptn.Y);
+    P2 := TPoint.Create(0,0);
+    Winapi.Windows.ClientToScreen(MainForm.Handle, P2);
+    result.Offset(P1.X-P2.X, P1.Y-P2.Y);
   end;
 end;
 

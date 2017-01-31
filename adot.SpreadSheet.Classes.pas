@@ -563,7 +563,7 @@ begin
     xevtFloat    : result := FValueOther.ValueDouble;
     xevtCurrency : result := FValueOther.ValueCurrency;
     xevtDateTime : result := FValueOther.ValueDateTime;
-    xevtDate     : result := FValueOther.ValueDate;
+    xevtDate     : result := TDateTime(FValueOther.ValueDate); { TDate is converted as number, so we convert to TDateTime }
     xevtString   : result := FValueString;
     xevtFormula  : result := FValueString;
     else raise Exception.Create('Error');
@@ -632,6 +632,8 @@ begin
 end;
 
 procedure TXLSCell.SetAsVariant(const Value: variant);
+var
+  DateTimeValue: TDateTime;
 begin
   case VarType(Value) of
     varSmallInt : AsInteger  := TVar.ToIntegerDef(Value, 0);
@@ -639,7 +641,14 @@ begin
     varSingle   : AsFloat    := TVar.ToFloatDef(Value, 0);
     varDouble   : AsFloat    := TVar.ToFloatDef(Value, 0);
     varCurrency : AsCurrency := TVar.ToCurrencyDef(Value, 0);
-    varDate     : AsDateTime := TVar.ToDateTimeDef(Value, 0);
+    varDate:
+      begin
+        DateTimeValue := TVar.ToDateTimeDef(Value, 0);
+        if Trunc(DateTimeValue)=DateTimeValue then
+          AsDate := DateTimeValue
+        else
+          AsDateTime := DateTimeValue;
+      end;
     varOleStr   : AsString   := TVar.ToStringDef(Value, '');
     varDispatch : IsNull     := True;
     varError    : IsNull     := True;
