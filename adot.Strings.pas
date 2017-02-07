@@ -114,12 +114,24 @@ type
         etDigitsToEnd  { group digits at end : 'a5.7b2012c' -> 'a.bc572012'         }
       );
 
+      TSplitOptions = record
+      public
+        MaxStrLen: integer;
+        AllowWordToExceedMaxLen: boolean;
+
+        procedure Init;
+        class function Create: TSplitOptions; static;
+      end;
+
   private
     {$IFNDEF NoCaseMap}
     class var
       FLoCaseMap: array[Char] of Char;
       FHiCaseMap: array[Char] of Char;
     {$ENDIF}
+    class var
+      FOrdinalComparerTrimText: IComparer<String>;
+      FOrdinalComparerAsInt: IComparer<String>;
 
     class function LevensteinDistance(s, t: string): integer; static;
     class function SubstringDistance(const a, b: String; var Dist: integer): Boolean; static;
@@ -137,6 +149,7 @@ type
 
     { concatanate not empty values from Src }
     class function Concat(const Src: array of string; Delimeter: string = ' '): string; overload; static;
+    class function Concat(Src: TVector<string>; Delimeter: string = ' '): string; overload; static;
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
@@ -144,6 +157,10 @@ type
 
     { returns new string where all specified chars replaced by string }
     class function Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string; static;
+
+    { split text into lines of fixed length with transfering words and punctuation }
+    class function Split(const Src: string; MaxStrLen: integer = 80): TArray<string>; overload; static;
+    class function Split(const Src: string; const Options: TSplitOptions): TArray<string>; overload; static;
 
     { returns new string where all specified chars are deleted }
     class function Remove(const Src: string; CharsToDelete: TSet<Char>): string; static;
@@ -153,8 +170,16 @@ type
     class function SameText(const A: string; const B: array of string): Boolean; overload;
     class function SameText(A,B: PChar; Len: integer): Boolean; overload;
     class function SameTrimText(const A,B: string): Boolean; overload;
+
+    class function CompareStrings(const A,B: string): integer; overload;
     class function CompareText(const A,B: string): integer; overload;
     class function CompareTrimText(const A,B: string): integer; overload;
+    class function CompareAsInt(const A,B: string): integer; overload;
+
+    class function ComparerStrings: IComparer<String>; overload;
+    class function ComparerText: IComparer<String>; overload;
+    class function ComparerTrimText: IComparer<String>; overload;
+    class function ComparerAsInt: IComparer<String>; overload;
 
     class function LowerCaseChar(C: Char): Char; static;
     class function UpperCaseChar(C: Char): Char; static;
@@ -206,8 +231,8 @@ type
     { General function for escaping special characters. To be more precise it is allowed to escape
       any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
         Escape( 'key=value', '=' ) = 'key\3D00value' }
-    class function Escape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
-    class function Unescape(const Value: string; const EscapeChar: Char = '\'): string; static;
+    class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
+    class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
 
     { Returns max possible encoded substring for specified bufer. }
     class function GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes; static;
@@ -488,6 +513,21 @@ type
     procedure Reset(const AText: string); overload;
     procedure Reset(const AText: string; AStart,ALen: integer); overload;
     procedure Reset(const AText: PChar; ALen: integer); overload;
+  end;
+
+  TTokText = class(TTokCustomText)
+  public
+    type
+      TTextTokenType = (tttWord, tttPunctuation);
+
+  protected
+    FLastTokenType: TTextTokenType;
+
+    function FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean; override;
+
+  public
+
+    property LastTokenType: TTextTokenType read FLastTokenType;
   end;
 
   { Custom function to extract specific tokens from the text }
@@ -779,6 +819,20 @@ type
 
 implementation
 
+{ TStr.TSplitOptions }
+
+class function TStr.TSplitOptions.Create: TSplitOptions;
+begin
+  result.Init;
+end;
+
+procedure TStr.TSplitOptions.Init;
+begin
+  Self := Default(TStr.TSplitOptions);
+  MaxStrLen := 80;
+  AllowWordToExceedMaxLen := False;
+end;
+
 { TStr }
 
 class function TStr.Concat(const Src: array of string; Delimeter: string): string;
@@ -794,14 +848,16 @@ begin
         result := result + Delimeter + Src[i];
 end;
 
-class function TStr.CompareText(const A, B: string): integer;
+class function TStr.Concat(Src: TVector<string>; Delimeter: string): string;
+var
+  i: Integer;
 begin
-  result := AnsiCompareText(A, B);
-end;
-
-class function TStr.CompareTrimText(const A, B: string): integer;
-begin
-  result := CompareText(Trim(A), Trim(B));
+  result := '';
+  for i := 0 to Src.Count-1 do
+    if Src[i]<>'' then
+      if result=''
+        then result := Src[i]
+        else result := result + Delimeter + Src[i];
 end;
 
 class function TStr.Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string;
@@ -822,7 +878,68 @@ begin
         result := result + Delimeter + Src[i];
 end;
 
-class function TStr.Escape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
+class function TStr.CompareAsInt(const A, B: string): integer;
+var
+  AI,BI: int64;
+begin
+  if TryStrToInt64(A, AI) and TryStrToInt64(B, BI) then
+  begin
+    if AI < BI then Result := -1 else
+    if AI > BI then Result := 1 else
+    Result := 0;
+  end
+  else
+    result := CompareText(A, B);
+end;
+
+class function TStr.ComparerAsInt: IComparer<String>;
+begin
+  if FOrdinalComparerAsInt = nil then
+    FOrdinalComparerAsInt := TDelegatedComparer<String>.Create(
+      function (const A,B: string): integer
+      begin
+        result := CompareAsInt(A, B);
+      end);
+  result := FOrdinalComparerAsInt;
+end;
+
+class function TStr.ComparerStrings: IComparer<String>;
+begin
+  result := TStringComparer.Ordinal;
+end;
+
+class function TStr.ComparerText: IComparer<String>;
+begin
+  result := TIStringComparer.Ordinal;
+end;
+
+class function TStr.ComparerTrimText: IComparer<String>;
+begin
+  if FOrdinalComparerTrimText = nil then
+    FOrdinalComparerTrimText := TDelegatedComparer<String>.Create(
+      function (const A,B: string): integer
+      begin
+        result := CompareTrimText(A, B);
+      end);
+  result := FOrdinalComparerTrimText;
+end;
+
+class function TStr.CompareStrings(const A,B: string): integer;
+begin
+  result := AnsiCompareStr(A, B);
+end;
+
+class function TStr.CompareText(const A, B: string): integer;
+begin
+  result := AnsiCompareText(A, B);
+end;
+
+class function TStr.CompareTrimText(const A, B: string): integer;
+begin
+  result := CompareText(Trim(A), Trim(B));
+end;
+
+class function TStr.HexEscape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
 var
   S: TSet<Char>;
   I: Integer;
@@ -842,7 +959,7 @@ begin
       result := result + EscapeChar + THex.Encode(Value.Chars[I]);
 end;
 
-class function TStr.Unescape(const Value: string; const EscapeChar: Char): string;
+class function TStr.HexUnescape(const Value: string; const EscapeChar: Char): string;
 var
   I: Integer;
 begin
@@ -1386,6 +1503,123 @@ begin
   end;
 end;
 
+class function TStr.Split(const Src: string; MaxStrLen: integer): TArray<string>;
+var
+  Options: TSplitOptions;
+begin
+  Options.Init;
+  Options.MaxStrLen := MaxStrLen;
+  result := Split(Src, Options);
+end;
+
+class function TStr.Split(const Src: string; const Options: TSplitOptions): TArray<string>;
+var
+  Parser: TTokText;
+  Tokens: TVector<TCompound<TTokenPos, TTokText.TTextTokenType>>;
+  Pair: TCompound<TTokenPos, TTokText.TTextTokenType>;
+  Buf: TStringBuffer;
+  Res: TVector<string>;
+  I,J,N,L: integer;
+begin
+  if Options.MaxStrLen <= 0 then
+  begin
+    if Options.AllowWordToExceedMaxLen then
+    begin
+      SetLength(result, 1);
+      result[0] := Src
+    end
+    else
+      SetLength(result, 0);
+    Exit;
+  end;
+
+  Parser := TTokText.Create(Src);
+  try
+    Pair := Default(TCompound<TTokenPos, TTokText.TTextTokenType>);
+    Tokens.Clear;
+    while Parser.Next(Pair.A) do
+    begin
+      Pair.B := Parser.LastTokenType;
+      Tokens.Add(Pair);
+    end;
+  finally
+    Sys.FreeAndNil(Parser);
+  end;
+
+  Buf.Clear;
+  Res.Clear;
+  I := 0;
+  while I < Tokens.Count do
+  begin
+    Pair := Tokens[I];
+
+    if Pair.B = tttWord then
+    begin
+
+      { number of punctuation chars following the word }
+      N := 0;
+      L := 0;
+      for J := I+1 to Tokens.Count-1 do
+        if Tokens[J].B <> tttPunctuation then
+          break
+        else
+        begin
+          inc(N);
+          inc(L, Tokens[J].A.Len);
+        end;
+
+      { if word + punctuation is too long for single line }
+      if Pair.A.Len + L > Options.MaxStrLen then
+      begin
+        if Buf.Size > 0 then begin Res.Add(Buf.Text); Buf.Clear; end;
+        if Options.AllowWordToExceedMaxLen then
+        begin
+          for J := I to I+N do
+            Buf.Write(Parser[Tokens[J].A]);
+          inc(I, N);
+        end
+        else
+        begin
+          while Pair.A.Len > Options.MaxStrLen do
+          begin
+            Res.Add(Src.Substring(Pair.A.Start, Options.MaxStrLen));
+            inc(Pair.A.Start, Options.MaxStrLen);
+            dec(Pair.A.Len, Options.MaxStrLen);
+          end;
+          Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+        end;
+      end
+      else
+      { if word + punctuation is small enough to fit a line }
+      begin
+        if Buf.Size + Ifthen(Buf.Size=0,0,1) + Pair.A.Len + N > Options.MaxStrLen then
+          begin Res.Add(Buf.Text); Buf.Clear; end;
+        if Buf.Size > 0 then
+          Buf.Write(' ');
+        for J := I to I+N do
+        begin
+          Pair := Tokens[J];
+          Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+        end;
+        inc(I, N);
+      end;
+    end
+    else
+    begin
+      { tttPunctuation }
+      if Buf.Size + Pair.A.Len > Options.MaxStrLen then
+        begin Res.Add(Buf.Text); Buf.Clear; end;
+      Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+    end;
+
+    inc(I);
+  end;
+
+  if Buf.Size > 0 then
+    Res.Add(Buf.Text);
+  result := Res.ToArray;
+end;
+
 class procedure TStr.TextToLines(const Text: string; Dst: TStrings; AClear: boolean = True);
 begin
   if AClear then
@@ -1886,6 +2120,44 @@ begin
   Res.Len        := T;
   result         := Res.Delimiters+Res.Len>0;
 end; *)
+
+{ TTokText }
+
+function TTokText.FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean;
+var
+  D,T: Integer;
+begin
+  D := 0;
+  while (Len > 0) and Text^.IsWhiteSpace do
+  begin
+    Inc(Text);
+    Dec(Len);
+    inc(D);
+  end;
+  T := 0;
+  if Len > 0 then
+    if Text^.IsLetter then
+    begin
+      FLastTokenType := tttWord;
+      while (Len > 0) and Text^.IsLetter do
+      begin
+        Inc(Text);
+        Dec(Len);
+        inc(T);
+      end
+    end
+    else
+    begin
+      FLastTokenType := tttPunctuation;
+      inc(T);
+    end;
+  result := T > 0;
+  if result then
+  begin
+    Res.DelimitersPrefix := D;
+    Res.Len := T;
+  end;
+end;
 
 { TTokDelegated }
 
