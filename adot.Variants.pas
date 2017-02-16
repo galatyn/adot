@@ -30,17 +30,19 @@ type
 
   { Utils/helpers for variant type (set of functions ToType/ToTypeDef/TryToType etc) }
   TVar = class
-  private
-    class function VarTypeIsBoolean(const AVarType: TVarType): Boolean; static;
   public
     class function IsArray(const v: variant): boolean; static;
     class function IsRef(const v: variant): boolean;
     class function IsArrayOrRef(const v: variant): boolean;
+
     class function IsStr(const v: variant): boolean;
     class function IsDateTime(const v: variant): boolean;
-    class function IsBoolean(const v: variant): boolean;
     class function IsNumeric(const v: variant): boolean;
     class function IsInteger(const v: variant): boolean;
+    class function IsBoolean(const v: variant): boolean;
+
+    class function IsNull(const V: variant): Boolean;
+    class function IsEmpty(const V: variant): Boolean; { Null, Unassigned }
 
     { simple conversion (raises exception in case of errors) }
     class function ToInteger(const Src: variant): int64; static;
@@ -75,8 +77,6 @@ type
     class function ToDateTimeDef(const Src: variant; const Default: TDateTime = 0): TDateTime; static;
 
     class function VarOrArrayToStr(const V: variant; const ArrElemDelimeter: string = #13#10): string; static;
-    class function IsEmpty(const V: variant): Boolean; { Null, Unassigned }
-    class function VarIsBoolean(const Src: variant): boolean; static;
     class function GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean; overload;
     class function GetArrayBounds(const DataArray: Variant; var ALow1,AHigh1,ALow2,AHigh2: Integer): boolean; overload;
   end;
@@ -656,7 +656,7 @@ class function TVar.ToBoolean(const Src: variant): boolean;
 var
   S: string;
 begin
-  if VarIsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
+  if IsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
     result := Src
   else
   if VarIsStr(Src) then
@@ -766,14 +766,9 @@ begin
     result := Default;
 end;
 
-class function TVar.VarTypeIsBoolean(const AVarType: TVarType): Boolean;
+class function TVar.IsBoolean(const v: variant): boolean;
 begin
-  Result := AVarType = varBoolean;
-end;
-
-class function TVar.VarIsBoolean(const Src: variant): boolean;
-begin
-  Result := VarTypeIsBoolean(FindVarData(Src)^.VType);
+  result := (VarType(v) and varTypeMask)=varBoolean;
 end;
 
 class function TVar.TryToBoolean(const Src: variant; out Dst: boolean): boolean;
@@ -783,7 +778,7 @@ begin
   try
     result := not IsEmpty(Src);
     if result then
-      if VarIsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
+      if IsBoolean(Src) then { VarIsNumeric returns True for varBoolean type, so we check it first }
         Dst := Src
       else
       if VarIsStr(Src) then
@@ -961,14 +956,14 @@ begin
   result := VarType(v) and (varArray or varByRef)<>0;
 end;
 
-class function TVar.IsBoolean(const v: variant): boolean;
-begin
-  result := (VarType(v) and varTypeMask)=varBoolean;
-end;
-
 class function TVar.IsDateTime(const v: variant): boolean;
 begin
   result := VarType(v) and varTypeMask = varDate;
+end;
+
+class function TVar.IsNull(const V: variant): Boolean;
+begin
+  result := VarIsNull(v);
 end;
 
 class function TVar.IsEmpty(const V: variant): Boolean;
@@ -996,16 +991,34 @@ end;
 
 class function TVar.GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean;
 begin
-  ALow  := VarArrayLowBound (DataArray, 1);
-  AHigh := VarArrayHighBound(DataArray, 1);
+  result := IsArray(DataArray);
+  if result then
+    try
+      ALow  := VarArrayLowBound (DataArray, 1);
+      AHigh := VarArrayHighBound(DataArray, 1);
+    except
+      result := false;
+      ALow := 0;
+      AHigh := -1;
+    end;
 end;
 
 class function TVar.GetArrayBounds(const DataArray: Variant; var ALow1, AHigh1, ALow2, AHigh2: Integer): boolean;
 begin
-  ALow1  := VarArrayLowBound (DataArray, 1);
-  AHigh1 := VarArrayHighBound(DataArray, 1);
-  ALow2  := VarArrayLowBound (DataArray, 2);
-  AHigh2 := VarArrayHighBound(DataArray, 2);
+  result := IsArray(DataArray);
+  if result then
+    try
+      ALow1  := VarArrayLowBound (DataArray, 1);
+      AHigh1 := VarArrayHighBound(DataArray, 1);
+      ALow2  := VarArrayLowBound (DataArray, 2);
+      AHigh2 := VarArrayHighBound(DataArray, 2);
+    except
+      result := false;
+      ALow1  := 0;
+      AHigh1 := -1;
+      ALow2  := 0;
+      AHigh2 := -1;
+    end;
 end;
 
 { TVarArray.TDimEnumerator }
