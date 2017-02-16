@@ -15,6 +15,7 @@ uses
   MsCxTools,
   Excel2000,
   Vcl.Graphics,
+  Vcl.Dialogs,
   Winapi.ActiveX,
   Winapi.Windows,
   System.Classes,
@@ -89,7 +90,8 @@ type
     procedure ExportToNewWorkbook(var App: TExcelApplication; var WorkBook: _Workbook; ShowBook: boolean);
 
     procedure DoSaveToStream(Dst: TStream; const FileType: string); override;
-    function DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus; override;
+    function DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus; override;
+    function DoOpenDataInApp: boolean; override;
 
     { should not be used for import, load is not supported yet}
     procedure DoLoadFromStream(Src: TStream); override;
@@ -156,18 +158,44 @@ begin
   end;
 end;
 
-function TXLSExportExcelOle.DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
+function TXLSExportExcelOle.DoOpenDataInApp: boolean;
 var
   App: TExcelApplication;
   WorkBook: _Workbook;
 begin
+  WorkBook := nil;
+  App := nil;
+  try
+    ExportToNewWorkbook(App, WorkBook, True);
+    result := True;
+  finally
+    WorkBook := nil;
+    FreeAndNil(App);
+  end;
+end;
+
+function TXLSExportExcelOle.DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus;
+var
+  App: TExcelApplication;
+  WorkBook: _Workbook;
+  D: TSaveDialog;
+begin
   App := nil;
   WorkBook := nil;
   try
-    ExportToNewWorkbook(App, WorkBook, True);
-    {WorkBook.SaveAs(FileName, xlDefaultAutoFormat, null, null, null, null, null, null, null, cp_xxx, null, LOCALE_USER_DEFAULT);}
-    FileName := '';
-    result := ssOpened;
+    if xsfSaveDialog in Options then
+    begin
+      D := GetSaveDialog(ChangeFileExt(FileName, ''));
+      if D.Execute
+        then FileName := D.FileName
+        else Exit(ssCanceled);
+    end;
+    ExportToNewWorkbook(App, WorkBook, xsfOpenAfterSave in Options);
+    WorkBook.SaveCopyAs(FileName, CP_ACP);
+    if xsfOpenAfterSave in Options then
+      result := ssOpened
+    else
+      result := ssSaved;
   finally
     WorkBook := nil;
     FreeAndNil(App);
@@ -181,7 +209,7 @@ var
 begin
   TempFileName := IncludeTrailingPathDelimiter(TPath.GetTempPath) + TGUIDUtils.GetNewAsString + FileType;
   try
-    DoSaveToFile(TempFileName, False);
+    DoSaveToFile(TempFileName, []);
     Stream := TFileStream.Create(TempFileName, fmOpenRead);
     try
       Dst.CopyFrom(Stream, Stream.Size);
@@ -393,9 +421,11 @@ end;
 
 function TXLSExportExcelOle.GetExcelNumberFormat(App: TExcelApplication): String;
 begin
-  Result := Format('#%s##0', [
+  { default format for numbers }
+  Result := '';
+  {Result := Format('#%s##0', [
     App.International[xlThousandsSeparator, LOCALE_USER_DEFAULT]
-  ]);
+  ]);}
 end;
 
 function TXLSExportExcelOle.GetExcelMoneyFormat(App: TExcelApplication): String;

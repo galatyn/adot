@@ -28,6 +28,7 @@ uses
   System.Generics.Defaults,
   System.Types,
   System.Character,
+  Vcl.Dialogs,
   Vcl.Graphics;
 
 type
@@ -96,10 +97,10 @@ type
     procedure SetExcelCellFormat(Src: TXLSCell; Dst: TdxSpreadSheetCell);
 
     procedure DoSaveToStream(Dst: TStream; const FileType: string); override;
-    { Basic class has implementation of DoSaveToFile via DoSaveToStream.
-    procedure DoSaveToFile(const FileName: string; ShowSaveDialog: Boolean); override;}
+    function DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus; override;
     procedure DoLoadFromStream(Src: TStream); override;
     { we override LoadFromFile to avoid format detection by file content (it is bit faster to check just ext) }
+    function DoOpenDataInApp: boolean; override;
     procedure DoLoadFromFile(const FileName: string); override;
     procedure DoPrint(const Options: TXLSPrintOptions); override;
 
@@ -127,6 +128,28 @@ begin
     FreeAndNil(SpreadSheet);
   end;
 end;}
+
+function TXLSExportDevExpress.DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus;
+var
+  AutofreeCollection: TAutofreeCollection;
+  MemStream: TMemoryStream;
+  SaveDialog: TSaveDialog;
+begin
+  MemStream := AutofreeCollection.Add( TMemoryStream.Create );
+  if xsfSaveDialog in Options then
+  begin
+    SaveDialog := AutofreeCollection.Add( GetSaveDialog(ChangeFileExt(FileName, '')) );
+    if SaveDialog.Execute
+      then FileName := SaveDialog.FileName
+      else Exit(ssCanceled);
+  end;
+  SaveToStream(MemStream, Trim(ExtractFileExt(FileName)));
+  MemStream.SaveToFile(FileName);
+  if (xsfOpenAfterSave in Options) and Assigned(TXlsBook.OpenFileProc) and OpenFileProc(FileName) then
+    result := ssOpened
+  else
+    result := ssSaved;
+end;
 
 procedure TXLSExportDevExpress.DoSaveToStream(Dst: TStream; const FileType: string);
 var
@@ -548,6 +571,11 @@ begin
   finally
     Sys.FreeAndNil(SpreadSheet);
   end;
+end;
+
+function TXLSExportDevExpress.DoOpenDataInApp: boolean;
+begin
+  result := False;
 end;
 
 procedure TXLSExportDevExpress.DoPrint(const Options: TXLSPrintOptions);

@@ -293,32 +293,40 @@ type
     ssCanceled   { Operation has canceled (by user or from registered event listener).             }
   );
 
+  TXlsSaveFileOption = (
+    xsfSaveDialog,         { show dialog to select filename / folder }
+    xsfOpenAfterSave       { try to open saved file (usually it will call ShellExecute to open in registered app) }
+  );
+  TXlsSaveFileOptions = set of TXlsSaveFileOption;
+
+
   TXlsBookEvent = record
   private
     FEventType: TXlsBookEventType;
     FData: string;
     FBook: TXLSBook;
     FSaveStatus: TSaveStatus;
+    FOptions: TXlsSaveFileOptions;
   public
-    constructor Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus);
+    constructor Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus;
+      AOptions: TXlsSaveFileOptions);
 
     property EventType: TXlsBookEventType read FEventType write FEventType;
     property Data: string read FData write FData;
     property SaveStatus: TSaveStatus read FSaveStatus write FSaveStatus;
     property Book: TXLSBook read FBook write FBook;
+    property Options: TXlsSaveFileOptions read FOptions;
   end;
 
   TXlsBookEventProc = reference to procedure(const Event: TXlsBookEvent; var Cancel: boolean);
+  TXlsOpenFileProc = reference to function(const Filename: string): boolean;
 
   { Basic class to import/export (or both). Use CreateExporter from FellesKlasser.SpreadSheet.Export.pas to create instance. }
   TXLSBook = class abstract
   private
     class var
-      FEventsListenersIdCnt: int64;
-      FEventsListeners: TDictionary<int64, TXlsBookEventProc>;
+      FOpenFileProc: TXlsOpenFileProc;
 
-    class function SendEvent(const Event: TXlsBookEvent): boolean; static;
-    class destructor Destroy;
   protected
     FAutoFreeCollection: TAutoFreeCollection;
     FSheetMap: TMap<string, TXLSSheet>;
@@ -326,7 +334,6 @@ type
     FCellDefaults: TXLSCellDefaults;
     FActiveSheetIndex: integer;
     FPassword: string;
-    FLockStreamEvents: integer;
 
     { Must be implemented by descendents }
     class function DoIsPasswordProtected(const SpreadsheetFileName: string): boolean; virtual; abstract;
@@ -334,7 +341,8 @@ type
     procedure DoSaveToStream(Dst: TStream; const FileType: string = '.xlsx'); virtual; abstract;
     procedure DoLoadFromStream(Src: TStream); virtual; abstract;
 
-    function DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus; virtual;
+    function DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus; virtual;
+    function DoOpenDataInApp: boolean; virtual; abstract;
     procedure DoLoadFromFile(const FileName: string); virtual;
     procedure DoPrint(const Options: TXLSPrintOptions); virtual; abstract;
 
@@ -356,15 +364,24 @@ type
     procedure RemoveSheet(const SheetName: string);
 
     procedure SaveToStream(Dst: TStream; const FileType: string = '.xlsx');
-    function SaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
+
+    { Options:
+        xsfSaveDialog    - show dialog to select filename / folder
+        xsfOpenAfterSave - try to open file after save (ShellExecute or similar) }
+    function SaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus; overload;
+    procedure SaveToFile(const FileName: string); overload;
+
+    { Open data in corresponding app. Only "Excel over OLE" supports it. }
+    function OpenDataInApp: boolean;
+
+    { try OpenInApp, if fails then try SaveToFile }
+    function ExportData(const DstFileName: string): boolean; overload;
+    function ExportData(const DstFileName: string; var ErrorMsg: string): boolean; overload;
+
     procedure LoadFromStream(Src: TStream);
     procedure LoadFromFile(const FileName: string);
 
     procedure Print(const Options: TXLSPrintOptions);
-
-    { global listeners, they will receive events from all instances/all implementations of TXlsBook }
-    class function AddEventsListener(Proc: TXlsBookEventProc): int64; static;
-    class procedure DelEventsListener(const ListenerId: int64); static;
 
     class function IsPasswordProtected(const SpreadsheetFileName: string): boolean;
     class function IsValidPassword(const SpreadsheetFileName,Password: string): boolean;
@@ -377,6 +394,8 @@ type
     property Password: string read FPassword write FPassword;
 
     property CellDefaults: TXLSCellDefaults read FCellDefaults;
+
+    class property OpenFileProc: TXlsOpenFileProc read FOpenFileProc write FOpenFileProc;
   end;
 
   TXlsFactory = class
@@ -1063,13 +1082,15 @@ end;
 
 { TXlsBookEvent }
 
-constructor TXlsBookEvent.Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus);
+constructor TXlsBookEvent.Create(ABook: TXLSBook; AEventType: TXlsBookEventType; const AData: string; Res: TSaveStatus;
+  AOptions: TXlsSaveFileOptions);
 begin
   Self := Default(TXlsBookEvent);
   Book := ABook;
   EventType := AEventType;
   Data := AData;
   SaveStatus := Res;
+  FOptions := AOptions;
 end;
 
 { TXLSBook }
@@ -1088,41 +1109,6 @@ begin
   FSheets.Clear;
   FCellDefaults.Clear;
   FActiveSheetIndex := -1;
-end;
-
-class function TXLSBook.SendEvent(const Event: TXlsBookEvent): boolean;
-var
-  P: TPair<int64, TXlsBookEventProc>;
-  Cancel: boolean;
-begin
-  result := True;
-  if FEventsListeners <> nil then
-    for P in FEventsListeners do
-    begin
-      Cancel := False;
-      P.Value(Event, Cancel);
-      result := result and not Cancel;
-    end;
-end;
-
-class function TXLSBook.AddEventsListener(Proc: TXlsBookEventProc): int64;
-begin
-  inc(FEventsListenersIdCnt);
-  result := FEventsListenersIdCnt;
-  if FEventsListeners = nil then
-    FEventsListeners := TDictionary<int64, TXlsBookEventProc>.Create;
-  FEventsListeners.Add(result, Proc);
-end;
-
-class procedure TXLSBook.DelEventsListener(const ListenerId: int64);
-begin
-  if FEventsListeners <> nil then
-    FEventsListeners.Remove(ListenerId);
-end;
-
-class destructor TXLSBook.Destroy;
-begin
-  FreeAndNil(FEventsListeners);
 end;
 
 function TXLSBook.CreateSheet(AIndex: integer): TXLSSheet;
@@ -1196,7 +1182,7 @@ begin
   Result.FileName := FileNameNoExt;
 end;
 
-function TXLSBook.DoSaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
+function TXLSBook.DoSaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus;
 var
   M: TMemoryStream;
   D: TSaveDialog;
@@ -1204,16 +1190,19 @@ begin
   result := ssCanceled;
   M := TMemoryStream.Create;
   try
-    if ShowSaveDialog then D := GetSaveDialog(ChangeFileExt(FileName, ''))
+    if xsfSaveDialog in Options
+      then D := GetSaveDialog(ChangeFileExt(FileName, ''))
       else D := nil;
     try
-      if ShowSaveDialog then
+      if xsfSaveDialog in Options then
         if D.Execute then
           FileName := D.FileName
         else
           Exit;
       SaveToStream(M, Trim(ExtractFileExt(FileName)));
       M.SaveToFile(FileName);
+      { We return ssSaved and application-specific handler will decide and open
+        the proper editor if necessary (see TXLSBook.AddEventsListener for details) }
       result := ssSaved;
     finally
       FreeAndNil(D);
@@ -1223,29 +1212,45 @@ begin
   end;
 end;
 
-function TXLSBook.SaveToFile(var FileName: string; ShowSaveDialog: Boolean): TSaveStatus;
+function TXLSBook.ExportData(const DstFileName: string; var ErrorMsg: string): boolean;
+var
+  Filename: string;
 begin
-  { internally may call SaveToStream }
-  inc(FLockStreamEvents);
   try
-    if SendEvent(TXlsBookEvent.Create(Self, xetBeforeSaveFile, FileName, ssUnknown)) then
-      result := DoSaveToFile(FileName, ShowSaveDialog)
-    else
-      result := ssCanceled;
-    SendEvent(TXlsBookEvent.Create(Self, xetAfterSaveFile, FileName, result));
-  finally
-    dec(FLockStreamEvents);
+    Filename := DstFileName;
+    result := OpenDataInApp or (SaveToFile(Filename, [xsfSaveDialog, xsfOpenAfterSave]) in [ssOpened, ssSaved]);
+  except
+    on e: Exception do
+    begin
+      ErrorMsg := e.Message;
+      result := False;
+    end;
   end;
+end;
+
+function TXLSBook.ExportData(const DstFileName: string): boolean;
+var
+  ErrorMsg: string;
+begin
+  result := ExportData(DstFileName, ErrorMsg);
+end;
+
+function TXLSBook.SaveToFile(var FileName: string; Options: TXlsSaveFileOptions): TSaveStatus;
+begin
+  result := DoSaveToFile(FileName, Options);
+end;
+
+procedure TXLSBook.SaveToFile(const FileName: string);
+var
+  s: string;
+begin
+  s := FileName;
+  DoSaveToFile(s, []);
 end;
 
 procedure TXLSBook.SaveToStream(Dst: TStream; const FileType: string);
 begin
-  if (FLockStreamEvents > 0) or SendEvent(TXlsBookEvent.Create(Self, xetBeforeSaveStream, FileType, ssUnknown)) then
-  begin
-    DoSaveToStream(Dst, FileType);
-    if FLockStreamEvents = 0 then
-      SendEvent(TXlsBookEvent.Create(Self, xetAfterSaveStream, FileType, ssSaved));
-  end;
+  DoSaveToStream(Dst, FileType);
 end;
 
 procedure TXLSBook.SetActiveSheetIndex(const Value: integer);
@@ -1276,6 +1281,11 @@ end;
 procedure TXLSBook.LoadFromStream(Src: TStream);
 begin
   DoLoadFromStream(Src);
+end;
+
+function TXLSBook.OpenDataInApp: boolean;
+begin
+  result := DoOpenDataInApp;
 end;
 
 procedure TXLSBook.Print(const Options: TXLSPrintOptions);

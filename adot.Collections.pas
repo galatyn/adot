@@ -1201,6 +1201,7 @@ type
     function GetEmpty: boolean;
     procedure SetOwnsValues(const Value: Boolean);
     function DoGetEnumerator: TEnumerator<T>; override;
+    function GetIsFull: boolean;
 
     type
       {# Enumerator for the ring (we inherit from TEnumerator to be comatible with TEnumerable) }
@@ -1232,6 +1233,7 @@ type
 
     { from tail }
     function Extract: T;
+    function ExtractTail: T;
     { from head }
     function ExtractHead: T;
 
@@ -1246,6 +1248,7 @@ type
     property ItemsFromHead[n: integer]:T read GetItemFromHead write SetItemFromHead; default; { from Head to Tail }
     property ItemsFromTail[n: integer]:T read GetItemFromTail write SetItemFromTail;          { from Tail to Head }
     property OwnsValues: Boolean read FOwnsValues write SetOwnsValues;
+    property IsFull: boolean read GetIsFull;
   end;
 
   { Based on TDictionary, but automatically deletes data if it take more space than allowed. }
@@ -6166,6 +6169,11 @@ begin
   FCount := 0;
 end;
 
+function TRingClass<T>.GetIsFull: boolean;
+begin
+  result := Count = Capacity;
+end;
+
 function TRingClass<T>.GetItemFromHead(n: integer): T;
 begin
   result := FValues.Items[(FHead + n) mod Capacity];
@@ -6282,6 +6290,12 @@ begin
 end;
 
 function TRingClass<T>.Extract: T;
+begin
+  result := ItemsFromTail[0];
+  Delete;
+end;
+
+function TRingClass<T>.ExtractTail: T;
 begin
   result := ItemsFromTail[0];
   Delete;
