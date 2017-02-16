@@ -519,7 +519,7 @@ type
   TTokText = class(TTokCustomText)
   public
     type
-      TTextTokenType = (tttWord, tttPunctuation);
+      TTextTokenType = (tttWord, tttPunctuation, tttWhitespace);
 
   protected
     FLastTokenType: TTextTokenType;
@@ -1539,10 +1539,11 @@ begin
     Pair := Default(TCompound<TTokenPos, TTokText.TTextTokenType>);
     Tokens.Clear;
     while Parser.Next(Pair.A) do
-    begin
-      Pair.B := Parser.LastTokenType;
-      Tokens.Add(Pair);
-    end;
+      if Parser.LastTokenType <> tttWhitespace then
+      begin
+        Pair.B := Parser.LastTokenType;
+        Tokens.Add(Pair);
+      end;
   finally
     Sys.FreeAndNil(Parser);
   end;
@@ -1572,7 +1573,8 @@ begin
       { if word + punctuation is too long for single line }
       if Pair.A.Len + L > Options.MaxStrLen then
       begin
-        if Buf.Size > 0 then begin Res.Add(Buf.Text); Buf.Clear; end;
+        if Buf.Size > 0 then
+          begin Res.Add(Buf.Text); Buf.Clear; end;
         if Options.AllowWordToExceedMaxLen then
         begin
           for J := I to I+N do
@@ -2131,36 +2133,44 @@ end; *)
 
 function TTokText.FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean;
 var
-  D,T: Integer;
+  T: Integer;
 begin
-  D := 0;
-  while (Len > 0) and Text^.IsWhiteSpace do
-  begin
-    Inc(Text);
-    Dec(Len);
-    inc(D);
-  end;
   T := 0;
   if Len > 0 then
-    if Text^.IsLetter then
+  begin
+    if Text[0].IsWhiteSpace then
     begin
-      FLastTokenType := tttWord;
-      while (Len > 0) and Text^.IsLetter do
-      begin
+      repeat
         Inc(Text);
         Dec(Len);
         inc(T);
-      end
+      until (Len=0) or not Text[0].IsWhiteSpace;
+      FLastTokenType := tttWhitespace;
+    end
+    else
+    if Text[0].IsPunctuation then
+    begin
+      repeat
+        Inc(Text);
+        Dec(Len);
+        inc(T);
+      until (Len=0) or not Text[0].IsPunctuation;
+      FLastTokenType := tttPunctuation;
     end
     else
     begin
-      FLastTokenType := tttPunctuation;
-      inc(T);
+      repeat
+        Inc(Text);
+        Dec(Len);
+        inc(T);
+      until (Len=0) or Text[0].IsPunctuation or Text[0].IsWhiteSpace;
+      FLastTokenType := tttWord;
     end;
+  end;
   result := T > 0;
   if result then
   begin
-    Res.DelimitersPrefix := D;
+    Res.DelimitersPrefix := 0;
     Res.Len := T;
   end;
 end;

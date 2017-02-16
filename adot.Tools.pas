@@ -116,7 +116,8 @@ uses
   System.Diagnostics,  { TStopwatch }
   System.SyncObjs,     { TInterlocked.* }
   System.Variants,
-  System.ZLib;
+  System.ZLib,
+  System.SysConst;
 
 type
 
@@ -357,6 +358,7 @@ type
   TDelegatedMemoryStream = class(TCustomMemoryStream)
   public
     constructor Create(Buf: pointer; Size: integer); overload;
+    procedure SetMemory(Buf: pointer; Size: integer);
     procedure SetSize(const NewSize: Int64); override;
     procedure SetSize(NewSize: Longint); override;
     function Write(const Buffer; Count: Longint): Longint; override;
@@ -384,6 +386,24 @@ type
     function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
 
     property Items: TArray<T> read FItems write SetItems;
+  end;
+
+  { Basic class for readonly streams. All Write/Seek methods will generate exception.}
+  TCustomReadOnlyStream = class(TStream)
+  protected
+    function GetSize: Int64; override;
+    procedure SetSize(NewSize: Longint); override;
+    procedure SetSize(const NewSize: Int64); override;
+  public
+    function Write(const Buffer; Count: Longint): Longint; override;
+    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
+    function Seek(Offset: Longint; Origin: Word): Longint; override;
+    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
+
+    { methods to be implemented in descendants }
+
+    //function Read(var Buffer; Count: Longint): Longint; override;
+    //function Read(Buffer: TBytes; Offset, Count: Longint): Longint; override;
   end;
 
   TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
@@ -1542,6 +1562,12 @@ constructor TDelegatedMemoryStream.Create(Buf: pointer; Size: integer);
 begin
   inherited Create;
   SetPointer(Buf, Size);
+end;
+
+procedure TDelegatedMemoryStream.SetMemory(Buf: pointer; Size: integer);
+begin
+  SetPointer(Buf, Size);
+  Position := 0;
 end;
 
 procedure TDelegatedMemoryStream.SetSize(NewSize: Integer);
@@ -4990,6 +5016,43 @@ begin
     Init(Value)
   else
     FComponentPtr.Data.Component := Value;
+end;
+
+{ TCustomReadOnlyStream }
+
+function TCustomReadOnlyStream.GetSize: Int64;
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+function TCustomReadOnlyStream.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+function TCustomReadOnlyStream.Seek(Offset: Integer; Origin: Word): Longint;
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+procedure TCustomReadOnlyStream.SetSize(const NewSize: Int64);
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+procedure TCustomReadOnlyStream.SetSize(NewSize: Integer);
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+function TCustomReadOnlyStream.Write(const Buffer; Count: Integer): Longint;
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+function TCustomReadOnlyStream.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
+begin
+  raise EAbstractError.CreateRes(@SAbstractError);
 end;
 
 end.

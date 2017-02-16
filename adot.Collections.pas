@@ -5500,7 +5500,7 @@ end;
 
 function TVector<T>.GetTotalSizeBytes: int64;
 begin
-  result := (High(Items)-Low(Length)+1)*SizeOf(T);
+  result := (High(Items)-Low(Items)+1)*SizeOf(T);
 end;
 
 procedure TVector<T>.SetLast(const Value: T);
