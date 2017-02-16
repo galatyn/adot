@@ -227,6 +227,7 @@ type
     class function Random(ALen: integer; const AChars: string): string; overload;
     class function Random(ALen: integer): string; overload;
     class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
+    class function Random: string; overload;
 
     { General function for escaping special characters. To be more precise it is allowed to escape
       any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
@@ -1938,6 +1939,11 @@ begin
       Integer(AFrom) +
       System.Random(Integer(ATo)-Integer(AFrom)+1)
     );
+end;
+
+class function TStr.Random: string;
+begin
+  result := TStr.Random(System.Random(20));
 end;
 
 { TTokenPos }
@@ -3959,3 +3965,4 @@ finalization
   TStr.FinalizeVars;
 
 end.
+
