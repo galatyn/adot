@@ -320,6 +320,9 @@ type
         We use Adler32, it's two times faster than Crc32 and still quite good. }
       Fastest = Adler32;
 
+    class function GetHash32(const Hash: TBytes): integer; static;
+    class function GetHash24(const Hash: TBytes): integer; static;
+    class function GetHash16(const Hash: TBytes): integer; static;
   end;
 
   TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
@@ -5053,6 +5056,50 @@ end;
 function TCustomReadOnlyStream.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
 begin
   raise EAbstractError.CreateRes(@SAbstractError);
+end;
+
+{ THashes }
+
+class function THashes.GetHash32(const Hash: TBytes): integer;
+begin
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      (integer(Hash[0]) shl 24) or
+      (integer(Hash[1]) shl 16) or
+      (integer(Hash[2]) shl  8) or
+      (integer(Hash[3]))
+  else
+    result := GetHash32(CRC32.Encode(Hash,0,Length(Hash)));
+end;
+
+class function THashes.GetHash24(const Hash: TBytes): integer;
+begin
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      (integer(Hash[0]) shl 16) or
+      (integer(Hash[1]) shl  8) or
+      (integer(Hash[2]) xor integer(Hash[3]))
+  else
+    result := GetHash24(CRC32.Encode(Hash,0,Length(Hash)));
+end;
+
+class function THashes.GetHash16(const Hash: TBytes): integer;
+begin
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      ((integer(Hash[0]) xor integer(Hash[1])) shl 8) or
+      (integer(Hash[2]) xor integer(Hash[3]))
+  else
+    result := GetHash16(CRC32.Encode(Hash,0,Length(Hash)));
 end;
 
 end.
