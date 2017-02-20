@@ -1528,35 +1528,60 @@ type
       end;
 
   protected
-    var
-      FFirst: PDoublyLinkedListItem;
-      FLast:  PDoublyLinkedListItem;
-      FCount: integer;
-      FOwnsValues: boolean;
+    FFront: PDoublyLinkedListItem;
+    FBack:  PDoublyLinkedListItem;
+    FCount: integer;
+    FOwnsValues: boolean;
+    FComparer: IComparer<T>;
 
     function DoGetEnumerator: TEnumerator<T>; override;
     procedure SetOwnsValues(AOwnsValues: boolean);
+    class function MergeSortedRanges(C: PDoublyLinkedListItem; Comparer: IComparer<T>): PDoublyLinkedListItem;
+    class procedure MergeSort(List: TDoublyLinkedListClass<T>; AFirst, ALast: PDoublyLinkedListItem; Comparer: IComparer<T>);
+
   public
-    constructor Create(const AValues: array of T); overload;
-    constructor Create(const AValues: TEnumerable<T>); overload;
+    constructor Create(Comparer: IComparer<T> = nil); overload;
+    constructor Create(const AValues: array of T; Comparer: IComparer<T> = nil); overload;
+    constructor Create(const AValues: TEnumerable<T>; Comparer: IComparer<T> = nil); overload;
     destructor Destroy; override;
 
     function AllocItem: PDoublyLinkedListItem; overload;
     function AllocItem(const Value: T): PDoublyLinkedListItem; overload;
     procedure FreeItem(Item: PDoublyLinkedListItem);
+    function ExtractItem(Item: PDoublyLinkedListItem): PDoublyLinkedListItem;
 
-    procedure Add(Value: T); overload;
-    procedure Add(const AValues: array of T); overload;
-    procedure Add(const AValues: TEnumerable<T>); overload;
-    procedure AddBeforeFirst(Value: T);
-    procedure AddAfterLast(Value: T);
+    procedure AddToFront(Value: T); overload;
+    { [X,Y,Z].AddToFront(A,B,C) -> A,B,C,X,Y,Z }
+    procedure AddToFront(const AValues: array of T); overload;
+    procedure AddToFront(const AValues: TEnumerable<T>); overload;
+
+    procedure AddToBack(Value: T); overload;
+    { [X,Y,Z].AddToBack(A,B,C) -> X,Y,Z,A,B,C }
+    procedure AddToBack(const AValues: array of T); overload;
+    procedure AddToBack(const AValues: TEnumerable<T>); overload;
 
     procedure InsertBefore(Value: T; Dst: PDoublyLinkedListItem);
     procedure InsertAfter(Value: T; Dst: PDoublyLinkedListItem);
 
-    procedure Remove(Item: PDoublyLinkedListItem);
-    function Extract(Item: PDoublyLinkedListItem):PDoublyLinkedListItem;
+    procedure Delete(Item: PDoublyLinkedListItem);
+    { Remove elements with specific value }
+    function Remove(Value: T): integer; overload;
+    function Remove(Value: T; Comparer: IComparer<T>): integer; overload;
     procedure Clear;
+
+    function Extract(Item: PDoublyLinkedListItem): T;
+    function ExtractFront: T;
+    function ExtractBack: T;
+
+    { Remove duplicate values }
+    procedure Unique;
+    procedure Sort(Comparer: IComparer<T> = nil); overload;
+
+    function Find(Value: T): PDoublyLinkedListItem; overload;
+    function Find(Value: T; Comparer: IComparer<T>): PDoublyLinkedListItem; overload;
+    function FindNext(Item: PDoublyLinkedListItem): PDoublyLinkedListItem; overload;
+    function FindNext(Item: PDoublyLinkedListItem; Comparer: IComparer<T>): PDoublyLinkedListItem; overload;
+
     function FindByIndex(Index: integer): PDoublyLinkedListItem;
     function FindValueByIndex(Index: integer): T;
 
@@ -1565,8 +1590,8 @@ type
     procedure Reverse(FirstItem, LastItem: PDoublyLinkedListItem);
     procedure Rotate(FirstItem, LastItem: PDoublyLinkedListItem; Shift: integer);
 
-    property First: PDoublyLinkedListItem read FFirst;
-    property Last: PDoublyLinkedListItem read FLast;
+    property Front: PDoublyLinkedListItem read FFront;
+    property Back: PDoublyLinkedListItem read FBack;
     property Count: integer read FCount;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
   end;
@@ -6352,16 +6377,25 @@ end;
 
 { TDoublyLinkedListClass<T> }
 
-constructor TDoublyLinkedListClass<T>.Create(const AValues: TEnumerable<T>);
+constructor TDoublyLinkedListClass<T>.Create(Comparer: IComparer<T>);
 begin
   inherited Create;
-  Add(AValues);
+  if Comparer = nil then
+    FComparer := TComparerUtils.DefaultComparer<T>
+  else
+    FComparer := Comparer;
 end;
 
-constructor TDoublyLinkedListClass<T>.Create(const AValues: array of T);
+constructor TDoublyLinkedListClass<T>.Create(const AValues: TEnumerable<T>; Comparer: IComparer<T> = nil);
 begin
-  inherited Create;
-  Add(AValues);
+  Create(Comparer);
+  AddToBack(AValues);
+end;
+
+constructor TDoublyLinkedListClass<T>.Create(const AValues: array of T; Comparer: IComparer<T> = nil);
+begin
+  Create(Comparer);
+  AddToBack(AValues);
 end;
 
 destructor TDoublyLinkedListClass<T>.Destroy;
@@ -6370,55 +6404,76 @@ begin
   inherited;
 end;
 
-procedure TDoublyLinkedListClass<T>.Add(Value: T);
-begin
-  AddAfterLast(Value);
-end;
-
-procedure TDoublyLinkedListClass<T>.Add(const AValues: TEnumerable<T>);
+procedure TDoublyLinkedListClass<T>.AddToBack(Value: T);
 var
-  Value: T;
+  Item: PDoublyLinkedListItem;
 begin
-  for Value in AValues do
-    Add(Value);
+  if FBack <> nil then
+    InsertAfter(Value, FBack)
+  else
+  begin
+    Item := AllocItem(Value);
+    FFront := Item;
+    FBack  := Item;
+    inc(FCount);
+  end;
 end;
 
-procedure TDoublyLinkedListClass<T>.Add(const AValues: array of T);
+procedure TDoublyLinkedListClass<T>.AddToBack(const AValues: array of T);
 var
   I: integer;
 begin
   for I := Low(AValues) to High(AValues) do
-    Add(AValues[I]);
+    AddToBack(AValues[I]);
 end;
 
-procedure TDoublyLinkedListClass<T>.AddAfterLast(Value: T);
+procedure TDoublyLinkedListClass<T>.AddToBack(const AValues: TEnumerable<T>);
+var
+  Value: T;
+begin
+  for Value in AValues do
+    AddToBack(Value);
+end;
+
+procedure TDoublyLinkedListClass<T>.AddToFront(Value: T);
 var
   Item: PDoublyLinkedListItem;
 begin
-  if FLast <> nil then
-    InsertAfter(Value, FLast)
+  if FFront <> nil then
+    InsertBefore(Value, FFront)
   else
   begin
     Item := AllocItem(Value);
-    FFirst := Item;
-    FLast  := Item;
+    FFront := Item;
+    FBack  := Item;
     inc(FCount);
   end;
 end;
 
-procedure TDoublyLinkedListClass<T>.AddBeforeFirst(Value: T);
+procedure TDoublyLinkedListClass<T>.AddToFront(const AValues: array of T);
 var
-  Item: PDoublyLinkedListItem;
+  I: integer;
 begin
-  if FFirst <> nil then
-    InsertBefore(Value, FFirst)
-  else
-  begin
-    Item := AllocItem(Value);
-    FFirst := Item;
-    FLast  := Item;
-    inc(FCount);
-  end;
+  for I := High(AValues) downto Low(AValues) do
+    AddToFront(AValues[I]);
+end;
+
+procedure TDoublyLinkedListClass<T>.AddToFront(const AValues: TEnumerable<T>);
+var
+  Value: T;
+  FirstIsAdded: boolean;
+  PrevFront: PDoublyLinkedListItem;
+begin
+  PrevFront := Front;
+  FirstIsAdded := False;
+  for Value in AValues do
+    if FirstIsAdded then
+      InsertAfter(Value, Front)
+    else
+    begin
+      AddToFront(Value);
+      FirstIsAdded := True;
+    end;
 end;
 
 {        v
@@ -6429,14 +6484,142 @@ var
   Item: PDoublyLinkedListItem;
 begin
   Item := AllocItem(Value);
-  if FFirst = Dst then
-    FFirst := Item;
+  if FFront = Dst then
+    FFront := Item;
   if Dst.Prev <> nil then
     Dst.Prev.Next := Item;
   Item.Prev := Dst.Prev;
   Dst.Prev := Item;
   Item.Next := Dst;
   inc(FCount);
+end;
+
+procedure TDoublyLinkedListClass<T>.Unique;
+var
+  Values: TSet<T>;
+  Item: PDoublyLinkedListItem;
+begin
+  Values.Clear;
+  Item := FFront;
+  while Item <> nil do
+    if Item.Data in Values then
+    begin
+      Item := Item.Next;
+      Delete(Item.Prev);
+    end
+    else
+    begin
+      Values.Add(Item.Data);
+      Item := Item.Next;
+    end;
+end;
+
+class function TDoublyLinkedListClass<T>.MergeSortedRanges(C: PDoublyLinkedListItem; Comparer: IComparer<T>): PDoublyLinkedListItem;
+var
+  l,r,n: PDoublyLinkedListItem;
+begin
+  result := c;
+  if c=nil then
+    exit;
+  if c.next=nil then
+    exit;
+
+  { split C->L+R }
+  l := nil;
+  r := nil;
+  repeat
+    n := c;
+    c := c.Next;
+    n.Next := l;
+    l := n;
+    if c=nil then
+      break;
+    n := c;
+    c := c.Next;
+    n.Next := r;
+    r := n;
+  until c=nil;
+
+  { sort L&R }
+  l := MergeSortedRanges(l, Comparer);
+  r := MergeSortedRanges(r, Comparer);
+
+  { merge L+R->Result }
+  if l=nil then
+    result := r
+  else
+  if r=nil then
+    result := l
+  else
+  begin
+
+    { result=Head, c=Tail }
+    if Comparer.Compare(l.Data, r.Data) <= 0 then // L < R
+    begin
+      result := l;
+      l := l.Next;
+    end else begin
+      result := r;
+      r := r.Next;
+    end;
+    c := result;
+
+    { L&R -> Tail (c) }
+    while (l<>nil) and (r<>nil) do
+      if Comparer.Compare(l.Data, r.Data) <= 0 then // L < R
+      begin
+        c.Next := l;
+        c := l;
+        l := l.Next;
+      end else begin
+        c.Next := r;
+        c := r;
+        r := r.Next;
+      end;
+
+    { put remain Items to back }
+    if l=nil then
+      c.Next := r
+    else
+      c.Next := l;
+  end;
+end;
+
+class procedure TDoublyLinkedListClass<T>.MergeSort(List: TDoublyLinkedListClass<T>; AFirst, ALast: PDoublyLinkedListItem; Comparer: IComparer<T>);
+var
+  f,l,n: PDoublyLinkedListItem;
+begin
+  n := ALast.Next;
+  ALast.Next := nil;
+  f := MergeSortedRanges(AFirst, Comparer);
+  l := f;
+  while l.Next<>nil do
+    l := l.Next;
+  if ALast=List.FBack then
+    List.FBack := l;
+  l.Next := n;
+  if AFirst=List.FFront then
+    List.FFront := f
+  else
+    AFirst.Prev.Next := f;
+
+  { restore backward links }
+  f := nil;
+  n := List.FFront;
+  while n<>nil do
+  begin
+    n.Prev := f;
+    f := n;
+    n := n.Next;
+  end;
+end;
+
+procedure TDoublyLinkedListClass<T>.Sort(Comparer: IComparer<T> = nil);
+begin
+  if Comparer = nil then
+    MergeSort(Self, FFront, FBack, FComparer)
+  else
+    MergeSort(Self, FFront, FBack, Comparer);
 end;
 
 {    v
@@ -6447,8 +6630,8 @@ var
   Item: PDoublyLinkedListItem;
 begin
   Item := AllocItem(Value);
-  if FLast = Dst then
-    FLast := Item;
+  if FBack = Dst then
+    FBack := Item;
   if Dst.Next <> nil then
     Dst.Next.Prev := Item;
   Item.Next := Dst.Next;
@@ -6462,19 +6645,41 @@ begin
   TFun.Exchange(Item1.Prev, Item2.Prev);
   TFun.Exchange(Item1.Next, Item2.Next);
   if Item1.Prev=nil then
-    FFirst := Item1
+    FFront := Item1
   else
     Item1.Prev.Next := Item1;
   if Item1.Next=nil then
-    FLast := Item1
+    FBack := Item1
   else
     Item1.Next.Prev := Item1;
   if Item2.Prev=nil then
-    FFirst := Item2
+    FFront := Item2
   else
     Item2.Prev.Next := Item2;
   if Item2.Next=nil then
-    FLast := Item2
+    FBack := Item2
+  else
+    Item2.Next.Prev := Item2;
+end;
+
+class procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem; List1, List2: TDoublyLinkedListClass<T>);
+begin
+  TFun.Exchange(Item1.Prev, Item2.Prev);
+  TFun.Exchange(Item1.Next, Item2.Next);
+  if Item1.Prev=nil then
+    List2.FFront := Item1
+  else
+    Item1.Prev.Next := Item1;
+  if Item1.Next=nil then
+    List2.FBack := Item1
+  else
+    Item1.Next.Prev := Item1;
+  if Item2.Prev=nil then
+    List1.FFront := Item2
+  else
+    Item2.Prev.Next := Item2;
+  if Item2.Next=nil then
+    List1.FBack := Item2
   else
     Item2.Next.Prev := Item2;
 end;
@@ -6490,10 +6695,36 @@ begin
   result.Data := Value;
 end;
 
+function TDoublyLinkedListClass<T>.Find(Value: T; Comparer: IComparer<T>): PDoublyLinkedListItem;
+begin
+  result := FFront;
+  while (result <> nil) and (Comparer.Compare(result.Data, Value) <> 0) do
+    result := result.Next;
+end;
+
+function TDoublyLinkedListClass<T>.Find(Value: T): PDoublyLinkedListItem;
+begin
+  result := Find(Value, FComparer);
+end;
+
+function TDoublyLinkedListClass<T>.FindNext(Item: PDoublyLinkedListItem; Comparer: IComparer<T>): PDoublyLinkedListItem;
+begin
+  result := Item;
+  if result <> nil then
+    repeat
+      result := result.Next;
+    until (result = nil) or (Comparer.Compare(result.Data, Item.Data) = 0);
+end;
+
+function TDoublyLinkedListClass<T>.FindNext(Item: PDoublyLinkedListItem): PDoublyLinkedListItem;
+begin
+  result := FindNext(Item, FComparer);
+end;
+
 function TDoublyLinkedListClass<T>.FindByIndex(Index: integer): PDoublyLinkedListItem;
 begin
-  result := First;
-  while Index>0 do
+  result := FFront;
+  while (Index > 0) and (result <> nil) do
   begin
     Dec(Index);
     result := result.Next;
@@ -6520,67 +6751,82 @@ begin
   FOwnsValues := AOwnsValues;
 end;
 
-class procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem; List1, List2: TDoublyLinkedListClass<T>);
+function TDoublyLinkedListClass<T>.Extract(Item: PDoublyLinkedListItem): T;
 begin
-  TFun.Exchange(Item1.Prev, Item2.Prev);
-  TFun.Exchange(Item1.Next, Item2.Next);
-  if Item1.Prev=nil then
-    List2.FFirst := Item1
-  else
-    Item1.Prev.Next := Item1;
-  if Item1.Next=nil then
-    List2.FLast := Item1
-  else
-    Item1.Next.Prev := Item1;
-  if Item2.Prev=nil then
-    List1.FFirst := Item2
-  else
-    Item2.Prev.Next := Item2;
-  if Item2.Next=nil then
-    List1.FLast := Item2
-  else
-    Item2.Next.Prev := Item2;
+  result := Item.Data;
+  Item.Data := Default(T);
+  Delete(Item);
 end;
 
-function TDoublyLinkedListClass<T>.Extract(Item: PDoublyLinkedListItem): PDoublyLinkedListItem;
+function TDoublyLinkedListClass<T>.ExtractBack: T;
+begin
+  result := Extract(FBack);
+end;
+
+function TDoublyLinkedListClass<T>.ExtractFront: T;
+begin
+  result := Extract(FFront);
+end;
+
+function TDoublyLinkedListClass<T>.ExtractItem(Item: PDoublyLinkedListItem): PDoublyLinkedListItem;
 begin
   result := Item;
   if Item.Prev <> nil then
     Item.Prev.Next := Item.Next;
   if Item.Next <> nil then
     Item.Next.Prev := Item.Prev;
-  if Item = FFirst then
-    FFirst := Item.Next;
-  if Item = FLast then
-    FLast := Item.Prev;
+  if Item = FFront then
+    FFront := Item.Next;
+  if Item = FBack then
+    FBack := Item.Prev;
   dec(FCount);
   result.Prev := nil;
   result.Next := nil;
 end;
 
-procedure TDoublyLinkedListClass<T>.Remove(Item: PDoublyLinkedListItem);
+procedure TDoublyLinkedListClass<T>.Delete(Item: PDoublyLinkedListItem);
 begin
-  FreeItem(Extract(Item));
+  FreeItem(ExtractItem(Item));
 end;
 
 procedure TDoublyLinkedListClass<T>.Clear;
 var A,B: PDoublyLinkedListItem;
 begin
-  A := FFirst;
+  A := FFront;
   while A<>nil do
   begin
     B := A;
     A := A.Next;
     FreeItem(B);
   end;
-  FFirst := nil;
-  FLast := nil;
+  FFront := nil;
+  FBack := nil;
   FCount := 0;
 end;
 
 function TDoublyLinkedListClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
-  result := TDListEnumerator.Create(First, Last);;
+  result := TDListEnumerator.Create(FFront, FBack);
+end;
+
+function TDoublyLinkedListClass<T>.Remove(Value: T): integer;
+begin
+  Remove(Value, FComparer);
+end;
+
+function TDoublyLinkedListClass<T>.Remove(Value: T; Comparer: IComparer<T>): integer;
+var
+  C: PDoublyLinkedListItem;
+begin
+  C := FFront;
+  while C <> nil do
+    if Comparer.Compare(C.Data, Value) <> 0 then
+      C := C.Next
+    else
+    begin
+      C := C.Next;
+      Delete(C.Prev);
+    end;
 end;
 
 procedure TDoublyLinkedListClass<T>.Reverse(FirstItem, LastItem: PDoublyLinkedListItem);
@@ -6605,14 +6851,14 @@ begin
 
   { NPrev -> C->...->B->A -> NNext }
   if NPrev=nil then
-    FFirst := q
+    FFront := q
   else
     NPrev.Next := q;
 
   { "NFirst" has moved to the end of reverse range }
   NFirst.Next := NNext;
   if NNext=nil then
-    FLast := NFirst;
+    FBack := NFirst;
 
   { restore backward links }
   LastItem.Prev := NPrev;
@@ -6663,13 +6909,13 @@ begin
   NLast := LastItem.next;
 
   if NFirst=nil then
-    FFirst := p
+    FFront := p
   else
     NFirst.Next := p;
   NPrev.Next := LastItem.Next;
   LastItem.Next := FirstItem;
-  if FLast=LastItem then
-    FLast := NPrev;
+  if FBack=LastItem then
+    FBack := NPrev;
 
   p.Prev := NFirst;
   FirstItem.prev := LastItem;
