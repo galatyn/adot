@@ -1502,6 +1502,11 @@ type
     class function CompoundComparer<A,B,C>: IComparer<TCompound<A,B,C>>; overload; static;
     class function CompoundEqualityComparer<A,B>: IEqualityComparer<TCompound<A,B>>; overload;  static;
     class function CompoundEqualityComparer<A,B,C>: IEqualityComparer<TCompound<A,B,C>>; overload;  static;
+
+    class function Equal<T>(A,B: TEnumerable<T>): boolean; overload; static;
+    class function Equal<T>(A,B: TEnumerable<T>; Comparer: IComparer<T>): boolean; overload; static;
+    class function Equal<T>(A: TEnumerable<T>; const B: TArray<T>): boolean; overload; static;
+    class function Equal<T>(A: TEnumerable<T>; const B: TArray<T>; Comparer: IComparer<T>): boolean; overload; static;
   end;
 
   { Doubly linked list }
@@ -1538,6 +1543,7 @@ type
     procedure SetOwnsValues(AOwnsValues: boolean);
     class function MergeSortedRanges(C: PDoublyLinkedListItem; Comparer: IComparer<T>): PDoublyLinkedListItem;
     class procedure MergeSort(List: TDoublyLinkedListClass<T>; AFirst, ALast: PDoublyLinkedListItem; Comparer: IComparer<T>);
+    function GetIsConsistent: boolean;
 
   public
     constructor Create(Comparer: IComparer<T> = nil); overload;
@@ -1575,7 +1581,8 @@ type
 
     { Remove duplicate values }
     procedure Unique;
-    procedure Sort(Comparer: IComparer<T> = nil); overload;
+    procedure Sort; overload;
+    procedure Sort(Comparer: IComparer<T>); overload;
 
     function Find(Value: T): PDoublyLinkedListItem; overload;
     function Find(Value: T; Comparer: IComparer<T>): PDoublyLinkedListItem; overload;
@@ -1594,6 +1601,7 @@ type
     property Back: PDoublyLinkedListItem read FBack;
     property Count: integer read FCount;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
+    property IsConsistent: boolean read GetIsConsistent;
   end;
 
   { Simple record type to build/keep tree as array of nodes with FirstChild/NextSibling properties.
@@ -4943,6 +4951,58 @@ begin
     result := TEqualityComparer<T>.Default;
 end;
 
+class function TComparerUtils.Equal<T>(A: TEnumerable<T>; const B: TArray<T>): boolean;
+begin
+  result := Equal<T>(A, B, DefaultComparer<T>);
+end;
+
+class function TComparerUtils.Equal<T>(A: TEnumerable<T>; const B: TArray<T>; Comparer: IComparer<T>): boolean;
+var
+  Enum: TEnumerator<T>;
+  I: Integer;
+begin
+  result := True;
+  Enum := A.GetEnumerator;
+  for I := Low(B) to High(B) do
+    begin
+      result := Enum.MoveNext and (Comparer.Compare(Enum.Current, B[I]) = 0);
+      if not result then
+        Break;
+    end;
+  if result then
+    result := not Enum.MoveNext;
+  Sys.FreeAndNil(Enum);
+end;
+
+class function TComparerUtils.Equal<T>(A, B: TEnumerable<T>): boolean;
+begin
+  result := Equal<T>(A,B, DefaultComparer<T>);
+end;
+
+class function TComparerUtils.Equal<T>(A, B: TEnumerable<T>; Comparer: IComparer<T>): boolean;
+var
+  EnumA, EnumB: TEnumerator<T>;
+begin
+  EnumA := A.GetEnumerator;
+  EnumB := B.GetEnumerator;
+  while True do
+    if EnumA.MoveNext then
+      if EnumB.MoveNext and (Comparer.Compare(EnumA.Current, EnumB.Current) = 0) then
+        Continue
+      else
+      begin
+        result := False;
+        Break;
+      end
+    else
+    begin
+      result := not EnumB.MoveNext;
+      Break;
+    end;
+  Sys.FreeAndNil(EnumA);
+  Sys.FreeAndNil(EnumB);
+end;
+
 { TVector<T>.TEnumerator }
 
 constructor TVector<T>.TEnumerator.Create(const Items: TArray<T>; ACount: integer);
@@ -6614,12 +6674,18 @@ begin
   end;
 end;
 
-procedure TDoublyLinkedListClass<T>.Sort(Comparer: IComparer<T> = nil);
+procedure TDoublyLinkedListClass<T>.Sort;
 begin
-  if Comparer = nil then
-    MergeSort(Self, FFront, FBack, FComparer)
-  else
-    MergeSort(Self, FFront, FBack, Comparer);
+  Sort(FComparer);
+end;
+
+procedure TDoublyLinkedListClass<T>.Sort(Comparer: IComparer<T>);
+begin
+  if FFront <> nil then
+    if Comparer = nil then
+      MergeSort(Self, FFront, FBack, FComparer)
+    else
+      MergeSort(Self, FFront, FBack, Comparer);
 end;
 
 {    v
@@ -6742,6 +6808,41 @@ begin
     PObject(@Item.Data)^.DisposeOf;
   Item.Data := Default(T);
   FreeMem(Item);
+end;
+
+function TDoublyLinkedListClass<T>.GetIsConsistent: boolean;
+var
+  L: PDoublyLinkedListItem;
+  I: integer;
+begin
+  result := False;
+  if Count < 0 then
+    Exit;
+  if (FFront=nil) <> (FBack=nil) then
+    Exit;
+  if (FFront<>nil) then
+    if (FFront.Prev<>nil) or (FBack.Next<>nil) then
+      Exit;
+
+  L := FFront;
+  for I := 0 to Count-2 do
+    if L = nil then
+      Exit
+    else
+      L := L.Next;
+  if L <> FBack then
+    Exit;
+
+  L := FBack;
+  for I := 0 to Count-2 do
+    if L = nil then
+      Exit
+    else
+      L := L.Prev;
+  if L <> FFront then
+    Exit;
+
+  result := True;
 end;
 
 procedure TDoublyLinkedListClass<T>.SetOwnsValues(AOwnsValues: boolean);
