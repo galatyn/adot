@@ -1561,13 +1561,13 @@ type
     procedure FreeItem(Item: PDoublyLinkedListItem);
     function ExtractItem(Item: PDoublyLinkedListItem): PDoublyLinkedListItem;
 
+    { [X,Y,Z].AddToFront([A,B,C]) -> A,B,C,X,Y,Z }
     procedure AddToFront(Value: T); overload;
-    { [X,Y,Z].AddToFront(A,B,C) -> A,B,C,X,Y,Z }
     procedure AddToFront(const AValues: array of T); overload;
     procedure AddToFront(const AValues: TEnumerable<T>); overload;
 
+    { [X,Y,Z].AddToBack([A,B,C]) -> X,Y,Z,A,B,C }
     procedure AddToBack(Value: T); overload;
-    { [X,Y,Z].AddToBack(A,B,C) -> X,Y,Z,A,B,C }
     procedure AddToBack(const AValues: array of T); overload;
     procedure AddToBack(const AValues: TEnumerable<T>); overload;
 
@@ -1575,8 +1575,7 @@ type
     procedure InsertAfter(Value: T; Dst: PDoublyLinkedListItem);
 
     procedure Delete(Item: PDoublyLinkedListItem); overload;
-    procedure Delete(ItemStart,ItemEnd: PDoublyLinkedListItem); overload;
-    { Remove elements with specific value }
+    procedure DeleteRange(ItemStart,ItemEnd: PDoublyLinkedListItem); overload;
     function Remove(Value: T): integer; overload;
     function Remove(Value: T; Comparer: IComparer<T>): integer; overload;
     procedure Clear;
@@ -1598,9 +1597,8 @@ type
     function FindByIndex(Index: integer): PDoublyLinkedListItem;
     function FindValueByIndex(Index: integer): T;
 
-    procedure Exchange(Item1, Item2: PDoublyLinkedListItem); overload;
-    class procedure Exchange(Item1, Item2: PDoublyLinkedListItem; List1,List2: TDoublyLinkedListClass<T>); overload; static;
-    procedure Reverse(FirstItem, LastItem: PDoublyLinkedListItem);
+    procedure Exchange(Item1, Item2: PDoublyLinkedListItem);
+    procedure Reverse(FirstItem, LastItem: PDoublyLinkedListItem; CheckDirection: boolean = True);
     procedure Rotate(FirstItem, LastItem: PDoublyLinkedListItem; Shift: integer);
 
     property Front: PDoublyLinkedListItem read FFront;
@@ -6716,47 +6714,60 @@ begin
 end;
 
 procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem);
+var
+  p: PDoublyLinkedListItem;
 begin
-  Sys.Exchange(Item1.Prev, Item2.Prev);
-  Sys.Exchange(Item1.Next, Item2.Next);
-  if Item1.Prev=nil then
-    FFront := Item1
+  if Item1 = Item2 then
+    Exit;
+  if Item1.Next = Item2 then
+  begin
+    { * - Item1 - Item2 - * }
+    if Item1.Prev = nil
+      then FFront := Item2
+      else Item1.Prev.Next := Item2;
+    if Item2.Next = nil
+      then FBack := Item1
+      else Item2.Next.Prev := Item1;
+    p := Item1.Prev;
+    Item1.Prev := Item2;
+    Item1.Next := Item2.Next;
+    Item2.Prev := p;
+    Item2.Next := Item1;
+  end
   else
-    Item1.Prev.Next := Item1;
-  if Item1.Next=nil then
-    FBack := Item1
+  if Item2.Next = Item1 then
+  begin
+    { * - Item2 - Item1 - * }
+    if Item2.Prev = nil
+      then FFront := Item1
+      else Item2.Prev.Next := Item1;
+    if Item1.Next = nil
+      then FBack := Item2
+      else Item1.Next.Prev := Item2;
+    p := Item2.Prev;
+    Item2.Prev := Item1;
+    Item2.Next := Item1.Next;
+    Item1.Prev := p;
+    Item1.Next := Item2;
+  end
   else
-    Item1.Next.Prev := Item1;
-  if Item2.Prev=nil then
-    FFront := Item2
-  else
-    Item2.Prev.Next := Item2;
-  if Item2.Next=nil then
-    FBack := Item2
-  else
-    Item2.Next.Prev := Item2;
-end;
-
-class procedure TDoublyLinkedListClass<T>.Exchange(Item1, Item2: PDoublyLinkedListItem; List1, List2: TDoublyLinkedListClass<T>);
-begin
-  TFun.Exchange(Item1.Prev, Item2.Prev);
-  TFun.Exchange(Item1.Next, Item2.Next);
-  if Item1.Prev=nil then
-    List2.FFront := Item1
-  else
-    Item1.Prev.Next := Item1;
-  if Item1.Next=nil then
-    List2.FBack := Item1
-  else
-    Item1.Next.Prev := Item1;
-  if Item2.Prev=nil then
-    List1.FFront := Item2
-  else
-    Item2.Prev.Next := Item2;
-  if Item2.Next=nil then
-    List1.FBack := Item2
-  else
-    Item2.Next.Prev := Item2;
+  begin
+    { * - Item1/2 - [...] - Item1/2 - * }
+    p := Item1.Prev; Item1.Prev := Item2.Prev; Item2.Prev := p;
+    p := Item1.Next; Item1.Next := Item2.Next; Item2.Next := p;
+    if Item1.Prev = nil
+      then FFront := Item1
+      else Item1.Prev.Next := Item1;
+    if Item1.Next = nil
+      then FBack := Item1
+      else Item1.Next.Prev := Item1;
+    if Item2.Prev = nil
+      then FFront := Item2
+      else Item2.Prev.Next := Item2;
+    if Item2.Next = nil
+      then FBack := Item2
+      else Item2.Next.Prev := Item2;
+  end;
 end;
 
 function TDoublyLinkedListClass<T>.AllocItem: PDoublyLinkedListItem;
@@ -6923,14 +6934,20 @@ begin
   FreeItem(ExtractItem(Item));
 end;
 
-procedure TDoublyLinkedListClass<T>.Delete(ItemStart, ItemEnd: PDoublyLinkedListItem);
+procedure TDoublyLinkedListClass<T>.DeleteRange(ItemStart, ItemEnd: PDoublyLinkedListItem);
+var
+  d: PDoublyLinkedListItem;
 begin
+  if ItemStart = nil then
+    ItemStart := FFront;
   while ItemStart <> ItemEnd do
   begin
+    d := ItemStart;
     ItemStart := ItemStart.Next;
-    FreeItem(ExtractItem(ItemStart.Prev));
+    FreeItem(ExtractItem(d));
   end;
-  FreeItem(ExtractItem(ItemEnd));
+  if ItemStart <> nil then
+    FreeItem(ExtractItem(ItemEnd));
 end;
 
 procedure TDoublyLinkedListClass<T>.Clear;
@@ -6974,10 +6991,35 @@ begin
     end;
 end;
 
-procedure TDoublyLinkedListClass<T>.Reverse(FirstItem, LastItem: PDoublyLinkedListItem);
+procedure TDoublyLinkedListClass<T>.Reverse(FirstItem, LastItem: PDoublyLinkedListItem; CheckDirection: boolean = True);
 var
   q, Temp, NFirst, NPrev, NNext: PDoublyLinkedListItem;
 begin
+  if FirstItem = nil then
+    FirstItem := FFront;
+  if LastItem = nil then
+    LastItem := FBack;
+  if FirstItem = LastItem then
+    exit;
+
+  { check direction }
+  if CheckDirection then
+  begin
+    q := FirstItem;
+    while (q <> nil) and (q <> LastItem) do
+      q := q.Next;
+    if q = nil then
+    begin
+      {$If Defined(Debug)}
+        q := LastItem;
+        while (q <> nil) and (q <> FirstItem) do
+          q := q.Next;
+        Assert(q <> nil);
+      {$EndIf}
+      Reverse(LastItem, FirstItem, False);
+      Exit;
+    end;
+  end;
 
   { NPrev -> A->B->...->C -> NNext }
   NPrev := FirstItem.Prev;
