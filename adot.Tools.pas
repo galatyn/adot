@@ -423,6 +423,7 @@ type
     class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
     class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); overload; static;
     class procedure Delete<T>(var Arr: TArray<T>; Index: integer); overload; static;
+    class function Add<T>(const A,B: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
     class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; static;
@@ -1782,6 +1783,18 @@ begin
   SetLength(Dst, j + Length(Src));
   for I := 0 to High(Src) do
     Dst[I+J] := Src[I];
+end;
+
+class function TArrayUtils.Add<T>(const A, B: TArray<T>): TArray<T>;
+var
+  I,J: Integer;
+begin
+  SetLength(Result, Length(A) + Length(B));
+  for I := 0 to Length(A)-1 do
+    Result[I] := A[I];
+  J := Length(A);
+  for I := 0 to Length(B)-1 do
+    Result[I+J] := B[I];
 end;
 
 class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>);
