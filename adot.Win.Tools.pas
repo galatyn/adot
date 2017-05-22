@@ -11,7 +11,7 @@
   TMessenger = class
     Allows to send / receive messages by any component (even if component is not inherited from TWinControl)
 
-  TProcess = class
+  TProcessUtils = class
     EnumerateProcesses, GetIntegrityLevel etc.
 
   TSecurity = class
@@ -49,22 +49,41 @@ uses
 type
 
   { EnumerateProcesses, GetIntegrityLevel etc }
-  TProcess = class
+  TProcessUtils = class
   public
     type
       TInfo = record
         pe32: PROCESSENTRY32;
       end;
       TOnProcess = reference to procedure(const AInfo: TInfo);
+
       TThreadInfo = record
         t32: TThreadEntry32;
       end;
       TOnThread = reference to procedure(const AInfo: TThreadInfo);
+
       TWindowInfo = record
         Wnd: hwnd;
       end;
       TOnWindow = reference to procedure(const AInfo: TWindowInfo);
+
       TIntegrityLevel = (ilUntrusted, ilLow, ilMedium, ilHigh, ilSystem, ilProtectedProcess, ilUnknown);
+
+      TExecuteTimeoutAction = (
+        etoExit,       { exit and return werTimeoutExit (process will remain running) }
+        etoTerminate,  { exit and return werTimeoutTerminate (process will be terminated) }
+        etoWait        { wait again }
+      );
+
+      TExecuteResult = (
+        erFail,               { process wasn't started }
+        erTimeoutExit,        { process is not completed in time and remain running }
+        erTimeoutTerminate,   { process is not completed in time and was terminated }
+        erOk                  { process finished gracefully }
+      );
+
+      TExecuteTimeoutProc = reference to procedure(TotalWaitTime: Cardinal; var Timeout: Cardinal; var Action: TExecuteTimeoutAction);
+
     const
       Integrities: array[TIntegrityLevel] of String = (
         'Untrusted', 'Low', 'Medium', 'High', 'System', 'ProtectedProcess', 'Unknown'
@@ -98,7 +117,23 @@ type
     class function GetIntegrityLevel: String; overload; static;
 
     class function GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean; static;
+
+    class function Execute(
+      out ExCode        : Cardinal;
+          PathAndParams : String;
+          Timeout       : Cardinal = INFINITE;
+          TimeoutAction : TExecuteTimeoutAction = etoTerminate;
+          TimeoutProc   : TExecuteTimeoutProc = nil;
+          Visibility    : Word = SW_SHOW): TExecuteResult; overload; static;
+
+    class function Execute(
+          PathAndParams : String;
+          Timeout       : Cardinal = INFINITE;
+          TimeoutAction : TExecuteTimeoutAction = etoTerminate;
+          TimeoutProc   : TExecuteTimeoutProc = nil;
+          Visibility    : Word = SW_SHOW): TExecuteResult; overload; static;
   end;
+  TProcess = TProcessUtils;
 
   { AddDbgPrivileges / AddPrivilege / NullDACL etc }
   TSecurity = class
@@ -227,6 +262,11 @@ type
     destructor Destroy; override;
 
     procedure Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0);
+
+    class procedure SendString(WinHandle: HWND; const S: string); static;
+    class procedure SendFloat(WinHandle: HWND; const V: double); static;
+
+    class procedure SendInputString(const S: string); static;
 
     property OnMessage: TOnMessage read FOnMessage write FOnMessage;
     property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
@@ -382,9 +422,9 @@ type
     class property Ordinal: TApiExt read GetOrdinal;
   end;
 
-{ TProcess }
+{ TProcessUtils }
 
-class function TProcess.EnumerateProcesses(ASkipCurrProcess: boolean; AOnProcess: TOnProcess):Boolean;
+class function TProcessUtils.EnumerateProcesses(ASkipCurrProcess: boolean; AOnProcess: TOnProcess):Boolean;
 var
   h: THandle;
   info: TInfo;
@@ -411,7 +451,7 @@ begin
 end;
 
 // PID=high(dword) -> all processes
-class function TProcess.EnumerateProcessThreads(pid: DWORD; ASkipCurrProcess: boolean;
+class function TProcessUtils.EnumerateProcessThreads(pid: DWORD; ASkipCurrProcess: boolean;
   AOnThread: TOnThread): Boolean;
 var
   Info: TThreadInfo;
@@ -440,20 +480,20 @@ begin
     end;
 end;
 
-class function TProcess.EnumerateThreads(pid: DWORD; AOnThread: TOnThread): Boolean;
+class function TProcessUtils.EnumerateThreads(pid: DWORD; AOnThread: TOnThread): Boolean;
 begin
   Result := EnumerateProcessThreads(pid, False, AOnThread);
 end;
 
-class function TProcess.EnumerateThreads(ASkipCurrProcess: boolean;
+class function TProcessUtils.EnumerateThreads(ASkipCurrProcess: boolean;
   AOnThread: TOnThread): Boolean;
 begin
   Result := EnumerateProcessThreads(High(DWORD), ASkipCurrProcess, AOnThread);
 end;
 
-function EnumThreadWndProc(W: hwnd; L: TProcess.PEnumWndRec): Bool; stdcall;
+function EnumThreadWndProc(W: hwnd; L: TProcessUtils.PEnumWndRec): Bool; stdcall;
 var
-  Info: TProcess.TWindowInfo;
+  Info: TProcessUtils.TWindowInfo;
 begin
   Info.Wnd := W;
   L.Callback(Info);
@@ -461,7 +501,7 @@ begin
   Result := True;
 end;
 
-class function TProcess.EnumerateThreadWindows(AThreadId: DWORD;
+class function TProcessUtils.EnumerateThreadWindows(AThreadId: DWORD;
   AOnWindow: TOnWindow): Boolean;
 var
   r: TEnumWndRec;
@@ -471,7 +511,7 @@ begin
   Result := True;
 end;
 
-class function TProcess.GetIntegrityLevel(AProcessId: DWORD;
+class function TProcessUtils.GetIntegrityLevel(AProcessId: DWORD;
   var Integrity: DWORD): Boolean;
 type
   PTokenMandatoryLabel = ^TTokenMandatoryLabel;
@@ -518,7 +558,7 @@ begin
   CloseHandle(hProcess);
 end;
 
-class function TProcess.GetIntegrityLevel(AProcessId: DWORD;
+class function TProcessUtils.GetIntegrityLevel(AProcessId: DWORD;
   var Integrity: TIntegrityLevel): Boolean;
 const
   UNTRUSTED_RID         = $00000000;
@@ -543,13 +583,13 @@ begin
     end;
 end;
 
-class function TProcess.GetIntegrityLevel(
+class function TProcessUtils.GetIntegrityLevel(
   var Integrity: TIntegrityLevel): Boolean;
 begin
   result := GetIntegrityLevel(GetCurrentProcessId, Integrity);
 end;
 
-class function TProcess.ListByName(ASkipCurrProcess: boolean;
+class function TProcessUtils.ListByName(ASkipCurrProcess: boolean;
   const AProcessNameMask: string): TList<TInfo>;
 var
   Dst: TList<TInfo>;
@@ -572,7 +612,7 @@ begin
   end;
 end;
 
-class function TProcess.QueryImagePath(AProcessId: DWORD; AMaxLen: integer = 4096): String;
+class function TProcessUtils.QueryImagePath(AProcessId: DWORD; AMaxLen: integer = 4096): String;
 const
   PROCESS_QUERY_LIMITED_INFORMATION = $1000;
 var
@@ -613,7 +653,7 @@ begin
     end;
 end;
 
-class function TProcess.GetIntegrityLevel: String;
+class function TProcessUtils.GetIntegrityLevel: String;
 var
   il: TIntegrityLevel;
 begin
@@ -621,7 +661,7 @@ begin
   Result := Integrities[il];
 end;
 
-class function TProcess.GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean;
+class function TProcessUtils.GetProcessesLockingFile(const FileName: string; var ProcessNames: TArray<string>): boolean;
 begin
   try
     result := TRestartManager.GetProcessesLockingFile(FileName, ProcessNames);
@@ -629,6 +669,78 @@ begin
     result := False;
     SetLength(ProcessNames, 0);
   end;
+end;
+
+class function TProcessUtils.Execute(
+  out ExCode        : Cardinal;
+      PathAndParams : String;
+      Timeout       : Cardinal = INFINITE;
+      TimeoutAction : TExecuteTimeoutAction = etoTerminate;
+      TimeoutProc   : TExecuteTimeoutProc = nil;
+      Visibility    : Word = SW_SHOW): TExecuteResult;
+var
+  StartupInfo: TStartupInfo;
+  ProcessInfo: TProcessInformation;
+  TotalWaitTime: Cardinal;
+begin
+  ZeroMemory(@StartupInfo, Sizeof(StartupInfo));
+  ExCode := 0;
+  StartupInfo.cb := Sizeof(StartupInfo);
+  StartupInfo.dwFlags := STARTF_USESHOWWINDOW;
+  StartupInfo.wShowWindow := Visibility;
+
+  { failed to start? }
+  if not CreateProcess(
+    nil,                           { ApplicationName}
+    PChar(PathAndParams),          { pointer to command line string }
+    nil,                           { pointer to process security attributes }
+    nil,                           { pointer to thread security attributes }
+    false,                         { handle inheritance flag }
+    CREATE_NEW_CONSOLE or          { creation flags }
+    NORMAL_PRIORITY_CLASS,         { priority }
+    nil,                           { pointer to new environment block }
+    nil,                           { pointer to current directory name }
+    StartupInfo,                   { pointer to STARTUPINFO }
+    ProcessInfo                    { pointer to PROCESS_INF }
+  ) then
+  begin
+    result := erFail;
+    Exit;
+  end;
+
+  { timed out? }
+  TotalWaitTime := 0;
+  while WaitForSingleObject(ProcessInfo.hProcess, Timeout)<>WAIT_OBJECT_0 do
+  begin
+    TotalWaitTime := Min(UInt64(TotalWaitTime) + Timeout, High(TotalWaitTime));
+    if Assigned(TimeoutProc) then
+      TimeoutProc(TotalWaitTime, Timeout, TimeoutAction);
+    case TimeoutAction of
+      etoExit:
+        Exit(erTimeoutExit);
+      etoTerminate:
+        begin
+          TerminateProcess(ProcessInfo.hProcess, 1);
+          Exit(erTimeoutTerminate);
+        end;
+    end;
+  end;
+
+  { finished gracefully }
+  GetExitCodeProcess(ProcessInfo.hProcess, ExCode);
+  result := erOk;
+end;
+
+class function TProcessUtils.Execute(
+      PathAndParams : String;
+      Timeout       : Cardinal = INFINITE;
+      TimeoutAction : TExecuteTimeoutAction = etoTerminate;
+      TimeoutProc   : TExecuteTimeoutProc = nil;
+      Visibility    : Word = SW_SHOW): TExecuteResult;
+var
+  ExCode: Cardinal;
+begin
+  Result := Execute(ExCode, PathAndParams, Timeout, TimeoutAction, TimeoutProc, Visibility);
 end;
 
 { TSecurity }
@@ -700,7 +812,7 @@ end;
 
 class function TSecurity.ImpersonateThreadAsLoggedUser: Boolean;
 var
-  d: TList<TProcess.TInfo>;
+  d: TList<TProcessUtils.TInfo>;
   h, tok: THandle;
 begin
   // we should be on the input desktop here!
@@ -711,7 +823,7 @@ begin
   // security context of logged on user.
   AddDbgPrivileges;
 
-  d := TProcess.ListByName(True, '*\explorer.exe');
+  d := TProcessUtils.ListByName(True, '*\explorer.exe');
   try
     if d.Count = 0 then
       Exit;
@@ -930,6 +1042,66 @@ begin
   PostMessage(Handle, Msg, wParam, lPAram);
 end;
 
+class procedure TMessenger.SendFloat(WinHandle: HWND; const V: double);
+begin
+  SendString(WinHandle, Round(v).ToString);
+end;
+
+class procedure TMessenger.SendString(WinHandle: HWND; const S: string);
+const
+  KeyDownFlags = 1;
+  KeyUpFlags   = 1 or (1 shl 30) or (1 shl 31);
+var
+  I: Integer;
+  VK: SHORT;
+  VKCode: byte;
+  VKFlags: byte;
+begin
+  if Length(S)=0 then
+    Exit;
+  for I := Low(S) to High(S) do
+  begin
+    VK := VkKeyScan(S[I]);
+    VKCode := VK and $FF;
+    VKFlags := VK shr 8;
+
+    { press ALT/SHIFT/CTRL }
+    if VKFlags and 1<>0 then PostMessage(WinHandle, wm_keydown, vk_shift, KeyDownFlags);
+    if VKFlags and 2<>0 then PostMessage(WinHandle, wm_keydown, vk_control, KeyDownFlags);
+    if VKFlags and 4<>0 then PostMessage(WinHandle, wm_keydown, VK_MENU, KeyDownFlags);
+
+    { press/release key }
+    PostMessage(WinHandle, wm_keydown, VKCode, KeyDownFlags);
+    PostMessage(WinHandle, wm_keyup, VKCode, KeyUpFlags);
+
+    { release ALT/SHIFT/CTRL }
+    if VKFlags and 1<>0 then PostMessage(WinHandle, wm_keyup, vk_shift, KeyUpFlags);
+    if VKFlags and 2<>0 then PostMessage(WinHandle, wm_keyup, vk_control, KeyUpFlags);
+    if VKFlags and 4<>0 then PostMessage(WinHandle, wm_keyup, VK_MENU, KeyUpFlags);
+  end;
+end;
+
+class procedure TMessenger.SendInputString(const S: string);
+var
+  I: Integer;
+  V: TVector<TInput>;
+  InputValue: TInput;
+begin
+  if Length(S)=0 then
+    Exit;
+  V.Clear;
+  for I := Low(S) to High(S) do
+  begin
+    InputValue := Default(TInput);
+    InputValue.Itype := $0002; {KEYBDINPUT}
+    InputValue.ki.wVk := VkKeyScan(S[I]) and $FF;
+    V.Add(InputValue);
+    InputValue.ki.dwFlags := KEYEVENTF_KEYUP;
+    V.Add(InputValue);
+  end;
+  SendInput(V.Count, V.Items[0], SizeOf(TInput));
+end;
+
 constructor TMessenger.Create(AMessageHandler: TOnMessage);
 begin
   Create;
@@ -1069,7 +1241,7 @@ begin
     SetLength(ProcessNames, ProcInfoCount);
     for i := 0 to ProcInfoCount-1 do
     begin
-      ProcessNames[i] := TProcess.QueryImagePath(ProcessInfoArr[i].Process.dwProcessId);
+      ProcessNames[i] := TProcessUtils.QueryImagePath(ProcessInfoArr[i].Process.dwProcessId);
       if ProcessNames[i] = '' then
         ProcessNames[i] := ProcessInfoArr[i].strAppName;
       ProcessNames[i] := ProcessNames[i] + format('[%d]', [ProcessInfoArr[i].Process.dwProcessId]);

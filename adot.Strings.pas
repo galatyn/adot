@@ -102,6 +102,7 @@ type
 
   TStrCharsPos = (scAll, scFirst, scLast);
   TTextEncoding = (teUnknown, teAnsi, teUTF8, teUTF16LE, teUTF16BE, teUTF32LE, teUTF32BE);
+  TUnicodeEncodingType = (eetUTF8, eetUTF16LE, eetUTF16BE, eetUTF32LE, eetUTF32BE);
 
   { string utils }
   TStr = class
@@ -162,6 +163,22 @@ type
     { split text into lines of fixed length with transfering words and punctuation }
     class function Split(const Src: string; MaxStrLen: integer = 80): TArray<string>; overload; static;
     class function Split(const Src: string; const Options: TSplitOptions): TArray<string>; overload; static;
+    { Returns max possible encoded substring for specified bufer. }
+    class function GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes; static;
+    { Trancates string without breakig a words. }
+    class function TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string; static;
+    { Replaces any sequence of any space/control chars by single space. }
+    class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
+    { xxx -> 'xxx'
+      Delphi (up to Delphi 10 Seattle at least) doesn't allow string literals to be longer than 255 chars.
+      MakeStringLiteral will add quote char and split to several lines if necessary }
+    class function MakeValidStringLiteral(const s: string): string; static;
+    { TTestApp -> "Test app" }
+    class function ClassNameToCaption(const AClassName: string): string; static;
+    { Analyze fragment of text & detect correct encoding }
+    class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
+      var TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; static;
+    class function IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean; static;
 
     { returns new string where all specified chars are deleted }
     class function Remove(const Src: string; CharsToDelete: TSet<Char>): string; static;
@@ -212,6 +229,11 @@ type
     class procedure Save(Dst: TStream; const S: string; Encoding: TEncoding = nil); overload; static;
     class procedure Save(const FileName: string; const S: string; Encoding: TEncoding = nil); overload; static;
 
+    class function LoadFileToArray(const Filename: string; Encoding: TEncoding = nil): TArray<string>; static;
+    class function LoadStreamToArray(Src: TStream; Encoding: TEncoding = nil): TArray<string>; static;
+    class procedure SaveArrayToFile(const Src: TArray<string>; const Filename: string; Encoding: TEncoding = nil); static;
+    class procedure SaveArrayToStream(const Src: TArray<string>; const Dst: TStream; Encoding: TEncoding = nil); static;
+
     { set-string, number-string etc }
     class function CharsCount(const AChars: TAnsiChars): integer;
     class function SetToString(const AChars: TAnsiChars): string;
@@ -236,20 +258,6 @@ type
     class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
     class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
 
-    { Returns max possible encoded substring for specified bufer. }
-    class function GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes; static;
-
-    { Trancates string without breakig a words. }
-    class function TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string; static;
-
-    { Replaces any sequence of any space/control chars by single space. }
-    class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
-
-    { Analyze fragment of text & detect correct encoding }
-    class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
-      var TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; static;
-    class function IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean; static;
-
     class function FixDecimalSeparator(const Src: string): string; static;
 
     class function ToInteger(const Src: string): int64; static;
@@ -269,6 +277,54 @@ type
     class function TryToFloat(const Src: string; var Value: extended): boolean; overload; static;
     class function TryToBoolean(const Src: string; var Value: boolean): boolean; static;
     class function TryToDateTime(const Src: string; var Value: TDateTime): boolean; static;
+
+    { Can be used to detect used unicode transformation family:
+      UTF8, UTF16 big/little endian, UTF32 big/little endian. }
+    class function DetectUnicodeEncodingType(const AText: TArray<byte>; Count: integer; out Enc: TUnicodeEncodingType): boolean; static;
+
+    { Will try to detect code page of input. Much more robust than TEncoding.GetEncoding (in Delphi 10.2 at least).
+      Corresponding TEncoding class can be created from valid code page:
+        E := TEncoding.GetEncoding(CodePage) }
+    class function DetectCodepage(const AText: TArray<byte>; out CodePage: integer): boolean; static;
+
+    { False if AText is 100% not encoded with code page ACodePage.
+      True if AText may (or may not!) be encoded with code page ACodePage.
+      Mostly usefull for code pages specific to unicode transformations:
+         1200 UTF16 little endian
+         1201 UTF16 big endian
+        12000 UTF32 little endian
+        12001 UTF32 big endian
+        65001 UTF8 }
+    class function IsPossibleEncoding(const AText: TArray<byte>; ACodePage: integer): boolean;
+
+    { Extends TEncoding.GetEncoding with some extra code pages (UTF32 is not supported by TEncoding in Delphi 10.2) }
+    class function GetEncoding(CodePage: integer): TEncoding;
+  end;
+
+  TBigEndianUTF32Encoding = class(TUnicodeEncoding)
+  strict protected
+    function GetByteCount(Chars: PChar; CharCount: Integer): Integer; overload; override;
+    function GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer; overload; override;
+    function GetCharCount(Bytes: PByte; ByteCount: Integer): Integer; overload; override;
+    function GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer; overload; override;
+    function GetCodePage: Cardinal; override;
+    function GetEncodingName: string; override;
+  public
+    function Clone: TEncoding; override;
+    function GetPreamble: TBytes; override;
+    function GetMaxByteCount(CharCount: Integer): Integer; override;
+    function GetMaxCharCount(ByteCount: Integer): Integer; override;
+  end;
+
+  TLittleEndianUTF32Encoding = class(TBigEndianUTF32Encoding)
+  strict protected
+    function GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer; overload; override;
+    function GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer; overload; override;
+    function GetCodePage: Cardinal; override;
+    function GetEncodingName: string; override;
+  public
+    function Clone: TEncoding; override;
+    function GetPreamble: TBytes; override;
   end;
 
   { Usually all chars of text belong to one code page.
@@ -885,6 +941,18 @@ begin
         result := result + Delimeter + Src[i];
 end;
 
+class function TStr.ClassNameToCaption(const AClassName: string): string;
+var
+  i: Integer;
+begin
+  if result.StartsWith('T') then
+    result := result.Substring(1);
+  for i := Length(result)-1 downto 1 do
+    if result.Chars[i].IsUpper and result.Chars[i-1].IsLower then
+      result := result.Insert(i, ' ');
+  result := result.UpperCase(result.Substring(0,1)) + result.LowerCase(result.Substring(1));
+end;
+
 class function TStr.CompareAsInt(const A, B: string): integer;
 var
   AI,BI: int64;
@@ -1289,6 +1357,20 @@ class procedure TStr.FinalizeVars;
 begin
 end;
 
+class function TStr.MakeValidStringLiteral(const s: string): string;
+var
+  i: Integer;
+begin
+  result := '';
+  i := Low(s);
+  while High(s)-i+1>250 do
+  begin
+    result := result + '''' + System.Copy(s,i,250) + ''' + ';
+    inc(i, 250);
+  end;
+  result := result + '''' + System.Copy(s,i,high(integer)) + '''';
+end;
+
 class function TStr.MoveDigitsToEnd(const s: string): String;
 var
   i,j: Integer;
@@ -1325,6 +1407,15 @@ begin
       inc(j);
       result[j] := s[i];
     end;
+end;
+
+class function TStr.GetEncoding(CodePage: integer): TEncoding;
+begin
+  case CodePage of
+    12000 : result := TLittleEndianUTF32Encoding.Create;
+    12001 : result := TBigEndianUTF32Encoding.Create;
+    else result := TEncoding.GetEncoding(CodePage);
+  end;
 end;
 
 class function TStr.GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes;
@@ -1897,6 +1988,65 @@ begin
   end;
 end;
 
+class function TStr.LoadFileToArray(const Filename: string; Encoding: TEncoding = nil): TArray<string>;
+var
+  S: TMemoryStream;
+begin
+  S := TMemoryStream.Create;
+  try
+    S.LoadFromFile(Filename);
+    S.Position := 0;
+    result := LoadStreamToArray(S, Encoding);
+  finally
+    Sys.FreeAndNil(S);
+  end;
+end;
+
+class function TStr.LoadStreamToArray(Src: TStream; Encoding: TEncoding = nil): TArray<string>;
+var
+  L: TStringList;
+begin
+  L := TStringList.Create;
+  try
+    if Encoding = nil then
+      Encoding := TEncoding.UTF8;
+    L.LoadFromStream(Src, Encoding);
+    Result := L.ToStringArray;
+  finally
+    Sys.FreeAndNil(L);
+  end;
+end;
+
+class procedure TStr.SaveArrayToFile(const Src: TArray<string>; const Filename: string; Encoding: TEncoding);
+var
+  S: TMemoryStream;
+begin
+  S := TMemoryStream.Create;
+  try
+    SaveArrayToStream(Src, S, Encoding);
+    S.SaveToFile(Filename);
+  finally
+    Sys.FreeAndNil(S);
+  end;
+end;
+
+class procedure TStr.SaveArrayToStream(const Src: TArray<string>; const Dst: TStream; Encoding: TEncoding);
+var
+  L: TStringList;
+  I: Integer;
+begin
+  L := TStringList.Create;
+  try
+    for I := Low(Src) to High(Src) do
+      L.Add(Src[I]);
+    if Encoding = nil then
+      Encoding := TEncoding.UTF8;
+    L.SaveToStream(Dst, Encoding);
+  finally
+    Sys.FreeAndNil(L);
+  end;
+end;
+
 class procedure TStr.Save(Dst: TStream; const S: string; Encoding: TEncoding);
 var
   B: TArray<System.Byte>;
@@ -2231,6 +2381,154 @@ begin
       Integer(AFrom) +
       System.Random(Integer(ATo)-Integer(AFrom)+1)
     );
+end;
+
+class function TStr.IsPossibleEncoding(const AText: TArray<byte>; ACodePage: integer): boolean;
+var
+  D: TArray<byte>;
+  S: string;
+  I,J: Integer;
+  UnicodeEncodingType: TUnicodeEncodingType;
+
+    function ContainsPreamble(const Buffer, Signature: TArray<Byte>): Boolean;
+    var
+      I: Integer;
+    begin
+      Result := Length(Buffer) >= Length(Signature);
+      if Result then
+        for I := 0 to Length(Signature)-1 do
+          if Buffer[I] <> Signature[I] then
+            Exit(False);
+    end;
+
+begin
+  if Length(AText) = 0 then
+    Exit(True); { any encoding is allowed for empty src }
+
+  if not TStr.DetectUnicodeEncodingType(AText, Length(AText), UnicodeEncodingType) then
+    { We can detect UTF16, UTF32, UTF8. If detector failed, then it is something else. }
+    result := (ACodePage<>1200) and (ACodePage<>1201) and (ACodePage<>12000) and (ACodePage<>12001) and (ACodePage<>65001)
+  else
+    case UnicodeEncodingType of
+      eetUTF8:
+        if (ACodePage=1200) or (ACodePage=1201) or (ACodePage=12000) or (ACodePage=12001) then
+          result := False { we know it is not UTF16/UTF32 }
+        else
+        try
+          { Too easy to miss with 1-byte encoding, we do extra testing for UTF8-compatibility:
+            - we should be able to decode all bytes of UTF8 source
+            - after decoding/encoding we should get same bytes as source (maybe except BOM bytes)  }
+
+          { we will get exception here if it is not valid sequence of UTF8 }
+          S := TEncoding.UTF8.GetString(AText);
+
+          { now we try to od back conversion }
+          D := TEncoding.UTF8.GetBytes(S);
+
+          { compare result with source excluding BOM }
+          I := IfThen(ContainsPreamble(AText, TEncoding.UTF8.GetPreamble), Length(TEncoding.UTF8.GetPreamble), 0);
+          J := IfThen(ContainsPreamble(D, TEncoding.UTF8.GetPreamble), Length(TEncoding.UTF8.GetPreamble), 0);
+          if (Length(AText)-I = Length(D)-J) and TArrayUtils.Equal<byte>(AText,D,I,J,Length(AText)-I) then
+            result := True { it can be either UTF8 or single byte encoding }
+          else
+            result := ACodePage <> 65001; { it is not UTF8 }
+        except
+          result := ACodePage <> 65001; { it is not UTF8 }
+        end;
+      eetUTF16LE : result := ACodePage = 1200;
+      eetUTF16BE : result := ACodePage = 1201;
+      eetUTF32LE : result := ACodePage = 12000;
+      eetUTF32BE : result := ACodePage = 12001;
+      else Result := True; { we don't know }
+    end;
+
+end;
+
+class function TStr.DetectCodepage(const AText: TArray<byte>; out CodePage: integer): boolean;
+var
+  UnicodeEncodingType: TUnicodeEncodingType;
+begin
+  result := TStr.DetectUnicodeEncodingType(AText, Length(AText), UnicodeEncodingType);
+  if result then
+    case UnicodeEncodingType of
+      eetUTF8:
+        if IsPossibleEncoding(AText, 65001 {UTF8} )
+          then CodePage := 65001 { UTF8 }
+          else Result := False;
+      eetUTF16LE : CodePage := 1200;
+      eetUTF16BE : CodePage := 1201;
+      eetUTF32LE : CodePage := 12000;
+      eetUTF32BE : CodePage := 12001;
+    end;
+end;
+
+class function TStr.DetectUnicodeEncodingType(const AText: TArray<byte>; Count: integer; out Enc: TUnicodeEncodingType): boolean;
+type
+  TRec = record
+    z: array[0..3] of byte;
+    e: TUnicodeEncodingType;
+  end;
+
+const
+  Encodings : array[0..4] of TRec = (
+    (z:(1,1,1,1); e:eetUTF8),
+    (z:(1,0,1,0); e:eetUTF16LE),
+    (z:(0,1,0,1); e:eetUTF16BE),
+    (z:(1,0,0,0); e:eetUTF32LE),
+    (z:(0,0,0,1); e:eetUTF32BE)
+  );
+
+var
+  i: integer;
+begin
+  if Count < 4 then
+    Exit(False); { maybe UTF8, we don't know }
+
+  { check byte order mark (BOM) }
+  if (AText[0]=$EF) and (AText[1]=$BB) and (AText[2]=$BF) then
+  begin
+    Enc := eetUTF8;
+    Exit(True);
+  end;
+  if (AText[0]=$FF) and (AText[1]=$FE) and (AText[2]=0) and (AText[3]=0) then
+  begin
+    Enc := eetUTF32LE;
+    Exit(True);
+  end;
+  if (AText[0]=0) and (AText[1]=0) and (AText[2]=$FE) and (AText[3]=$FF) then
+  begin
+    Enc := eetUTF32BE;
+    Exit(True);
+  end;
+  if (AText[0]=$FF) and (AText[1]=$FE) then
+  begin
+    Enc := eetUTF16LE;
+    Exit(True);
+  end;
+  if (AText[0]=$FE) and (AText[1]=$FF) then
+  begin
+    Enc := eetUTF16BE;
+    Exit(True);
+  end;
+
+  {
+    check first two characters (according to RFC they must be ASCII)
+    00 00 00 xx  UTF-32BE
+    00 xx 00 xx  UTF-16BE
+    xx 00 00 00  UTF-32LE
+    xx 00 xx 00  UTF-16LE
+    xx xx xx xx  UTF-8
+  }
+  for i := low(Encodings) to high(Encodings) do
+    with Encodings[i] do
+      if ((Z[0]=0)=(AText[0]=0)) and ((Z[1]=0)=(AText[1]=0)) and ((Z[2]=0)=(AText[2]=0)) and ((Z[3]=0)=(AText[3]=0)) then
+        begin
+          Enc := E;
+          Exit(True);
+        end;
+
+  Exit(False);
+
 end;
 
 class function TStr.Random: string;
@@ -4256,6 +4554,147 @@ begin
     cpiEur: result := DecodeTextEur(Buf, BufSize);
     else result := '';
   end;
+end;
+
+{ TBigEndianUTF32Encoding }
+
+function TBigEndianUTF32Encoding.Clone: TEncoding;
+begin
+  Result := TBigEndianUTF32Encoding.Create;
+end;
+
+function TBigEndianUTF32Encoding.GetByteCount(Chars: PChar; CharCount: Integer): Integer;
+begin
+  Result := CharCount * 4;
+end;
+
+function TBigEndianUTF32Encoding.GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer;
+var
+  I: Integer;
+begin
+  for I := 0 to CharCount - 1 do
+  begin
+    Word(Pointer(Bytes)^) := 0;
+    Inc(Bytes, 2);
+    Bytes^ := Hi(Word(Chars^));
+    Inc(Bytes);
+    Bytes^ := Lo(Word(Chars^));
+    Inc(Bytes);
+    Inc(Chars);
+  end;
+  Result := CharCount * 4;
+end;
+
+function TBigEndianUTF32Encoding.GetCharCount(Bytes: PByte; ByteCount: Integer): Integer;
+begin
+  Result := ByteCount div 4;
+end;
+
+function TBigEndianUTF32Encoding.GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer;
+begin
+  Result := CharCount;
+  while CharCount > 0 do
+  begin
+    Assert(ByteCount >= 4);
+    if Word(Pointer(Bytes)^) <> 0
+      then Chars^ := '?'
+      else Chars^ := Char(Pointer(@Bytes[2])^);
+    Chars^ := Char( (Word(Chars^) shr 8) or (Word(Chars^) shl 8) );
+    inc(Bytes,4);
+    dec(ByteCount,4);
+    inc(Chars);
+    dec(CharCount);
+  end;
+end;
+
+function TBigEndianUTF32Encoding.GetCodePage: Cardinal;
+begin
+  Result := 12001; // UTF-32BE
+end;
+
+function TBigEndianUTF32Encoding.GetEncodingName: string;
+begin
+  {$IFDEF MSWINDOWS}
+    Result := '12001  (Unicode - Big-Endian)'; // do not localize
+  {$ENDIF MSWINDOWS}
+  {$IFDEF POSIX}
+    Result := 'Unicode (UTF-32BE)'; // do not localize
+  {$ENDIF POSIX}
+end;
+
+function TBigEndianUTF32Encoding.GetMaxByteCount(CharCount: Integer): Integer;
+begin
+  Result := (CharCount + 1) * 4;
+end;
+
+function TBigEndianUTF32Encoding.GetMaxCharCount(ByteCount: Integer): Integer;
+begin
+  Result := (ByteCount div 4) + (ByteCount and 1) + 1;
+end;
+
+function TBigEndianUTF32Encoding.GetPreamble: TBytes;
+begin
+  Result := TBytes.Create(0, 0, $FE, $FF);
+end;
+
+{ TLittleEndianUTF32Encoding }
+
+function TLittleEndianUTF32Encoding.Clone: TEncoding;
+begin
+  Result := TLittleEndianUTF32Encoding.Create;
+end;
+
+function TLittleEndianUTF32Encoding.GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer;
+var
+  I: Integer;
+begin
+  for I := 0 to CharCount - 1 do
+  begin
+    Bytes^ := Lo(Word(Chars^));
+    Inc(Bytes);
+    Bytes^ := Hi(Word(Chars^));
+    Inc(Bytes);
+    Word(Pointer(Bytes)^) := 0;
+    Inc(Bytes, 2);
+    Inc(Chars);
+  end;
+  Result := CharCount * 4;
+end;
+
+function TLittleEndianUTF32Encoding.GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer;
+begin
+  Result := CharCount;
+  while CharCount > 0 do
+  begin
+    Assert(ByteCount >= 4);
+    if Word((@Bytes[2])^) <> 0
+      then Chars^ := '?'
+      else Chars^ := Char(Pointer(Bytes)^);
+    inc(Bytes,4);
+    dec(ByteCount,4);
+    inc(Chars);
+    dec(CharCount);
+  end;
+end;
+
+function TLittleEndianUTF32Encoding.GetCodePage: Cardinal;
+begin
+  Result := 12000; // UTF-32LE
+end;
+
+function TLittleEndianUTF32Encoding.GetEncodingName: string;
+begin
+  {$IFDEF MSWINDOWS}
+    Result := '12000  (Unicode - Little-Endian)'; // do not localize
+  {$ENDIF MSWINDOWS}
+  {$IFDEF POSIX}
+    Result := 'Unicode (UTF-32LE)'; // do not localize
+  {$ENDIF POSIX}
+end;
+
+function TLittleEndianUTF32Encoding.GetPreamble: TBytes;
+begin
+  Result := TBytes.Create($FF, $FE, 0, 0);
 end;
 
 initialization

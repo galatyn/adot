@@ -426,7 +426,8 @@ type
     class function Add<T>(const A,B: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
-    class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; static;
+    class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; overload; static;
+    class function Equal<T>(const A,B: TArray<T>; IndexA,IndexB,Count: integer; AComparer: IEqualityComparer<T> = nil): Boolean; overload; static;
     class procedure Append<T>(var Dst: TArray<T>; const Src: T); overload; static;
     class procedure Append<T>(var Dst: TArray<T>; const Src: TArray<T>); overload; static;
     class procedure Append<T>(var Dst: TArray<T>; const Src: TEnumerable<T>); overload; static;
@@ -448,6 +449,11 @@ type
     class function Ranges(Src: TEnumerable<integer>): TRangeEnumerable; overload; static;
     class function IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer; overload; static;
     class function IndexOf<T>(const Item: T; const Src: TArray<T>): integer; overload; static;
+    class function GetPtr<T>(const Src: TArray<T>): pointer; static;
+    class function GetFromDynArray(const Src: TStringDynArray): TArray<string>; static;
+    class function Sum(var Arr: double; Count: integer): double; overload; static;
+    class function Sum(var Arr: integer; Count: integer): int64; overload; static;
+    class function Sum(var Arr: int64; Count: integer): int64; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -515,6 +521,7 @@ type
 
     class function IsValid(const S: string): Boolean; static;
     class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
+    class function IntToGuid(N: integer): TGUID; static;
 
     class function GetNew: TGUID; static;
     class function GetNewAsString: string; static;
@@ -665,6 +672,8 @@ type
     class function Max(const A,B,C: double): double; overload; static;
     class function Max(const Values: array of double): double; overload; static;
     class function Max(const Values: TArray<double>): double; overload; static;
+
+    class function GetPtr(const Values: TArray<byte>): pointer; overload; static;
   end;
 
   { Shortcut to TFun ("Sys.FreeAndNil" looks more natural than "TFun.FreeAndNil"). }
@@ -1002,6 +1011,7 @@ type
   public
     class function IsSameHandler(const A,B: TNotifyEvent): Boolean; overload; static;
     class function IsSameHandler(const A,B: TActionEvent): Boolean; overload; static;
+    class function Equal<T>(const A,B: T): boolean; static;
   end;
 
   TDataSize = record
@@ -1233,6 +1243,20 @@ type
       If the TWeakComponentPtr is not initialized by Create/Init/Copy and not cleared by Clear,
       then result of IsEmpty is undefined. }
     property IsEmpty: boolean read GetIsEmpty;
+  end;
+
+  TEventStat = class
+  private
+    FEvents: TMap<string, int64>;
+
+  public
+    procedure Reg(const EventCategory: string); overload;
+    procedure Reg(const EventCategory: string; Count: int64); overload;
+    procedure UnReg(const EventCategory: string); overload;
+    procedure UnReg(const EventCategory: string; Count: int64); overload;
+    procedure Add(const Src: TArray<TPair<string, int64>>);
+    procedure Clear;
+    function GetStat: TArray<TPair<string, int64>>;
   end;
 
 implementation
@@ -1864,6 +1888,28 @@ begin
   end;
 end;
 
+class function TArrayUtils.Equal<T>(const A, B: TArray<T>; IndexA, IndexB, Count: integer; AComparer: IEqualityComparer<T>): Boolean;
+var
+  I,J: Integer;
+begin
+  if (Length(A)-IndexA < Count) or (Length(B)-IndexB < Count) then
+    Exit(False);
+  if Count <= 0 then
+    Exit(True);
+  if TRttiUtils.IsOrdinal<T> and (AComparer=nil) then
+    { A & B are not empty -> it is safe to use @A[0] / @B[0] }
+    result := CompareMem(@A[IndexA], @B[IndexB], Count*SizeOF(T))
+  else
+  begin
+    if AComparer=nil then
+      AComparer := TEqualityComparer<T>.Default;
+    for i := 0 to Count-1 do
+      if not AComparer.Equals(A[i+IndexA], B[i+IndexB]) then
+        Exit(False);
+    result := True;
+  end;
+end;
+
 class function TArrayUtils.Equal<T>(const A, B: TArray<T>; AComparer: IEqualityComparer<T>): Boolean;
 var
   i: Integer;
@@ -1871,6 +1917,7 @@ begin
   result := Length(A)=Length(B);
   if result and (Length(A) > 0) then
     if TRttiUtils.IsOrdinal<T> and (AComparer=nil) then
+      { A & B are not empty -> it is safe to use @A[0] / @B[0] }
       result := CompareMem(@A[0], @B[0], Length(A)*SizeOF(T))
     else
     begin
@@ -1979,6 +2026,22 @@ begin
   SetLength(result, Length(Arr));
   for i := 0 to High(result) do
     result[i] := Arr[i];
+end;
+
+class function TArrayUtils.GetFromDynArray(const Src: TStringDynArray): TArray<string>;
+var
+  I: Integer;
+begin
+  SetLEngth(result, Length(Src));
+  for I := Low(Src) to High(Src) do
+    result[I] := Src[I];
+end;
+
+class function TArrayUtils.GetPtr<T>(const Src: TArray<T>): pointer;
+begin
+  if Length(Src)=0
+    then result := nil
+    else result := @Src[0];
 end;
 
 class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer;
@@ -2106,6 +2169,48 @@ begin
     Tmp[I] := Dst[Idx[I]];
   for I := 0 to High(Tmp) do
     Dst[I+StartIndex] := Tmp[I];
+end;
+
+class function TArrayUtils.Sum(var Arr: integer; Count: integer): int64;
+var
+  p: ^integer;
+begin
+  p := @Arr;
+  result := 0;
+  while Count > 0 do
+  begin
+    dec(Count);
+    inc(result, p^);
+    inc(p);
+  end;
+end;
+
+class function TArrayUtils.Sum(var Arr: int64; Count: integer): int64;
+var
+  p: ^int64;
+begin
+  p := @Arr;
+  result := 0;
+  while Count > 0 do
+  begin
+    dec(Count);
+    inc(result, p^);
+    inc(p);
+  end;
+end;
+
+class function TArrayUtils.Sum(var Arr: double; Count: integer): double;
+var
+  p: ^double;
+begin
+  p := @Arr;
+  result := 0;
+  while Count > 0 do
+  begin
+    dec(Count);
+    result := result + p^;
+    inc(p);
+  end;
 end;
 
 class function TArrayUtils.Cut<T>(var Dst: TArray<T>; Capacity,StartIndex,Count: integer): integer;
@@ -2280,6 +2385,15 @@ end;
 
 { TGUIDUtils }
 
+class function TGUIDUtils.IntToGuid(N: integer): TGUID;
+begin
+  {$If SizeOf(integer)<>4}
+    {$MESSAGE ERROR 'unexpected size of integer type' }
+  {$EndIf}
+  result := Default(TGUID);
+  result.D1 := cardinal(N);
+end;
+
 class function TGUIDUtils.IsValid(const S: string): Boolean;
 var
   i: Integer;
@@ -2417,7 +2531,8 @@ begin
   if Encoding=nil then
     Encoding := TEncoding.UTF8;
   B := Encoding.GetBytes(S);
-  Dst.WriteBuffer(B[0], Length(B));
+  if Length(B) > 0 then
+    Dst.WriteBuffer(B[0], Length(B));
 end;
 
 { TFileUtils }
@@ -3842,7 +3957,7 @@ var
   Hash: THashMD5;
 begin
   Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
-  Hash.Update(@Buf, ByteBufSize);
+  Hash.Update(Buf, ByteBufSize);
   Result := Hash.HashAsBytes;
 end;
 
@@ -3885,7 +4000,7 @@ var
   Hash: THashSHA1;
 begin
   Hash := THashSHA1.Create;
-  Hash.Update(@Buf, ByteBufSize);
+  Hash.Update(Buf, ByteBufSize);
   Result := Hash.HashAsBytes;
 end;
 
@@ -3928,7 +4043,7 @@ var
   Hash: THashSHA2;
 begin
   Hash := THashSHA2.Create;
-  Hash.Update(@Buf, ByteBufSize);
+  Hash.Update(Buf, ByteBufSize);
   Result := Hash.HashAsBytes;
 end;
 
@@ -4057,7 +4172,7 @@ var
   h: THashBobJenkins;
 begin
   h := THashBobJenkins.Create;
-  h.Update(@Buf, ByteBufSize);
+  h.Update(Buf, ByteBufSize);
   Result := h.HashAsBytes;
 end;
 
@@ -4301,6 +4416,11 @@ begin
   result := CompareMem(@A, @B, SizeOF(TNotifyEvent));
 end;
 
+class function TEventUtils.Equal<T>(const A, B: T): boolean;
+begin
+  result := CompareMem(@A, @B, SizeOF(T));
+end;
+
 class function TEventUtils.IsSameHandler(const A, B: TActionEvent): Boolean;
 begin
   result := CompareMem(@A, @B, SizeOF(TActionEvent));
@@ -4325,6 +4445,13 @@ class procedure TFun.FreeAndNil<T>(var Obj: T);
 begin
   Obj.Free;
   Obj := nil;
+end;
+
+class function TFun.GetPtr(const Values: TArray<byte>): pointer;
+begin
+  if Length(Values)=0
+    then result := nil
+    else result := @Values[0];
 end;
 
 class function TFun.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
@@ -4991,7 +5118,7 @@ end;
 
 constructor TWeakComponentPtr<T>.Create(AValue: T);
 begin
-  Init(T);
+  Init(AValue);
 end;
 
 procedure TWeakComponentPtr<T>.Init(AValue: T);
@@ -5113,6 +5240,73 @@ begin
       (integer(Hash[2]) xor integer(Hash[3]))
   else
     result := GetHash16(CRC32.Encode(Hash,0,Length(Hash)));
+end;
+
+{ TEventStat }
+
+procedure TEventStat.Reg(const EventCategory: string);
+begin
+  Reg(EventCategory, 1);
+end;
+
+procedure TEventStat.Reg(const EventCategory: string; Count: int64);
+var
+  C: int64;
+begin
+  if not FEvents.TryGetValue(EventCategory, C) then
+    C:= 0;
+  inc(C, Count);
+  FEvents.AddOrSetValue(EventCategory, C);
+end;
+
+procedure TEventStat.UnReg(const EventCategory: string);
+begin
+  UnReg(EventCategory, 1);
+end;
+
+procedure TEventStat.UnReg(const EventCategory: string; Count: int64);
+var
+  C: int64;
+begin
+  if FEvents.TryGetValue(EventCategory, C) then
+  begin
+    dec(C, Count);
+    if C <=0
+      then FEvents.Remove(EventCategory)
+      else FEvents.AddOrSetValue(EventCategory, C);
+  end;
+end;
+
+procedure TEventStat.Add(const Src: TArray<TPair<string, int64>>);
+var
+  I: Integer;
+begin
+  for I := Low(Src) to High(Src) do
+    Reg(Src[I].Key, Src[I].Value);
+end;
+
+function TEventStat.GetStat: TArray<TPair<string, int64>>;
+var
+  C: IComparer<TPair<string, int64>>;
+  S: IComparer<string>;
+begin
+  result := FEvents.ToArray;
+  S := TIStringComparer.Ordinal;
+  C := TDelegatedComparer<TPair<string, int64>>.Create(
+    function (const A,B: TPair<string, int64>): integer
+    begin
+      result := S.Compare(A.Key, B.Key);
+      if result = 0 then
+        if A.Key < B.Key then result := -1 else
+          if A.Key = B.Key then result := 0 else
+            result := 1 else
+    end);
+  TArray.Sort<TPair<string, int64>>(result, C);
+end;
+
+procedure TEventStat.Clear;
+begin
+  FEvents.Clear;
 end;
 
 end.

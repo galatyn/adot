@@ -347,8 +347,18 @@ type
 
   TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
 
+  TEnumerableExt<T> = class(TEnumerable<T>)
+  protected
+    class procedure DoSaveToStream(Src: TEnumerable<T>; Dst: TStream; Encoding: TEncoding = nil); static;
+    class procedure DoSaveToFile(Src: TEnumerable<T>; const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True); static;
+
+  public
+    procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
+  end;
+
   { Generic class for set. }
-  TSetClass<TValue> = class(TEnumerable<TValue>)
+  TSetClass<TValue> = class(TEnumerableExt<TValue>)
   public
     type
       TEnumerator = TDictionary<TValue, TEmptyRec>.TKeyEnumerator;
@@ -494,10 +504,12 @@ type
     class operator Implicit(const a : T) : TSet<T>;
     class operator Implicit(const a : TEnumerable<T>) : TSet<T>;
     class operator Implicit(const a : array of T) : TSet<T>;
+    class operator Implicit(const a : TArray<T>) : TSet<T>;
 
     class operator Explicit(const a : T) : TSet<T>;
     class operator Explicit(const a : TEnumerable<T>) : TSet<T>;
     class operator Explicit(const a : array of T) : TSet<T>;
+    class operator Explicit(const a : TArray<T>) : TSet<T>;
 
     class operator Add(a: TSet<T>;       b: TSet<T>): TSet<T>;
     class operator Add(a: TSet<T>; const b: T): TSet<T>;
@@ -678,7 +690,7 @@ type
   TContainsCheckType = (cctAll, cctAnyOf);
 
   { Multimap class. Supports multiple items sharing same key. Keeps items in efficient way.}
-  TMultimapClass<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
+  TMultimapClass<TKey,TValue> = class(TEnumerableExt<TPair<TKey,TValue>>)
   protected
     type
       TMultimapKey = record
@@ -870,6 +882,7 @@ type
 
     constructor Create(ACapacity: integer); overload;
     constructor Create(ADst: TArray<T>); overload;
+    procedure Init;
 
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
@@ -936,6 +949,9 @@ type
     procedure Sort(Comparer: IComparer<T>); overload;
     procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
 
+    procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
+
     function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
@@ -985,7 +1001,7 @@ type
         constructor Create(const Rows: TVector<TVector<T>>);
       end;
 
-      TCollection = class(TEnumerable<T>)
+      TCollection = class(TEnumerableExt<T>)
       protected
         Rows: TVector<TVector<T>>;
 
@@ -1037,7 +1053,7 @@ type
   end;
 
   { Binary heap of pairs [Key;Value]. }
-  TBinaryHeapClass<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
+  TBinaryHeapClass<TKey,TValue> = class(TEnumerableExt<TPair<TKey,TValue>>)
   public
     type
       TPairsEnumerator = TVector<TPair<TKey,TValue>>.TEnumerator;
@@ -1126,7 +1142,7 @@ type
   end;
 
   { Binary heap with key only. }
-  TBinaryHeapClass<TKey> = class(TEnumerable<TKey>)
+  TBinaryHeapClass<TKey> = class(TEnumerableExt<TKey>)
   protected
     type
 
@@ -1180,7 +1196,7 @@ type
   end;
 
   { Cyclic/circular buffer based on array. Add/delete items to head/tail. }
-  TRingClass<T> = class(TEnumerable<T>)
+  TRingClass<T> = class(TEnumerableExt<T>)
   protected
     { FValues.Items is inner array, Items is property to access elements of the ring by index }
     FValues: TVector<T>;
@@ -1271,7 +1287,7 @@ type
     http://en.wikipedia.org/wiki/AA_tree }
   TSearchType = (stAll, stAny);
   TItemHandle = NativeInt;
-  TAATree<TKey,TValue> = class(TEnumerable<TPair<TKey,TValue>>)
+  TAATree<TKey,TValue> = class(TEnumerableExt<TPair<TKey,TValue>>)
   private
   protected
     type
@@ -1317,7 +1333,7 @@ type
         constructor Create(const ATree: TAATree<TKey,TValue>);
       end;
 
-      TKeyCollection = class(TEnumerable<TKey>)
+      TKeyCollection = class(TEnumerableExt<TKey>)
       protected
         [Weak] FTree: TAATree<TKey,TValue>;
 
@@ -1326,7 +1342,7 @@ type
         constructor Create(const ATree: TAATree<TKey,TValue>);
       end;
 
-      TValueCollection = class(TEnumerable<TValue>)
+      TValueCollection = class(TEnumerableExt<TValue>)
       protected
         [Weak] FTree: TAATree<TKey,TValue>;
 
@@ -1427,7 +1443,7 @@ type
     faster, but TOrderedMapClass has interface similar to TDictionary.
     Usually TMap is preferred over direct access to TAATree. }
   { Ordered map. }
-  TOrderedMapClass<TKey,TValue> = Class(TEnumerable<TPair<TKey,TValue>>)
+  TOrderedMapClass<TKey,TValue> = class(TEnumerableExt<TPair<TKey,TValue>>)
   private
   protected
     type
@@ -1510,7 +1526,7 @@ type
   end;
 
   { Doubly linked list }
-  TDoublyLinkedListClass<T> = class(TEnumerable<T>)
+  TDoublyLinkedListClass<T> = class(TEnumerableExt<T>)
   public
     type
 
@@ -1780,6 +1796,8 @@ type
     procedure Init(AValueMin,AValueMax: integer);
     procedure Clear;
     function GetEnumerator: TEnumerator;
+    procedure AddOrSet(AValueMin,AValueMax: integer);
+    procedure Add(AValueMin,AValueMax: integer);
 
     function Overlaps(const a: TRange): boolean;
 
@@ -1846,6 +1864,37 @@ type
     function Compare(const Left, Right: TRange): Integer; override;
   end;
 
+  { Generic singleton pattern. Creates instance on first request. Example:
+      Type
+        TOptions = class(TSingleton<TStringList>)
+        protected
+          class function CreateInstance: TStringList; override;
+        end;
+
+        class function TOptions.CreateInstance: TStringList;
+        begin
+          result := TStringList.Create;
+        end;
+
+      procedure Test;
+      begin
+        TOptions.Ordinal.Add('test');
+      end;
+  }
+  TSingleton<T: class> = class abstract
+  protected
+    class var
+      FOrdinal: T;
+
+    class destructor DestroyClass;
+
+    class function CreateInstance: T; virtual; abstract;
+
+  public
+    class function Ordinal: T;
+    class procedure SetOrdinal(const Value: T);
+  end;
+
 implementation
 
 uses
@@ -1906,7 +1955,7 @@ begin
     begin
       B := TypeInfo(TypeB);
       if (B<>nil) and (B.Kind in RecordTypes) then
-        Exit(inherited);
+        Exit(inherited Default);
     end;
     FOrdinalComparer := TCompoundEqualityComparer<TypeA, TypeB>.Create(nil, nil);
   end;
@@ -1957,7 +2006,7 @@ begin
       begin
         C := TypeInfo(TypeC);
         if (C<>nil) and (C.Kind in RecordTypes) then
-          Exit(inherited);
+          Exit(inherited Default);
       end;
     end;
     FOrdinalComparer := TCompoundEqualityComparer<TypeA, TypeB, TypeC>.Create(nil, nil, nil);
@@ -2003,7 +2052,7 @@ begin
     begin
       B := TypeInfo(TypeB);
       if (B<>nil) and (B.Kind in RecordTypes) then
-        Exit(inherited);
+        Exit(inherited Default);
     end;
     FOrdinalComparer := TCompoundComparer<TypeA, TypeB>.Create(nil, nil);
   end;
@@ -2049,7 +2098,7 @@ begin
       begin
         C := TypeInfo(TypeC);
         if (C<>nil) and (C.Kind in RecordTypes) then
-          Exit(inherited);
+          Exit(inherited Default);
       end;
     end;
     FOrdinalComparer := TCompoundComparer<TypeA, TypeB, TypeC>.Create(nil, nil, nil);
@@ -3113,6 +3162,12 @@ begin
   result.Add(a);
 end;
 
+class operator TSet<T>.Implicit(const a : TArray<T>) : TSet<T>;
+begin
+  result.FSetInt := nil;
+  result.Add(a);
+end;
+
 class operator TSet<T>.Explicit(const a : T) : TSet<T>;
 begin
   result.FSetInt := nil;
@@ -3127,6 +3182,12 @@ begin
 end;
 
 class operator TSet<T>.Explicit(const a : array of T) : TSet<T>;
+begin
+  result.FSetInt := nil;
+  result.Add(a);
+end;
+
+class operator TSet<T>.Explicit(const a : TArray<T>) : TSet<T>;
 begin
   result.FSetInt := nil;
   result.Add(a);
@@ -5340,6 +5401,11 @@ begin
     result := -1;
 end;
 
+procedure TVector<T>.Init;
+begin
+  Self := Default(TVector<T>);
+end;
+
 function TVector<T>.IndexOf(const Value: T): integer;
 begin
   if not FindFirst(Value, Result) then
@@ -5670,6 +5736,90 @@ var
 begin
   for I := 0 to Value.Count-1 do
     Items[Add] := Value[I];
+end;
+
+procedure TVector<T>.SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
+var
+  I: Integer;
+  S: string;
+  B: TArray<byte>;
+begin
+  if Encoding = nil then
+    Encoding := TEncoding.UTF8;
+  B := Encoding.GetPreamble;
+  Dst.WriteBuffer(B, System.Length(B));
+  for I := 0 to Count-1 do
+  begin
+    S := IfThen(I=0,'',#13#10) + TRttiUtils.ValueAsString<T>(Elements[I]);
+    B := Encoding.GetBytes(S);
+    Dst.WriteBuffer(B, System.Length(B));
+  end;
+end;
+
+procedure TVector<T>.SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
+var
+  S: TStream;
+begin
+  if MemStream
+    then S := TMemoryStream.Create
+    else S := TFileStream.Create(FileName, System.Classes.fmCreate);
+  try
+    SaveToStream(S, Encoding);
+    if MemStream then
+      TMemoryStream(S).SaveToFile(FileName);
+  finally
+    Sys.FreeAndNil(S);
+  end;
+end;
+
+{ TEnumerableExt<T> }
+
+class procedure TEnumerableExt<T>.DoSaveToFile(Src: TEnumerable<T>; const FileName: string; Encoding: TEncoding; MemStream: boolean);
+var
+  S: TStream;
+begin
+  if MemStream
+    then S := TMemoryStream.Create
+    else S := TFileStream.Create(FileName, System.Classes.fmCreate);
+  try
+    DoSaveToStream(Src, S, Encoding);
+    if MemStream then
+      TMemoryStream(S).SaveToFile(FileName);
+  finally
+    Sys.FreeAndNil(S);
+  end;
+end;
+
+class procedure TEnumerableExt<T>.DoSaveToStream(Src: TEnumerable<T>; Dst: TStream; Encoding: TEncoding);
+var
+  I: Integer;
+  S: string;
+  B: TArray<byte>;
+  V: T;
+  N: boolean;
+begin
+  if Encoding = nil then
+    Encoding := TEncoding.UTF8;
+  B := Encoding.GetPreamble;
+  Dst.WriteBuffer(B, System.Length(B));
+  N := False;
+  for V in Src do
+  begin
+    S := IfThen(N,#13#10,'') + TRttiUtils.ValueAsString<T>(V);
+    B := Encoding.GetBytes(S);
+    Dst.WriteBuffer(B, System.Length(B));
+    N := True;
+  end;
+end;
+
+procedure TEnumerableExt<T>.SaveToFile(const FileName: string; Encoding: TEncoding; MemStream: boolean);
+begin
+  DoSaveToFile(Self, Filename, Encoding, MemStream);
+end;
+
+procedure TEnumerableExt<T>.SaveToStream(Dst: TStream; Encoding: TEncoding);
+begin
+  DoSaveTostream(Self, dst, Encoding);
 end;
 
 { TBHeap<TKey, TValue> }
@@ -7572,6 +7722,28 @@ begin
   end;
 end;
 
+procedure TRange.Add(AValueMin, AValueMax: integer);
+begin
+  if AValueMin <= AValueMax then
+  begin
+    ValueMin := Min(ValueMin, AValueMin);
+    ValueMax := Max(ValueMax, AValueMax);
+  end
+  else
+  begin
+    ValueMin := Min(ValueMin, AValueMax);
+    ValueMax := Max(ValueMax, AValueMin);
+  end
+end;
+
+procedure TRange.AddOrSet(AValueMin, AValueMax: integer);
+begin
+  if Empty then
+    Init(AValueMin, AValueMax)
+  else
+    Add(AValueMin, AValueMax);
+end;
+
 procedure TRange.Clear;
 begin
   Self := Default(TRange);
@@ -7796,6 +7968,28 @@ begin
     result := 0
   else
     result := 1;
+end;
+
+{ TSingleton<T> }
+
+class destructor TSingleton<T>.DestroyClass;
+begin
+  FreeAndNil(FOrdinal);
+end;
+
+class function TSingleton<T>.Ordinal: T;
+begin
+  if FOrdinal = nil then
+    FOrdinal := CreateInstance;
+  result := FOrdinal;
+end;
+
+class procedure TSingleton<T>.SetOrdinal(const Value: T);
+begin
+  if Value = FOrdinal then
+    Exit;
+  FreeAndNil(FOrdinal);
+  FOrdinal := Value;
 end;
 
 end.

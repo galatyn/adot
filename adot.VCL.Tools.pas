@@ -184,6 +184,11 @@ type
     class procedure HideBorder(c: TPanel); static;
   end;
 
+  TWinControlUtils = class
+  public
+    class function GetReadableId(C: TWinControl): string; static;
+  end;
+
   { Copy streams without locking UI etc }
   TVCLStreamUtils = class
   public
@@ -1019,6 +1024,19 @@ begin
   result := (List <> nil) and Exists(AHandler);
   if result then
     List.Remove(AHandler);
+end;
+
+{ TWinControlUtils }
+
+class function TWinControlUtils.GetReadableId(C: TWinControl): string;
+var
+  H,P: string;
+begin
+  if C.HandleAllocated
+    then H := NativeUInt(C.Handle).ToString
+    else H := '0';
+  P := '$'+THex.PointerToHex(C);
+  result := format('%s: %s (hwnd=%s, ptr=%s)', [C.Name, C.Classname, H, P]);
 end;
 
 end.
