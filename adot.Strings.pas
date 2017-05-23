@@ -101,8 +101,7 @@ type
   TAnsiChars = set of AnsiChar;
 
   TStrCharsPos = (scAll, scFirst, scLast);
-  TTextEncoding = (teUnknown, teAnsi, teUTF8, teUTF16LE, teUTF16BE, teUTF32LE, teUTF32BE);
-  TUnicodeEncodingType = (eetUTF8, eetUTF16LE, eetUTF16BE, eetUTF32LE, eetUTF32BE);
+  TTextEncoding = (teUnknown, teAnsi,  teUTF8,  teUTF16LE,  teUTF16BE,  teUTF32LE,  teUTF32BE);
 
   { string utils }
   TStr = class
@@ -175,10 +174,6 @@ type
     class function MakeValidStringLiteral(const s: string): string; static;
     { TTestApp -> "Test app" }
     class function ClassNameToCaption(const AClassName: string): string; static;
-    { Analyze fragment of text & detect correct encoding }
-    class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
-      var TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; static;
-    class function IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean; static;
 
     { returns new string where all specified chars are deleted }
     class function Remove(const Src: string; CharsToDelete: TSet<Char>): string; static;
@@ -278,29 +273,42 @@ type
     class function TryToBoolean(const Src: string; var Value: boolean): boolean; static;
     class function TryToDateTime(const Src: string; var Value: TDateTime): boolean; static;
 
-    { Can be used to detect used unicode transformation family:
-      UTF8, UTF16 big/little endian, UTF32 big/little endian. }
-    class function DetectUnicodeEncodingType(const AText: TArray<byte>; Count: integer; out Enc: TUnicodeEncodingType): boolean; static;
+    { Count - size of Text used to keep text (allocated storage can be larger that data)
+      TextPos - where text starts in Text array
+      TextIsFragment - True if Text is (possibly) cut at the end, for example when we test first bytes of the file }
+    class function IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean; overload; static;
+    class function IsValidUtf8(const Text: TArray<Byte>): boolean; overload; static;
 
-    { Will try to detect code page of input. Much more robust than TEncoding.GetEncoding (in Delphi 10.2 at least).
-      Corresponding TEncoding class can be created from valid code page:
-        E := TEncoding.GetEncoding(CodePage) }
-    class function DetectCodepage(const AText: TArray<byte>; out CodePage: integer): boolean; static;
+    { Analyze fragment of text & detect correct encoding:
+        Count - size of Text used to keep text (allocated storage can be larger that data)
+        TextStartPos - position where text starts excluding BOM
+        TextIsFragment - True if Text is (possibly) cut at the end, for example when we test first bytes of the file }
+    class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
+      out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; static;
+
+    { Will try to detect code page of input. Advantages over TEncoding.GetEncoding (Delphi 10.2):
+        - supports UTF32 (little endian / big endian)
+        - analyzes data for detection (TTEncoding.GetEncoding analyzes BOM only, "preamble" in TEncoding terminology).
+        - 100% detection of UTF family if encoded data is build according to RFC }
+    class function DetectCodepage(const AText: TArray<byte>; Count: integer; out CodePage: Cardinal): boolean; overload; static;
+    class function DetectCodepage(const AText: TArray<byte>; out CodePage: Cardinal): boolean; overload; static;
+    class function DetectCodepage(const AText: TArray<byte>; out Encoding: TEncoding): boolean; overload; static;
 
     { False if AText is 100% not encoded with code page ACodePage.
       True if AText may (or may not!) be encoded with code page ACodePage.
-      Mostly usefull for code pages specific to unicode transformations:
+      Can be used to disable UI elements/functionality specific for some code pages only:
          1200 UTF16 little endian
          1201 UTF16 big endian
         12000 UTF32 little endian
         12001 UTF32 big endian
         65001 UTF8 }
-    class function IsPossibleEncoding(const AText: TArray<byte>; ACodePage: integer): boolean;
+    class function IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean;
 
     { Extends TEncoding.GetEncoding with some extra code pages (UTF32 is not supported by TEncoding in Delphi 10.2) }
-    class function GetEncoding(CodePage: integer): TEncoding;
+    class function GetEncoding(CodePage: Cardinal): TEncoding;
   end;
 
+  { implementation of UTF32 big endian }
   TBigEndianUTF32Encoding = class(TUnicodeEncoding)
   strict protected
     function GetByteCount(Chars: PChar; CharCount: Integer): Integer; overload; override;
@@ -316,6 +324,7 @@ type
     function GetMaxCharCount(ByteCount: Integer): Integer; override;
   end;
 
+  { implementation of UTF32 little endian }
   TLittleEndianUTF32Encoding = class(TBigEndianUTF32Encoding)
   strict protected
     function GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer; overload; override;
@@ -1409,11 +1418,15 @@ begin
     end;
 end;
 
-class function TStr.GetEncoding(CodePage: integer): TEncoding;
+class function TStr.GetEncoding(CodePage: Cardinal): TEncoding;
 begin
   case CodePage of
-    12000 : result := TLittleEndianUTF32Encoding.Create;
-    12001 : result := TBigEndianUTF32Encoding.Create;
+     1200           : result := TUnicodeEncoding.Create;            { UTF16 little endian }
+     1201           : result := TBigEndianUnicodeEncoding.Create;   { UTF16 big endian }
+    65000 {CP_UTF7} : result := TUTF7Encoding.Create;               { UTF7 }
+    65001 {CP_UTF8} : result := TUTF8Encoding.Create;               { UTF8 }
+    12000           : result := TLittleEndianUTF32Encoding.Create;  { UTF32 little endian }
+    12001           : result := TBigEndianUTF32Encoding.Create;     { UTF32 big endian }
     else result := TEncoding.GetEncoding(CodePage);
   end;
 end;
@@ -2087,6 +2100,11 @@ begin
   result := TextPosition(ASubStr, AText) >= 0;
 end;
 
+class function TStr.IsValidUtf8(const Text: TArray<Byte>): boolean;
+begin
+  result := IsValidUtf8(Text, Length(Text), 0, False);
+end;
+
 class function TStr.IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean;
 const
   b2  = 128 + 64 +  0;
@@ -2283,7 +2301,7 @@ begin
 end;
 
 class function TStr.DetectEncoding(const Text: TArray<Byte>; Count: integer;
-  var TextStartPos: integer; TextIsFragment: boolean): TTextEncoding;
+  out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding;
 type
   TRec = record
     z: array[0..3] of byte;
@@ -2383,152 +2401,67 @@ begin
     );
 end;
 
-class function TStr.IsPossibleEncoding(const AText: TArray<byte>; ACodePage: integer): boolean;
+class function TStr.IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean;
 var
-  D: TArray<byte>;
-  S: string;
-  I,J: Integer;
-  UnicodeEncodingType: TUnicodeEncodingType;
-
-    function ContainsPreamble(const Buffer, Signature: TArray<Byte>): Boolean;
-    var
-      I: Integer;
-    begin
-      Result := Length(Buffer) >= Length(Signature);
-      if Result then
-        for I := 0 to Length(Signature)-1 do
-          if Buffer[I] <> Signature[I] then
-            Exit(False);
-    end;
-
+  TextEncoding : TTextEncoding;
+  TextStartPos: Integer;
 begin
+
+  { any encoding is allowed for empty src }
   if Length(AText) = 0 then
-    Exit(True); { any encoding is allowed for empty src }
+    Exit(True);
 
-  if not TStr.DetectUnicodeEncodingType(AText, Length(AText), UnicodeEncodingType) then
-    { We can detect UTF16, UTF32, UTF8. If detector failed, then it is something else. }
-    result := (ACodePage<>1200) and (ACodePage<>1201) and (ACodePage<>12000) and (ACodePage<>12001) and (ACodePage<>65001)
-  else
-    case UnicodeEncodingType of
-      eetUTF8:
-        if (ACodePage=1200) or (ACodePage=1201) or (ACodePage=12000) or (ACodePage=12001) then
-          result := False { we know it is not UTF16/UTF32 }
-        else
-        try
-          { Too easy to miss with 1-byte encoding, we do extra testing for UTF8-compatibility:
-            - we should be able to decode all bytes of UTF8 source
-            - after decoding/encoding we should get same bytes as source (maybe except BOM bytes)  }
-
-          { we will get exception here if it is not valid sequence of UTF8 }
-          S := TEncoding.UTF8.GetString(AText);
-
-          { now we try to od back conversion }
-          D := TEncoding.UTF8.GetBytes(S);
-
-          { compare result with source excluding BOM }
-          I := IfThen(ContainsPreamble(AText, TEncoding.UTF8.GetPreamble), Length(TEncoding.UTF8.GetPreamble), 0);
-          J := IfThen(ContainsPreamble(D, TEncoding.UTF8.GetPreamble), Length(TEncoding.UTF8.GetPreamble), 0);
-          if (Length(AText)-I = Length(D)-J) and TArrayUtils.Equal<byte>(AText,D,I,J,Length(AText)-I) then
-            result := True { it can be either UTF8 or single byte encoding }
-          else
-            result := ACodePage <> 65001; { it is not UTF8 }
-        except
-          result := ACodePage <> 65001; { it is not UTF8 }
-        end;
-      eetUTF16LE : result := ACodePage = 1200;
-      eetUTF16BE : result := ACodePage = 1201;
-      eetUTF32LE : result := ACodePage = 12000;
-      eetUTF32BE : result := ACodePage = 12001;
-      else Result := True; { we don't know }
-    end;
-
+  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
+  case TextEncoding of
+    teUnknown,teAnsi:
+      { it can't be UTF family }
+      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001,65001]);
+    teUTF8:
+      { it can't be UTF16/UTF32, but maybe it is UTF8 or single byte encoding }
+      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001]);
+    teUTF16LE:
+      result := ACodePage = 1200;
+    teUTF16BE:
+      result := ACodePage = 1201;
+    teUTF32LE:
+      result := ACodePage = 12000;
+    teUTF32BE:
+      result := ACodePage = 12001;
+    else Result := True; { we don't know }
+  end;
 end;
 
-class function TStr.DetectCodepage(const AText: TArray<byte>; out CodePage: integer): boolean;
+class function TStr.DetectCodepage(const AText: TArray<byte>; out Encoding: TEncoding): boolean;
 var
-  UnicodeEncodingType: TUnicodeEncodingType;
+  CodePage: cardinal;
 begin
-  result := TStr.DetectUnicodeEncodingType(AText, Length(AText), UnicodeEncodingType);
+  result := DetectCodepage(AText, CodePage);
   if result then
-    case UnicodeEncodingType of
-      eetUTF8:
-        if IsPossibleEncoding(AText, 65001 {UTF8} )
-          then CodePage := 65001 { UTF8 }
-          else Result := False;
-      eetUTF16LE : CodePage := 1200;
-      eetUTF16BE : CodePage := 1201;
-      eetUTF32LE : CodePage := 12000;
-      eetUTF32BE : CodePage := 12001;
+    Encoding := TStr.GetEncoding(CodePage);
+end;
+
+class function TStr.DetectCodepage(const AText: TArray<byte>; Count: integer; out CodePage: Cardinal): boolean;
+var
+  TextEncoding : TTextEncoding;
+  TextStartPos: Integer;
+begin
+  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
+  result := TextEncoding <> teUnknown;
+  if result then
+    case TextEncoding of
+      teAnsi    : CodePage := TEncoding.ANSI.CodePage;
+      teUTF8    : CodePage := 65001;
+      teUTF16LE : CodePage := 1200;
+      teUTF16BE : CodePage := 1201;
+      teUTF32LE : CodePage := 12000;
+      teUTF32BE : CodePage := 12001;
+      else result := False;
     end;
 end;
 
-class function TStr.DetectUnicodeEncodingType(const AText: TArray<byte>; Count: integer; out Enc: TUnicodeEncodingType): boolean;
-type
-  TRec = record
-    z: array[0..3] of byte;
-    e: TUnicodeEncodingType;
-  end;
-
-const
-  Encodings : array[0..4] of TRec = (
-    (z:(1,1,1,1); e:eetUTF8),
-    (z:(1,0,1,0); e:eetUTF16LE),
-    (z:(0,1,0,1); e:eetUTF16BE),
-    (z:(1,0,0,0); e:eetUTF32LE),
-    (z:(0,0,0,1); e:eetUTF32BE)
-  );
-
-var
-  i: integer;
+class function TStr.DetectCodepage(const AText: TArray<byte>; out CodePage: Cardinal): boolean;
 begin
-  if Count < 4 then
-    Exit(False); { maybe UTF8, we don't know }
-
-  { check byte order mark (BOM) }
-  if (AText[0]=$EF) and (AText[1]=$BB) and (AText[2]=$BF) then
-  begin
-    Enc := eetUTF8;
-    Exit(True);
-  end;
-  if (AText[0]=$FF) and (AText[1]=$FE) and (AText[2]=0) and (AText[3]=0) then
-  begin
-    Enc := eetUTF32LE;
-    Exit(True);
-  end;
-  if (AText[0]=0) and (AText[1]=0) and (AText[2]=$FE) and (AText[3]=$FF) then
-  begin
-    Enc := eetUTF32BE;
-    Exit(True);
-  end;
-  if (AText[0]=$FF) and (AText[1]=$FE) then
-  begin
-    Enc := eetUTF16LE;
-    Exit(True);
-  end;
-  if (AText[0]=$FE) and (AText[1]=$FF) then
-  begin
-    Enc := eetUTF16BE;
-    Exit(True);
-  end;
-
-  {
-    check first two characters (according to RFC they must be ASCII)
-    00 00 00 xx  UTF-32BE
-    00 xx 00 xx  UTF-16BE
-    xx 00 00 00  UTF-32LE
-    xx 00 xx 00  UTF-16LE
-    xx xx xx xx  UTF-8
-  }
-  for i := low(Encodings) to high(Encodings) do
-    with Encodings[i] do
-      if ((Z[0]=0)=(AText[0]=0)) and ((Z[1]=0)=(AText[1]=0)) and ((Z[2]=0)=(AText[2]=0)) and ((Z[3]=0)=(AText[3]=0)) then
-        begin
-          Enc := E;
-          Exit(True);
-        end;
-
-  Exit(False);
-
+  result := DetectCodepage(AText, Length(AText), CodePage);
 end;
 
 class function TStr.Random: string;

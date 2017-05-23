@@ -415,10 +415,10 @@ type
   { Fill/fillRandom/Randomize and other tools for arrays }
   TArrayUtils = record
   public
-    class function Get<T>(const Arr: array of T):TArray<T>; overload; static;
-    class function Get(const Arr: TStringDynArray):TArray<string>; overload; static;
     class procedure SaveToFileAsText<T>(const Arr: TArray<T>; const AFileName: string); static;
     class procedure SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string); static;
+    class function Get<T>(const Arr: array of T):TArray<T>; overload; static;
+    class function Get(const Arr: TStringDynArray):TArray<string>; overload; static;
     class procedure Randomize<T>(var Arr: TArray<T>); static;
     class procedure Inverse<T>(var Arr: TArray<T>; AStartIndex: integer = 0; ACount: integer = -1); static;
     class procedure Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T,Boolean>); overload; static;
@@ -447,13 +447,18 @@ type
     { 9 1 7 2 5 8 -> [1-2] [5] [7-9] }
     class function Ranges(Src: TArray<integer>): TRangeEnumerable; overload; static;
     class function Ranges(Src: TEnumerable<integer>): TRangeEnumerable; overload; static;
-    class function IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer; overload; static;
-    class function IndexOf<T>(const Item: T; const Src: TArray<T>): integer; overload; static;
+    class function IndexOf<T>(const Item: T; const Src: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil): integer; overload; static;
+    class function IndexOf<T>(const Item: T; const Src: TArray<T>; AComparer: IEqualityComparer<T> = nil): integer; overload; static;
+    class function IndexOf<T>(const Template, Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): integer; overload; static;
     class function GetPtr<T>(const Src: TArray<T>): pointer; static;
     class function GetFromDynArray(const Src: TStringDynArray): TArray<string>; static;
     class function Sum(var Arr: double; Count: integer): double; overload; static;
     class function Sum(var Arr: integer; Count: integer): int64; overload; static;
     class function Sum(var Arr: int64; Count: integer): int64; overload; static;
+    class function StartWith<T>(const Data,Template: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
+    class function EndsWith<T>(const Data,Template: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
+    class function Contains<T>(const Template: T; const Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
+    class function Contains<T>(const Template,Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -1839,6 +1844,16 @@ begin
   Assert(I=Length(Dst));
 end;
 
+class function TArrayUtils.Contains<T>(const Template: T; const Data: TArray<T>; AComparer: IEqualityComparer<T>): boolean;
+begin
+  result := IndexOf<T>(Template, Data, AComparer) >= 0;
+end;
+
+class function TArrayUtils.Contains<T>(const Template, Data: TArray<T>; AComparer: IEqualityComparer<T>): boolean;
+begin
+  result := IndexOf<T>(Template, Data, AComparer) >= 0;
+end;
+
 class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
 var
   i,j: Integer;
@@ -2044,31 +2059,55 @@ begin
     else result := @Src[0];
 end;
 
-class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TEnumerable<T>): integer;
+class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil): integer;
 var
-  C: IEqualityComparer<T>;
   V: T;
 begin
-  C := TComparerUtils.DefaultEqualityComparer<T>;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultEqualityComparer<T>;
   result := 0;
   for V in Src do
-    if C.Equals(V, Item) then
+    if AComparer.Equals(V, Item) then
       Exit
     else
       inc(result);
   result := -1;
 end;
 
-class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TArray<T>): integer;
+class function TArrayUtils.IndexOf<T>(const Item: T; const Src: TArray<T>; AComparer: IEqualityComparer<T> = nil): integer;
 var
-  C: IEqualityComparer<T>;
   I: integer;
 begin
-  C := TComparerUtils.DefaultEqualityComparer<T>;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultEqualityComparer<T>;
   for I := 0 to High(Src) do
-    if C.Equals(Src[I], Item) then
+    if AComparer.Equals(Src[I], Item) then
       Exit(I);
   result := -1;
+end;
+
+class function TArrayUtils.IndexOf<T>(const Template, Data: TArray<T>; AComparer: IEqualityComparer<T>): integer;
+var
+  I,J: integer;
+begin
+  result := -1;
+  if (Length(Data)=0) or (Length(Data) < Length(Template)) then
+    Exit;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultEqualityComparer<T>;
+  for I := 0 to Length(Data)-Length(Template) do
+    if AComparer.Equals(Data[I], Template[0]) then
+    begin
+      result := I;
+      for J := 1 to High(Template) do
+        if not AComparer.Equals(Data[I+J], Template[J]) then
+        begin
+          result := -1;
+          break;
+        end;
+      if result >= 0 then
+        break;
+    end;
 end;
 
 class procedure TArrayUtils.Inverse<T>(var Arr: TArray<T>; AStartIndex, ACount: integer);
@@ -2169,6 +2208,18 @@ begin
     Tmp[I] := Dst[Idx[I]];
   for I := 0 to High(Tmp) do
     Dst[I+StartIndex] := Tmp[I];
+end;
+
+class function TArrayUtils.StartWith<T>(const Data, Template: TArray<T>; AComparer: IEqualityComparer<T>): boolean;
+begin
+  result := (Length(Data) >= Length(Template)) and
+    TArrayUtils.Equal<T>(Data, Template, 0, 0, Length(Template), AComparer);
+end;
+
+class function TArrayUtils.EndsWith<T>(const Data, Template: TArray<T>; AComparer: IEqualityComparer<T>): boolean;
+begin
+  result := (Length(Data) >= Length(Template)) and
+    TArrayUtils.Equal<T>(Data, Template, Length(Data)-Length(Template), 0, Length(Template), AComparer);
 end;
 
 class function TArrayUtils.Sum(var Arr: integer; Count: integer): int64;
