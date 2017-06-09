@@ -79,6 +79,9 @@ type
     class function VarOrArrayToStr(const V: variant; const ArrElemDelimeter: string = #13#10): string; static;
     class function GetArrayBounds(const DataArray: Variant; var ALow, AHigh: Integer): boolean; overload;
     class function GetArrayBounds(const DataArray: Variant; var ALow1,AHigh1,ALow2,AHigh2: Integer): boolean; overload;
+
+    class function VarRecAsVariant(Value: TVarRec): Variant; static;
+    class function VarRecAsString(Value: TVarRec): String; static;
   end;
 
   TEnumFloatProc = reference to procedure(var AValue: Double; const ADim: TArray<integer>);
@@ -215,6 +218,9 @@ type
   end;
 
 implementation
+
+uses
+  adot.Tools;
 
 type
   { Unified access to content of variable of any type:
@@ -926,6 +932,61 @@ begin
     result := VarOrArrayToStr(v[l], ArrElemDelimeter);
     for i := l+1 to r do
       result := result + ArrElemDelimeter + VarOrArrayToStr(v[i], ArrElemDelimeter);
+  end;
+end;
+
+class function TVar.VarRecAsString(Value: TVarRec): String;
+begin
+  case Value.VType of
+    vtInteger       : result := Value.VInteger.ToString;
+    vtBoolean       : result := Value.VBoolean.ToString;
+    vtChar          : result := Char(Value.VChar);
+    vtExtended      : result := Value.VExtended^.ToString;
+    {$IFNDEF NEXTGEN}
+    vtString        : result := String(Value.VString^);
+    {$ENDIF NEXTGEN}
+    vtPointer       : result := '$' + THex.PointerToHex(Value.VPointer);
+    vtPChar         : result := Char(Value.VPChar^);
+    vtObject        :
+      if Value.VObject = nil
+        then result := 'TObject(nil)'
+        else result := Value.VObject.ClassName + '($' + THex.PointerToHex(Value.VObject) + ')';
+    vtClass         : result := Value.VClass.ClassName;
+    vtWideChar      : result := Value.VWideChar;
+    vtPWideChar     : result := Value.VPWideChar^;
+    vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    vtCurrency      : result := CurrToStr(Value.VCurrency^);
+    vtVariant       : result := TVar.ToStringDef(Value.VVariant^);
+    vtInterface     : result := 'Interface($' + THex.PointerToHex(Value.VInterface) + ')';
+    vtWideString    : result := WideString(Value.VWideString);
+    vtInt64         : result := Value.VInt64^.ToString;
+    vtUnicodeString : result := String(Value.VUnicodeString);
+  end;
+end;
+
+class function TVar.VarRecAsVariant(Value: TVarRec): Variant;
+begin
+  case Value.VType of
+    vtInteger       : result := Value.VInteger;
+    vtBoolean       : result := Value.VBoolean;
+    vtChar          : result := Char(Value.VChar);
+    vtExtended      : result := Value.VExtended^;
+    {$IFNDEF NEXTGEN}
+    vtString        : result := String(Value.VString^);
+    {$ENDIF NEXTGEN}
+    vtPointer       : result := VarRecAsString(Value);
+    vtPChar         : result := Char(Value.VPChar^);
+    vtObject        : result := VarRecAsString(Value);
+    vtClass         : result := VarRecAsString(Value);
+    vtWideChar      : result := Value.VWideChar;
+    vtPWideChar     : result := Value.VPWideChar^;
+    vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    vtCurrency      : result := Value.VCurrency^;
+    vtVariant       : result := Value.VVariant^;
+    vtInterface     : result := VarRecAsString(Value);
+    vtWideString    : result := WideString(Value.VWideString);
+    vtInt64         : result := Value.VInt64^;
+    vtUnicodeString : result := String(Value.VUnicodeString);
   end;
 end;
 

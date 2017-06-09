@@ -102,6 +102,7 @@ type
     class function GetR(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
     class function GetG(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
     class function GetB(C: TColor): byte; static; {$IFDEF UseInline}inline;{$ENDIF}
+    class function Random: TColor; static;
   end;
   TColorTools = TColorUtils;
 
@@ -457,6 +458,11 @@ begin
   end;
   L := Length(Colors);
   Result := RGBToColor(R div L, G div L, B div L);
+end;
+
+class function TColorUtils.Random: TColor;
+begin
+  result := System.Random(1 shl 24);
 end;
 
 class function TColorUtils.RecognizeBaseColor(ASample: TColor; ADistType: TDistanceType): TColorClass;

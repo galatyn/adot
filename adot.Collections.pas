@@ -1,4 +1,5 @@
 ﻿unit adot.Collections;
+{$OVERFLOWCHECKS OFF}
 
 { Definition of classes/record types:
 
@@ -93,6 +94,9 @@ const
     tkMethod, tkWChar, tkRecord, tkInt64, tkPointer, tkProcedure];
 
 type
+
+  { Delphi has two definitions of TCollectionNotification: System.Classes and System.Generics.Collections }
+  TCollectionNotification = System.Generics.Collections.TCollectionNotification;
 
   EForbiddenOperation = class(Exception);
 
@@ -367,7 +371,7 @@ type
       protected
         OwnsKeys: boolean;
 
-        procedure KeyNotify(const Key: TSetDictKey; Action: System.Generics.Collections.TCollectionNotification); override;
+        procedure KeyNotify(const Key: TSetDictKey; Action: TCollectionNotification); override;
       end;
 
   protected
@@ -568,8 +572,8 @@ type
     FComparerCopy: IEqualityComparer<TKey>; { FDictionary.Comparer is hidden in private section, so we keep copy }
     FOwnerships: TDictionaryOwnerships;
 
-    procedure KeyNotify(const Key: TKey; Action: System.Generics.Collections.TCollectionNotification); override;
-    procedure ValueNotify(const Value: TValue; Action: System.Generics.Collections.TCollectionNotification); override;
+    procedure KeyNotify(const Key: TKey; Action: TCollectionNotification); override;
+    procedure ValueNotify(const Value: TValue; Action: TCollectionNotification); override;
     function GetOwnsKeys: boolean;
     function GetOwnsValues: boolean;
     procedure SetOwnsKeys(const Value: boolean);
@@ -669,6 +673,7 @@ type
     function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
     function ExtractPair(const Key: TKey): TPair<TKey,TValue>;
     procedure Clear;
+    procedure Release; { release underlying object }
     procedure TrimExcess;
     function ContainsKey(const Key: TKey): Boolean;
     function ToArray: TArray<TPair<TKey,TValue>>;
@@ -890,6 +895,10 @@ type
     procedure Add(const Value: TEnumerable<T>); overload;
     procedure Add(const Value: TVector<T>); overload;
 
+    { Dynamic arrays in Delphi do not support copy-on-write.
+      TVector is wrapper for TArray and doesn't support COW too. }
+    function Copy: TVector<T>;
+
     function Insert(Index: integer; const Value: T): integer;
 
     procedure Delete(ItemIndex: integer); overload;
@@ -948,6 +957,8 @@ type
     procedure Sort; overload;
     procedure Sort(Comparer: IComparer<T>); overload;
     procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
+    procedure Sort(Comparer: TFunc<T,T,integer>); overload;
+    procedure Sort(Comparer: TFunc<T,T,integer>; AIndex, ACount: Integer); overload;
 
     procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
     procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
@@ -1357,6 +1368,8 @@ type
       FComparer: IComparer<TKey>;
       FKeyCollection: TKeyCollection;
       FValueCollection: TValueCollection;
+      FOnKeyNotify: TCollectionNotifyEvent<TKey>;
+      FOnValueNotify: TCollectionNotifyEvent<TValue>;
 
     function AllocNewItem: P_AATreeItem;
     procedure ReleaseItem(p: P_AATreeItem);
@@ -1365,6 +1378,8 @@ type
     function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
     function GetKeyCollection: TKeyCollection;
     function GetValueCollection: TValueCollection;
+    procedure KeyNotify(const Key: TKey; Action: TCollectionNotification); virtual;
+    procedure ValueNotify(const Value: TValue; Action: TCollectionNotification); virtual;
 
     procedure treeSkew(var p: P_AATreeItem);
     procedure treeSplit(var p: P_AATreeItem);
@@ -1402,7 +1417,7 @@ type
     function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
     procedure Delete(AHandle: TItemHandle);
     procedure Remove(const AKey: TKey); overload;
-    procedure Remove(const AKeys: array of TKey); overload;
+    procedure Remove(const AKeys: TArray<TKey>); overload;
     procedure Remove(const AKeys: TEnumerable<TKey>); overload;
     function ContainsKey(const Key: TKey): Boolean; overload;
     function ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType = stAll): Boolean; overload;
@@ -1434,6 +1449,8 @@ type
     property Count: integer read FCount;
     property KeyCollection: TKeyCollection read GetKeyCollection;
     property ValueCollection: TValueCollection read GetValueCollection;
+    property OnKeyNotify: TCollectionNotifyEvent<TKey> read FOnKeyNotify write FOnKeyNotify;
+    property OnValueNotify: TCollectionNotifyEvent<TValue> read FOnValueNotify write FOnValueNotify;
   end;
 
   { Binary search tree. }
@@ -1455,6 +1472,9 @@ type
 
     var
       FTree: TAATree<TKey,TValue>;
+      FOwnerships: TDictionaryOwnerships;
+      FOnKeyNotify: TCollectionNotifyEvent<TKey>;
+      FOnValueNotify: TCollectionNotifyEvent<TValue>;
 
     function DoGetEnumerator: TEnumerator<TPair<TKey,TValue>>; override;
     function GetKeyCollection: TKeyCollection;
@@ -1464,6 +1484,13 @@ type
     function GetItem(const AKey: TKey): TValue;
     function GetTreeHeight: integer;
     procedure SetItem(const AKey: TKey; const Value: TValue);
+
+    function GetOwnsKeys: boolean;
+    function GetOwnsValues: boolean;
+    procedure SetOwnsKeys(const Value: boolean);
+    procedure SetOwnsValues(const Value: boolean);
+    procedure treeOnKeyNotify(Sender: TObject; const Key: TKey; Action: TCollectionNotification);
+    procedure treeOnValueNotify(Sender: TObject; const Value: TValue; Action: TCollectionNotification);
 
   public
     constructor Create; overload;
@@ -1477,7 +1504,7 @@ type
     procedure AddOrSetValue(const AKey: TKey; const AValue: TValue);
     function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
     procedure Remove(const AKey: TKey); overload;
-    procedure Remove(const AKeys: array of TKey); overload;
+    procedure Remove(const AKeys: TArray<TKey>); overload;
     procedure Remove(const AKeys: TEnumerable<TKey>); overload;
     function ContainsKey(const Key: TKey): Boolean; overload;
     function ContainsKeys(const AKeys: array of TKey; ASearchType: TSearchType = stAll): Boolean; overload;
@@ -1485,6 +1512,7 @@ type
     function ContainsValue(const Value: TValue; AEqualityComparer: IEqualityComparer<TValue> = nil): Boolean;
     function Min: TPair<TKey, TValue>;
     function Max: TPair<TKey, TValue>;
+    function FindKeyByIndex(Index: integer): TKey;
 
     { navigate over the tree }
     function GetRoot(var Key: TKey): Boolean;
@@ -1503,6 +1531,10 @@ type
     property KeyCollection: TKeyCollection read GetKeyCollection;
     property ValueCollection: TValueCollection read GetValueCollection;
     property TreeHeight: integer read GetTreeHeight;
+    property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
+    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property OnKeyNotify: TCollectionNotifyEvent<TKey> read FOnKeyNotify write FOnKeyNotify;
+    property OnValueNotify: TCollectionNotifyEvent<TValue> read FOnValueNotify write FOnValueNotify;
   end;
 
   { Default comparer/equality comparer etc. }
@@ -1625,7 +1657,7 @@ type
     property IsConsistent: boolean read GetIsConsistent;
   end;
 
-  { Simple record type to build/keep tree as array of nodes with FirstChild/NextSibling properties.
+  { Simple class to build/keep tree as array of nodes with FirstChild/NextSibling properties.
     The tree is kept as array of nodes and thus there is no Delete/Remove functionality.
     The only way to delete a node (with subnodes) is call Rollback.
     As soon as Node is commited (Append + Commit or Add) the only way to delete it is Clear for whole tree. }
@@ -1769,6 +1801,23 @@ type
     property ValuesCollection: TValuesCollection read GetValuesCollection;
   end;
 
+  { Integer range (pair [min_value; max_value]).
+
+    Example 1:
+      var R: TRange; // we will generate ranges for array of item numbers
+      for R in TArrayUtils.Ranges([9, 1, 7, 2, 5, 8]) do  // R     : [1-2] [5]   [7-9]
+        DeleteItems(R.Start, R.Length);                   // Params: (1,2) (5,1) (7,3)
+
+    Example 2:
+      var X,Y: TRange;
+      X.Clear; Y.Clear; // we will find min rectange containing all controls
+      for I := 0 to ControlCount-1 do
+      begin
+        X.AddOrSet(Controls[I].Left, Controls[I].Left + Controls[I].Width);
+        Y.AddOrSet(Controls[I].Top, Controls[I].Top + Controls[I].Height);
+      end;
+      R := TRectangle.Create(X.ValueMin,Y.ValueMin,X.ValueMax,Y.ValueMax);
+  }
   TRange = record
   private
     FValueMin,FValueMax: integer;
@@ -1793,25 +1842,45 @@ type
   public
 
     constructor Create(AValueMin,AValueMax: integer); overload;
-    procedure Init(AValueMin,AValueMax: integer);
-    procedure Clear;
     function GetEnumerator: TEnumerator;
+
+    { assign new range (Range[1,3] = Range[3,1]) }
+    procedure Init(AValueMin,AValueMax: integer);
+
+    { assign empty range (with no elements) }
+    procedure Clear;
+
+    { Assign new range or extend existing one (Range[1,3] = Range[3,1]) }
     procedure AddOrSet(AValueMin,AValueMax: integer);
+
+    { Extend range (Range[1,3] = Range[3,1]) }
     procedure Add(AValueMin,AValueMax: integer);
 
+    { Check if range has intersection with A }
     function Overlaps(const a: TRange): boolean;
 
+    { Check if B contains all elements from A }
     class operator In(const a: TRange; b: TRange) : Boolean;
     class operator In(const a: integer; b: TRange) : Boolean;
 
+    { [1,3] + [5,7] -> [1,7]}
     class operator Add(const a,b: TRange) : TRange;
+
     { Subtract may produce two ranges, it can't be implemented with single TRange as result
       class operator Subtract(const a,b: TRange) : TRange; }
+
+    { [1,5] AND [4,7] = [4,5] }
     class operator LogicalAnd(const a,b: TRange) : TRange;
+
+    { Similar to ADD, but returns empty range if A and B has no intersection }
     class operator LogicalOr(const a,b: TRange) : TRange;
+
     { XOR may produce two ranges, it can't be implemented with single TRange as result
       class operator LogicalXor(const a,b: TRange) : TRange; }
+
+    { [1,5] -> [2,6] }
     class operator Inc(const a: TRange) : TRange;
+    { [1,5] -> [0,4] }
     class operator Dec(const a: TRange) : TRange;
 
     class operator Equal(const a,b: TRange) : Boolean;
@@ -1821,6 +1890,7 @@ type
     class operator LessThan(const a,b: TRange) : Boolean;
     class operator LessThanOrEqual(const a,b: TRange) : Boolean;
 
+    { [1,3] -> "[1,3]" }
     property AsString: string read GetAsString write SetAsString;
     property Empty: boolean read GetEmpty;
     property Length: integer read GetLength;
@@ -1886,13 +1956,19 @@ type
     class var
       FOrdinal: T;
 
-    class destructor DestroyClass;
-
+    { must be overridden by descendant class }
     class function CreateInstance: T; virtual; abstract;
 
+    class destructor DestroyClass;
+
   public
+
+    { We can't use "property Ordinal" here, because Delphi (10.2 Seattle at least) allows to map
+      class properties only to static class methods. But static method doesn't have access to class info
+      and can not call correct virtual method (we need to call CreateInstance from GetOrdinal).
+      That is why we have to use function Ordinal + procedure SetOrdinal instead of one property Ordinal }
     class function Ordinal: T;
-    class procedure SetOrdinal(const Value: T);
+    class procedure SetOrdinal(const Value: T); static;
   end;
 
 implementation
@@ -2121,10 +2197,10 @@ end;
 { TSetClass<TValue>.TSetObjectDictionary<TSetDictKey, TSetDictValue> }
 
 procedure TSetClass<TValue>.TSetObjectDictionary<TSetDictKey, TSetDictValue>.KeyNotify(
-  const Key: TSetDictKey; Action: System.Generics.Collections.TCollectionNotification);
+  const Key: TSetDictKey; Action: TCollectionNotification);
 begin
   inherited;
-  if OwnsKeys and (Action = cnRemoved) then
+  if OwnsKeys and (Action = TCollectionNotification.cnRemoved) then
     PObject(@Key)^.DisposeOf;
 end;
 
@@ -2502,33 +2578,31 @@ procedure TMapClass<TKey, TValue>.SetOwnsKeys(const Value: boolean);
 begin
   if Value and not TRttiUtils.IsInstance<TKey> then
     raise Exception.Create('Generic type is not a class.');
-  if Value then
-    include(FOwnerships, doOwnsKeys)
-  else
-    exclude(FOwnerships, doOwnsKeys);
+  if Value
+    then include(FOwnerships, doOwnsKeys)
+    else exclude(FOwnerships, doOwnsKeys);
 end;
 
 procedure TMapClass<TKey, TValue>.SetOwnsValues(const Value: boolean);
 begin
   if Value and not TRttiUtils.IsInstance<TValue> then
     raise Exception.Create('Generic type is not a class.');
-  if Value then
-    include(FOwnerships, doOwnsValues)
-  else
-    exclude(FOwnerships, doOwnsValues);
+  if Value
+    then include(FOwnerships, doOwnsValues)
+    else exclude(FOwnerships, doOwnsValues);
 end;
 
-procedure TMapClass<TKey, TValue>.KeyNotify(const Key: TKey; Action: System.Generics.Collections.TCollectionNotification);
+procedure TMapClass<TKey, TValue>.KeyNotify(const Key: TKey; Action: TCollectionNotification);
 begin
   inherited;
-  if (Action = cnRemoved) and (doOwnsKeys in FOwnerships) then
+  if (Action = TCollectionNotification.cnRemoved) and (doOwnsKeys in FOwnerships) then
     PObject(@Key)^.DisposeOf;
 end;
 
-procedure TMapClass<TKey, TValue>.ValueNotify(const Value: TValue; Action: System.Generics.Collections.TCollectionNotification);
+procedure TMapClass<TKey, TValue>.ValueNotify(const Value: TValue; Action: TCollectionNotification);
 begin
   inherited;
-  if (Action = cnRemoved) and (doOwnsValues in FOwnerships) then
+  if (Action = TCollectionNotification.cnRemoved) and (doOwnsValues in FOwnerships) then
     PObject(@Value)^.DisposeOf;
 end;
 
@@ -3727,6 +3801,11 @@ begin
   ReadWrite.Clear;
 end;
 
+procedure TMap<TKey, TValue>.Release;
+begin
+  FMapInt := nil;
+end;
+
 function TMap<TKey, TValue>.ContainsKey(const Key: TKey): Boolean;
 begin
   result := ReadOnly.ContainsKey(Key);
@@ -4085,6 +4164,18 @@ begin
   FreeMem(p);
 end;
 
+procedure TAATree<TKey, TValue>.KeyNotify(const Key: TKey; Action: TCollectionNotification);
+begin
+  if Assigned(FOnKeyNotify) then
+    FOnKeyNotify(Self, Key, Action);
+end;
+
+procedure TAATree<TKey, TValue>.ValueNotify(const Value: TValue; Action: TCollectionNotification);
+begin
+  if Assigned(FOnValueNotify) then
+    FOnValueNotify(Self, Value, Action);
+end;
+
 function TAATree<TKey, TValue>.PtrToHandle(p: P_AATreeItem): TItemHandle;
 begin
   if (p=FBottom) or (p=nil) then
@@ -4147,6 +4238,8 @@ procedure TAATree<TKey, TValue>.treeClear(p: P_AATreeItem);
 begin
   if (p=nil) or (p=FBottom) then
     exit;
+  KeyNotify(p.Data.Key, TCollectionNotification.cnRemoved);
+  ValueNotify(p.Data.Value, TCollectionNotification.cnRemoved);
   treeClear(p.Left);
   treeClear(p.Right);
   releaseItem(p);
@@ -4387,6 +4480,8 @@ begin
   begin
     result := TItemHandle(p);
     inc(FCount);
+    KeyNotify(AKey, TCollectionNotification.cnAdded);
+    ValueNotify(AValue, TCollectionNotification.cnAdded);
   end
   else
   begin
@@ -4416,6 +4511,12 @@ procedure TAATree<TKey, TValue>.Delete(AHandle: TItemHandle);
 begin
   if AHandle=-1 then
     raise Exception.Create('Error');
+
+  if (P_AATreeItem(AHandle)<>nil) and (P_AATreeItem(AHandle)<>FBottom) then
+  begin
+    KeyNotify(P_AATreeItem(AHandle).Data.Key, TCollectionNotification.cnRemoved);
+    ValueNotify(P_AATreeItem(AHandle).Data.Value, TCollectionNotification.cnRemoved);
+  end;
 
   if not treeDelete(P_AATreeItem(AHandle), FRoot) then
     exit;
@@ -4656,7 +4757,7 @@ begin
   Delete(Find(AKey));
 end;
 
-procedure TAATree<TKey, TValue>.Remove(const AKeys: array of TKey);
+procedure TAATree<TKey, TValue>.Remove(const AKeys: TArray<TKey>);
 var
   i: Integer;
 begin
@@ -4812,6 +4913,8 @@ constructor TOrderedMapClass<TKey, TValue>.Create(AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FTree := TAATree<TKey,TValue>.Create(AComparer);
+  FTree.OnKeyNotify := treeOnKeyNotify;
+  FTree.OnValueNotify := treeOnValueNotify;
 end;
 
 constructor TOrderedMapClass<TKey, TValue>.Create(
@@ -4820,6 +4923,8 @@ constructor TOrderedMapClass<TKey, TValue>.Create(
 begin
   inherited Create;
   FTree := TAATree<TKey,TValue>.Create(ACollection, AComparer);
+  FTree.OnKeyNotify := treeOnKeyNotify;
+  FTree.OnValueNotify := treeOnValueNotify;
 end;
 
 destructor TOrderedMapClass<TKey, TValue>.Destroy;
@@ -4904,6 +5009,19 @@ begin
   result := FTree.Pairs[FTree.FindMin];
 end;
 
+function TOrderedMapClass<TKey, TValue>.FindKeyByIndex(Index: integer): TKey;
+var
+  h: TItemHandle;
+begin
+  h := FTree.FindMin;
+  while Index > 0 do
+  begin
+    FTree.Next(h);
+    dec(Index);
+  end;
+  result := FTree.Keys[h];
+end;
+
 function TOrderedMapClass<TKey, TValue>.Next(const AKey: TKey; var ANewKey: TKey): Boolean;
 var
   h: TItemHandle;
@@ -4933,7 +5051,7 @@ begin
     ANewKey := FTree.Keys[h];
 end;
 
-procedure TOrderedMapClass<TKey, TValue>.Remove(const AKeys: array of TKey);
+procedure TOrderedMapClass<TKey, TValue>.Remove(const AKeys: TArray<TKey>);
 begin
   FTree.Remove(AKeys);
 end;
@@ -4965,6 +5083,50 @@ end;
 function TOrderedMapClass<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
 begin
   result := FTree.TryGetValue(Key, Value);
+end;
+
+function TOrderedMapClass<TKey, TValue>.GetOwnsKeys: boolean;
+begin
+  result := doOwnsKeys in FOwnerships;
+end;
+
+function TOrderedMapClass<TKey, TValue>.GetOwnsValues: boolean;
+begin
+  result := doOwnsValues in FOwnerships;
+end;
+
+procedure TOrderedMapClass<TKey, TValue>.SetOwnsKeys(const Value: boolean);
+begin
+  if Value and not TRttiUtils.IsInstance<TKey> then
+    raise Exception.Create('Generic type is not a class.');
+  if Value
+    then include(FOwnerships, doOwnsKeys)
+    else exclude(FOwnerships, doOwnsKeys);
+end;
+
+procedure TOrderedMapClass<TKey, TValue>.SetOwnsValues(const Value: boolean);
+begin
+  if Value and not TRttiUtils.IsInstance<TValue> then
+    raise Exception.Create('Generic type is not a class.');
+  if Value
+    then include(FOwnerships, doOwnsValues)
+    else exclude(FOwnerships, doOwnsValues);
+end;
+
+procedure TOrderedMapClass<TKey, TValue>.treeOnKeyNotify(Sender: TObject; const Key: TKey; Action: TCollectionNotification);
+begin
+  if Assigned(FOnKeyNotify) then
+    FOnKeyNotify(Self, Key, Action);
+  if (Action = TCollectionNotification.cnRemoved) and (doOwnsKeys in FOwnerships) then
+    PObject(@Key)^.DisposeOf;
+end;
+
+procedure TOrderedMapClass<TKey, TValue>.treeOnValueNotify(Sender: TObject; const Value: TValue; Action: TCollectionNotification);
+begin
+  if Assigned(FOnValueNotify) then
+    FOnValueNotify(Self, Value, Action);
+  if (Action = TCollectionNotification.cnRemoved) and (doOwnsValues in FOwnerships) then
+    PObject(@Value)^.DisposeOf;
 end;
 
 { TComparerUtils }
@@ -5142,6 +5304,13 @@ end;
 procedure TVector<T>.Clear;
 begin
   Self := Default(TVector<T>);
+end;
+
+function TVector<T>.Copy: TVector<T>;
+begin
+  result.Clear;
+  result.Items := TArrayUtils.Copy<T>(Items, 0, Count);
+  result.FCount := Count;
 end;
 
 procedure TVector<T>.Delete(ItemIndex: integer);
@@ -5703,9 +5872,7 @@ end;
 
 procedure TVector<T>.Sort(Comparer: IComparer<T>);
 begin
-  if Comparer=nil then
-    Comparer := TComparerUtils.DefaultComparer<T>;
-  TArray.Sort<T>(Items, Comparer, 0, Count);
+  Sort(Comparer, 0, Count);
 end;
 
 procedure TVector<T>.Sort(Comparer: IComparer<T>; AIndex, ACount: Integer);
@@ -5713,6 +5880,23 @@ begin
   if Comparer=nil then
     Comparer := TComparerUtils.DefaultComparer<T>;
   TArray.Sort<T>(Items, Comparer, AIndex, ACount);
+end;
+
+procedure TVector<T>.Sort(Comparer: TFunc<T, T, integer>);
+begin
+  Sort(Comparer, 0, Count);
+end;
+
+procedure TVector<T>.Sort(Comparer: TFunc<T, T, integer>; AIndex, ACount: Integer);
+var
+  C: IComparer<T>;
+begin
+  C := TDelegatedComparer<T>.Create(
+    function (const A,B: T): integer
+    begin
+      result := Comparer(A,B);
+    end);
+  TArray.Sort<T>(Items, C, AIndex, ACount);
 end;
 
 function TVector<T>.BinarySearch(const Item: T; out FoundIndex: Integer): Boolean;
@@ -6068,20 +6252,18 @@ procedure TBinaryHeapClass<TKey, TValue>.SetOwnsKeys(const Value: boolean);
 begin
   if Value and not TRttiUtils.IsInstance<TKey> then
     raise Exception.Create('Generic type is not a class.');
-  if Value then
-    include(FOwnerships, doOwnsKeys)
-  else
-    exclude(FOwnerships, doOwnsKeys);
+  if Value
+    then include(FOwnerships, doOwnsKeys)
+    else exclude(FOwnerships, doOwnsKeys);
 end;
 
 procedure TBinaryHeapClass<TKey, TValue>.SetOwnsValues(const Value: boolean);
 begin
   if Value and not TRttiUtils.IsInstance<TValue> then
     raise Exception.Create('Generic type is not a class.');
-  if Value then
-    include(FOwnerships, doOwnsValues)
-  else
-    exclude(FOwnerships, doOwnsValues);
+  if Value
+    then include(FOwnerships, doOwnsValues)
+    else exclude(FOwnerships, doOwnsValues);
 end;
 
 function TBinaryHeapClass<TKey, TValue>.GetValue(Index: integer): TPair<TKey, TValue>;
@@ -7738,10 +7920,9 @@ end;
 
 procedure TRange.AddOrSet(AValueMin, AValueMax: integer);
 begin
-  if Empty then
-    Init(AValueMin, AValueMax)
-  else
-    Add(AValueMin, AValueMax);
+  if Empty
+    then Init(AValueMin, AValueMax)
+    else Add(AValueMin, AValueMax);
 end;
 
 procedure TRange.Clear;

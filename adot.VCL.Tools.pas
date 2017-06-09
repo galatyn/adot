@@ -151,7 +151,8 @@ type
   TCanvasUtils = class
   public
     class procedure BlendRectangle(Dst: TCanvas; const R: TRect; C: TColor; MixPercent: Byte); static;
-    class function MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer; static;
+    class function MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer; overload; static;
+    class function MaxFitLength(const Src: string; StartIndex,Count: integer; Dst: TCanvas; WidthPixels: integer): integer; overload; static;
   end;
 
   { ForEach, FindForm, GetShortCaption and other }
@@ -620,15 +621,15 @@ begin
   end;
 end;
 
-class function TCanvasUtils.MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer;
+class function TCanvasUtils.MaxFitLength(const Src: string; StartIndex, Count: integer; Dst: TCanvas; WidthPixels: integer): integer;
 var
   l,r,w: integer;
 begin
   result := 0;
-  if Src='' then
+  if Count <= 0 then
     Exit;
-  l := 1;
-  r := Length(Src);
+  l := StartIndex + 1;
+  r := StartIndex + Count;
   while r-l>=2 do
   begin
     result := (r+l) shr 1;
@@ -649,6 +650,11 @@ begin
     dec(result);
   if result<0 then
     result := 0;
+end;
+
+class function TCanvasUtils.MaxFitLength(const Src: string; Dst: TCanvas; WidthPixels: integer): integer;
+begin
+  result := MaxFitLength(Src, 0, Length(Src), Dst, WidthPixels);
 end;
 
 { TControlUtils }

@@ -1,4 +1,5 @@
 ﻿unit adot.Tools;
+{$OVERFLOWCHECKS OFF}
 {$IFNDEF Debug}
   { $Define UseInline}
 {$ENDIF}
@@ -425,6 +426,7 @@ type
     class procedure Delete<T>(var Arr: TArray<T>; Index: integer); overload; static;
     class function Add<T>(const A,B: TArray<T>): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
+    class function Copy<T>(const Src: TArray<T>; StartIndex,Count: integer): TArray<T>; overload; static;
     class function Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T,Boolean>): TArray<T>; overload; static;
     class function Equal<T>(const A,B: TArray<T>; AComparer: IEqualityComparer<T> = nil): Boolean; overload; static;
     class function Equal<T>(const A,B: TArray<T>; IndexA,IndexB,Count: integer; AComparer: IEqualityComparer<T> = nil): Boolean; overload; static;
@@ -890,6 +892,15 @@ type
     property Value: T read GetValue write SetValue;
     property Empty: boolean read GetEmpty;
     property ValuePtr: PT read GetPointer;
+  end;
+
+  { Simple generic class to keep record as object }
+  TEnvelop<T> = class
+  public
+    Value: T;
+
+    constructor Create; overload;
+    constructor Create(AValue: T); overload;
   end;
 
   { PDF-compatible RLE codec }
@@ -1789,12 +1800,36 @@ end;
 { TArrayUtils }
 
 class function TArrayUtils.Copy<T>(const Src: TArray<T>): TArray<T>;
+begin
+  result := Copy<T>(Src, 0, Length(Src));
+end;
+
+class function TArrayUtils.Copy<T>(const Src: TArray<T>; StartIndex, Count: integer): TArray<T>;
 var
   i: Integer;
 begin
+  SetLength(result, Count);
+  if Count > 0 then
+    if TRttiUtils.IsOrdinal<T> then
+      System.Move(Src[StartIndex], Result[0], Count*SizeOf(T))
+    else
+      for i := 0 to Count-1 do
+        result[i] := Src[i + StartIndex];
+end;
+
+class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
+var
+  i,j: Integer;
+begin
   SetLength(result, Length(Src));
+  j := 0;
   for i := 0 to High(Src) do
-    result[i] := Src[i];
+    if ACopyFilter(Src[i]) then
+    begin
+      result[j] := Src[i];
+      inc(j);
+    end;
+  SetLength(result, j);
 end;
 
 class procedure TArrayUtils.Append<T>(var Dst: TArray<T>; const Src: T);
@@ -1852,21 +1887,6 @@ end;
 class function TArrayUtils.Contains<T>(const Template, Data: TArray<T>; AComparer: IEqualityComparer<T>): boolean;
 begin
   result := IndexOf<T>(Template, Data, AComparer) >= 0;
-end;
-
-class function TArrayUtils.Copy<T>(const Src: TArray<T>; ACopyFilter: TFuncConst<T, Boolean>): TArray<T>;
-var
-  i,j: Integer;
-begin
-  SetLength(result, Length(Src));
-  j := 0;
-  for i := 0 to High(Src) do
-    if ACopyFilter(Src[i]) then
-    begin
-      result[j] := Src[i];
-      inc(j);
-    end;
-  SetLength(result, j);
 end;
 
 class procedure TArrayUtils.Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T, Boolean>);
@@ -5358,6 +5378,17 @@ end;
 procedure TEventStat.Clear;
 begin
   FEvents.Clear;
+end;
+
+{ TEnvelop<T> }
+
+constructor TEnvelop<T>.Create;
+begin
+end;
+
+constructor TEnvelop<T>.Create(AValue: T);
+begin
+  Value := AValue;
 end;
 
 end.

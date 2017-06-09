@@ -31,6 +31,7 @@ interface
 
 uses
   adot.Types,
+  adot.Tools,
   adot.Collections,
   Winapi.TlHelp32,
   Winapi.Windows,
@@ -261,7 +262,7 @@ type
     constructor Create(AMessageHandler: TOnMessage); overload;
     destructor Destroy; override;
 
-    procedure Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0);
+    function Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0): boolean;
 
     class procedure SendString(WinHandle: HWND; const S: string); static;
     class procedure SendFloat(WinHandle: HWND; const V: double); static;
@@ -271,6 +272,36 @@ type
     property OnMessage: TOnMessage read FOnMessage write FOnMessage;
     property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
     property Handle: HWND read FWnd;
+  end;
+
+  TPostpondJobId = int64;
+  TPostpond = class
+  private
+    type
+      TRunMessenger = class(TSingleton<TMessenger>)
+      protected
+        class function CreateInstance: TMessenger; override;
+      end;
+
+    const
+      wm_postpond = wm_user+1;
+
+    class var
+      FPostpondIdGen: TPostpondJobId;
+      FMap: TMap<TPostpondJobId, TProc>;
+
+    class procedure OnMessengerEvent(var AMessage: TMessage);
+    class destructor DestroyClass;
+
+  public
+
+    { Use PostMessage to run some code when the app exists from event handlers of active VCL components.
+      Can be used to edit values of TDataset when it is connected to components etc }
+    class function Run(Proc: TProc): TPostpondJobId; static;
+
+    { If form is closed before method is called, we should disable running of the method
+      and release locked params }
+    class procedure Cancel(JobId: TPostpondJobId); static;
   end;
 
   TRestartManager = class
@@ -1037,9 +1068,9 @@ begin
   DeallocateHWnd(FWnd);
 end;
 
-procedure TMessenger.Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0);
+function TMessenger.Post(Msg: cardinal; wParam: NativeUInt = 0; lParam: NativeInt = 0): Boolean;
 begin
-  PostMessage(Handle, Msg, wParam, lPAram);
+  result := PostMessage(Handle, Msg, wParam, lPAram);
 end;
 
 class procedure TMessenger.SendFloat(WinHandle: HWND; const V: double);
@@ -1411,6 +1442,64 @@ begin
     result := varQueryFullProcessImageName(hProcess, dwFlags, lpFilename, nSize)
   else
     result := False;
+end;
+
+{ TPostpond.TRunMessenger }
+
+class function TPostpond.TRunMessenger.CreateInstance: TMessenger;
+begin
+  result := TMessenger.Create(OnMessengerEvent);
+end;
+
+{ TPostpond }
+
+class destructor TPostpond.DestroyClass;
+begin
+  FMap.Release;
+end;
+
+class function TPostpond.Run(Proc: TProc): TPostpondJobId;
+var
+  Params: TEnvelop<TPostpondJobId>;
+begin
+  inc(FPostpondIdGen);
+  result := FPostpondIdGen;
+  Params := TEnvelop<TPostpondJobId>.Create(result);
+  if TRunMessenger.Ordinal.Post(wm_postpond, NativeUInt(Params), 0) then
+    FMap.Add(result, Proc)
+  else
+  begin
+    Sys.FreeAndNil(Params);
+    result := -1; { job is not created because PostMessage failed }
+  end;
+end;
+
+class procedure TPostpond.Cancel(JobId: TPostpondJobId);
+begin
+  FMap.Remove(JobId);
+end;
+
+class procedure TPostpond.OnMessengerEvent(var AMessage: TMessage);
+var
+  Params: TEnvelop<TPostpondJobId>;
+  Method: TProc;
+begin
+
+  { we can receive some general messages here }
+  if AMessage.Msg <> wm_postpond then
+    Exit;
+
+  Params := TEnvelop<TPostpondJobId>(AMessage.WParam);
+  if Params <> nil then
+    try
+      if FMap.TryGetValue(Params.Value, Method) then { if not canceled yet }
+      begin
+        FMap.Remove(Params.Value);
+        Method; { run Proc parameter of TPostpond.Run }
+      end;
+    finally
+      Sys.FreeAndNil(Params);
+    end;
 end;
 
 end.
