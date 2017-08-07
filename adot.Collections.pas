@@ -1030,11 +1030,12 @@ type
   public
 
     { Record type can be used without constructor, use constructor only if you
-      need some customization: set Capacity, provide custom comparer etc. }
-    constructor Create(AComparer: IComparer<T>); overload;
+      need some customization: set Capacity, provide custom comparer etc.
+      Delphi doesn't allow parameterless constructor, but fine with function }
+    class function Create(AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(Values: TVector<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const Values: TArray<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
+    constructor Create(Values: TVector<T>; AComparer: IComparer<T> = nil); overload;
+    constructor Create(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
 
     function GetEnumerator: TEnumerator<T>;
@@ -9657,9 +9658,10 @@ begin
   end;
 end;
 
-constructor TVector<T>.Create(AComparer: IComparer<T>);
+class function TVector<T>.Create(AComparer: IComparer<T>): TVector<T>;
 begin
-  CreateVector(0, AComparer);
+  result.Clear;
+  result.CreateVector(0, AComparer);
 end;
 
 constructor TVector<T>.Create(ACapacity: integer; AComparer: IComparer<T>);
@@ -9673,15 +9675,15 @@ begin
   Add(Values);
 end;
 
-constructor TVector<T>.Create(const Values: TArray<T>; ACapacity: integer; AComparer: IComparer<T>);
+constructor TVector<T>.Create(const Values: TArray<T>; AComparer: IComparer<T>);
 begin
-  CreateVector(ACapacity, AComparer);
+  CreateVector(System.Length(Values), AComparer);
   Add(Values);
 end;
 
-constructor TVector<T>.Create(Values: TVector<T>; ACapacity: integer; AComparer: IComparer<T>);
+constructor TVector<T>.Create(Values: TVector<T>; AComparer: IComparer<T>);
 begin
-  CreateVector(ACapacity, AComparer);
+  CreateVector(Values.Count, AComparer);
   Add(Values);
 end;
 
