@@ -49,6 +49,7 @@ type
     function GetData: T;
     procedure SetData(const AData: T);
     function GetRefCount: integer;
+    function Extract: T;
 
     property Data: T read GetData write SetData;
     property ReferenceCount: integer read GetRefCount;

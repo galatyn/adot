@@ -41,7 +41,8 @@ type
     class function IsInteger(const v: variant): boolean;
     class function IsBoolean(const v: variant): boolean;
 
-    class function IsNull(const V: variant): Boolean;
+    class function IsNull(const V: variant): Boolean; overload;
+    class function IsNull(const V: array of variant): Boolean; overload;
     class function IsEmpty(const V: variant): Boolean; { Null, Unassigned }
 
     { simple conversion (raises exception in case of errors) }
@@ -1030,6 +1031,16 @@ end;
 class function TVar.IsEmpty(const V: variant): Boolean;
 begin
   result := VarIsNull(v) or VarIsEmpty(v);
+end;
+
+class function TVar.IsNull(const V: array of variant): Boolean;
+var
+  I: Integer;
+begin
+  for I := Low(V) to High(V) do
+    if not VarIsNull(v[I]) then
+      Exit(False);
+  Result := True;
 end;
 
 class function TVar.IsNumeric(const v: variant): boolean;

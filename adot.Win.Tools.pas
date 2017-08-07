@@ -275,6 +275,9 @@ type
   end;
 
   TPostpondJobId = int64;
+
+  { Usually TPostpond should not be used directly.
+    Use higher level TDefferedJob record type when possible. }
   TPostpond = class
   private
     type
@@ -296,12 +299,80 @@ type
   public
 
     { Use PostMessage to run some code when the app exists from event handlers of active VCL components.
-      Can be used to edit values of TDataset when it is connected to components etc }
+      Can be used to edit values of TDataset when it is connected to components etc. Example:
+
+        procedure TFrm.GetPropertiesForEdit(Sender: TcxCustomGridTableItem; ARecord: TcxCustomGridRecord; var AProperties: TcxCustomEditProperties);
+        begin
+          TPostpond.Cancel(FDefferedJob); // cancel old job (safe if job is finished, job ids are unique)
+          FDefferedJob := TPostpond.Run(
+            procedure
+            begin
+              GridColumn.Visible := False;
+            end);
+        end;
+
+        procedure TFrm.FormDestroy(Sender: TObject);
+        begin
+          TPostpond.Cancel(FDefferedJob); // we should cancel the job when form is to be destroyed
+        end;
+      }
     class function Run(Proc: TProc): TPostpondJobId; static;
 
     { If form is closed before method is called, we should disable running of the method
       and release locked params }
     class procedure Cancel(JobId: TPostpondJobId); static;
+
+    class function IsInTheQueue(JobId: TPostpondJobId): boolean; static;
+  end;
+
+  {
+    var FRefreshArbeidspapirerDeffered: TDefferedJob;
+    procedure TfmRevHandlinger.cxGridViewFocusedRecordChanged(Sender: TcxCustomGridTableView;
+      APrevFocusedRecord,AFocusedRecord: TcxCustomGridRecord; ANewItemRecordFocusingChanged: Boolean);
+    begin
+      FRefreshArbeidspapirerDeffered.ScheduleTask(
+        procedure
+        begin
+          LoadMdsDoc(FinnRHID);
+          UpdateColsoptionEditing;
+        end);
+    end; }
+  TDefferedJob = record
+  private
+
+    type
+      TDefferedJobClass = class
+      private
+        FId: TPostpondJobId;
+      public
+        destructor Destroy; override;
+        procedure Run(Proc: TProc; CancelUnfinishedJob: boolean);
+        procedure Cancel;
+        function Queued: boolean;
+      end;
+
+    var
+      FJob: IInterfacedObject<TDefferedJobClass>;
+
+    function GetJob: TDefferedJobClass;
+
+    property Job: TDefferedJobClass read GetJob;
+
+  public
+
+    { "Proc" will be executed in message loop processing method.
+      In other words: when we exit from all event handlers and it will be safe to change VCL components.
+      Internally it sends message by PostMessage and TProc is executed when message is processed }
+    procedure ScheduleTask(Proc: TProc; CancelUnfinishedJob: boolean); overload;
+    { Run(Proc, True) }
+    procedure ScheduleTask(Proc: TProc); overload;
+
+    { Called automatically when variable of type TDefferedJob is destroyed.
+      Can be called manually to cancel a planned job (does nothing if there is no unfinished job) }
+    procedure Cancel;
+
+    { Returns True if some job is in the queue (TProc is scheduled by ScheduleTask and not processed yet) }
+    function Scheduled: boolean;
   end;
 
   TRestartManager = class
@@ -1479,6 +1550,11 @@ begin
   FMap.Remove(JobId);
 end;
 
+class function TPostpond.IsInTheQueue(JobId: TPostpondJobId): boolean;
+begin
+  result := FMap.ContainsKey(JobId);
+end;
+
 class procedure TPostpond.OnMessengerEvent(var AMessage: TMessage);
 var
   Params: TEnvelop<TPostpondJobId>;
@@ -1500,6 +1576,60 @@ begin
     finally
       Sys.FreeAndNil(Params);
     end;
+end;
+
+{ TDefferedJob.TDefferedJobClass }
+
+destructor TDefferedJob.TDefferedJobClass.Destroy;
+begin
+  Cancel;
+  inherited;
+end;
+
+procedure TDefferedJob.TDefferedJobClass.Cancel;
+begin
+  TPostpond.Cancel(FId);
+end;
+
+function TDefferedJob.TDefferedJobClass.Queued: boolean;
+begin
+  result := TPostpond.IsInTheQueue(FId);
+end;
+
+procedure TDefferedJob.TDefferedJobClass.Run(Proc: TProc; CancelUnfinishedJob: boolean);
+begin
+  if CancelUnfinishedJob then
+    Cancel;
+  FId := TPostpond.Run(Proc);
+end;
+
+{ TDefferedJob }
+
+function TDefferedJob.GetJob: TDefferedJobClass;
+begin
+  if FJob = nil then
+    FJob := TInterfacedObject<TDefferedJobClass>.Create(TDefferedJobClass.Create);
+  result := FJob.Data;
+end;
+
+procedure TDefferedJob.Cancel;
+begin
+  Job.Cancel;
+end;
+
+function TDefferedJob.Scheduled: boolean;
+begin
+  result := Job.Queued;
+end;
+
+procedure TDefferedJob.ScheduleTask(Proc: TProc; CancelUnfinishedJob: boolean);
+begin
+  Job.Run(Proc, CancelUnfinishedJob);
+end;
+
+procedure TDefferedJob.ScheduleTask(Proc: TProc);
+begin
+  Job.Run(Proc, True);
 end;
 
 end.

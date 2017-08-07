@@ -108,6 +108,7 @@ type
     ): Boolean; static;
     class function IsInteger(const s: string): Boolean; static;
     class function GetActionObjComparer(const ASoeketekst: string): TDelegatedComparer<TAppActions.TVerb>; static;
+    class function MixCaptionAndHint(C: TAction): string; static;
 
   public
 
@@ -527,12 +528,12 @@ class function TAppActions.FindFormActions(
 ): TList<TAppActions.TVerb>;
 var
   InnholdSoek: Boolean;
-  i,j: Integer;
+  i: Integer;
   Cmp: TComponent;
   Tekst: String;
   Indeks: Integer;
   AddedItems: TAutoFree<TDictionary<string, boolean>>;
-  s: string;
+  S: string;
 begin
   Assert(AForm <> nil, 'HostForm ikke satt under init.');
   AddedItems.Value := TDictionary<string, boolean>.Create;
@@ -543,7 +544,7 @@ begin
 
   result := TList<TAppActions.TVerb>.Create(GetActionObjComparer(ASoeketekst));
 
-  // manually added components
+  { manually added components }
   if AExtraComponents<>nil then
     for i := 0 to AExtraComponents.Count - 1 do
       if AExtraComponents.Objects[i]<>nil then
@@ -559,7 +560,7 @@ begin
         end;
       end;
 
-  // components from HostForm
+  { components from HostForm }
   if AForm<>nil then
     for i:= 0 to AForm.ComponentCount-1 do
     begin
@@ -568,7 +569,10 @@ begin
       if (AAutoAppendMenuItemsTag<>0) and (Cmp is TMenuItem) then
         if (Cmp.tag = AAutoAppendMenuItemsTag) and
           TAppActions.ComponentExecutable(Cmp) and
-          (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
+          (
+            TAppActions.ComponentAccessible(Cmp) or
+            Assigned(ATest) and ATest(Cmp)
+          ) and
           FilterAccept(TMenuItem(Cmp).Caption, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
         then
         begin
@@ -577,24 +581,35 @@ begin
         end;
 
       if (AAutoAppendActionsTag<>0) and (Cmp is TAction) then
-      begin
-        s := TAction(Cmp).Caption;
-        if TryStrToInt(s, j) then
-          s := Trim(s + ' ' + TAction(Cmp).Hint);
         if (Cmp.tag = AAutoAppendActionsTag) and
           TAppActions.ComponentExecutable(Cmp) and
-          (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
-          FilterAccept(s, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+          (
+            TAppActions.ComponentAccessible(Cmp) or
+            Assigned(ATest) and ATest(Cmp)
+          )
         then
         begin
-          result.Add(TAppActions.TVerb.Create(Tekst, AForm.components[i]));
-          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+          {Hint/Caption can be modified inside of TAction.Update. That is why we call ComponentAccessible
+            first (it will trigger TAction.Update) and only after that we read Caption/Hint for processing }
+          S := MixCaptionAndHint(TAction(Cmp));
+          if FilterAccept(S, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value) then
+          begin
+            result.Add(TAppActions.TVerb.Create(Tekst, AForm.components[i]));
+            AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+          end;
         end;
-      end;
 
     end;
 
   Result.Sort;
+end;
+
+class function TAppActions.MixCaptionAndHint(C: TAction): string;
+var I: integer;
+begin
+  Result := C.Caption;
+  if TryStrToInt(Result, I) then
+    Result := Trim(Result + ' ' + C.Hint);
 end;
 
 { TCanvasUtils }

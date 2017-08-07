@@ -1912,6 +1912,7 @@ type
     class function DefaultComparer<T>: IComparer<T>; static;
     class function DefaultEqualityComparer<T>: IEqualityComparer<T>; static;
     class function DefaultArithmetic<T>: IArithmetic<T>; static;
+    class function FindEqualityComparer<T>(Comparer: IComparer<T>): IEqualityComparer<T>; static;
 
     class function CompoundComparer<A,B>: IComparer<TCompound<A,B>>; overload; static;
     class function CompoundComparer<A,B,C>: IComparer<TCompound<A,B,C>>; overload; static;
@@ -1923,7 +1924,12 @@ type
     class function Equal<T>(A: TEnumerable<T>; const B: TArray<T>): boolean; overload; static;
     class function Equal<T>(A: TEnumerable<T>; const B: TArray<T>; Comparer: IComparer<T>): boolean; overload; static;
 
-    class function FindEqualityComparer<T>(Comparer: IComparer<T>): IEqualityComparer<T>; static;
+    class function Compare<T>(const Left, Right: TList<T>; ItemComparer: IComparer<T>): integer; overload; static;
+    class function Compare<T>(const Left, Right: TArray<T>; ItemComparer: IComparer<T>): integer; overload; static;
+    class function Compare(const Left, Right: string; CaseInsensitive: boolean = True): integer; overload; static;
+    class function Compare(const Left, Right: integer): integer; overload; static;
+    class function Compare(const Left, Right: double): integer; overload; static;
+    class function Compare(const Left, Right: boolean): integer; overload; static;
   end;
 
   { Doubly linked list }
@@ -2416,7 +2422,7 @@ end;
 
 function TCompoundEqualityComparer<TypeA, TypeB>.GetHashCode(const Value: TCompound<TypeA, TypeB>): Integer;
 begin
-  result := TCustomHash.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
+  result := THashUtils.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
 end;
 
 { TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
@@ -2471,7 +2477,11 @@ end;
 function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.GetHashCode(
   const Value: TCompound<TypeA, TypeB, TYpeC>): Integer;
 begin
-  result := TCustomHash.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B), FComparerC.GetHashCode(Value.C));
+  result := THashUtils.Mix(
+    FComparerA.GetHashCode(Value.A),
+    FComparerB.GetHashCode(Value.B),
+    FComparerC.GetHashCode(Value.C)
+  );
 end;
 
 { TCompoundComparer<TypeA, TypeB> }
@@ -3399,7 +3409,7 @@ end;
 function TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
   const Value: TMultimapKey): Integer;
 begin
-  result := TCustomHash.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
+  result := THashUtils.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
 end;
 
 { TMultimapClass<TKey, TValue>.TPairEnumerator }
@@ -5499,6 +5509,66 @@ begin
 end;
 
 { TComparerUtils }
+
+class function TComparerUtils.Compare(const Left, Right: integer): integer;
+begin
+  if Left < Right then result := -1 else
+    if Left > Right then result := 1 else
+      result := 0;
+end;
+
+class function TComparerUtils.Compare(const Left, Right: double): integer;
+begin
+  if Left < Right then result := -1 else
+    if Left > Right then result := 1 else
+      result := 0;
+end;
+
+class function TComparerUtils.Compare(const Left, Right: boolean): integer;
+begin
+  if Left then
+    if Right
+      then result := 0
+      else result := 1
+  else
+    if Right
+      then result := -1
+      else result := 0;
+end;
+
+class function TComparerUtils.Compare<T>(const Left, Right: TArray<T>; ItemComparer: IComparer<T>): integer;
+var
+  I: Integer;
+begin
+  result := Length(Left) - Length(Right);
+  for I := 0 to Length(Left)-1 do
+    if result = 0
+      then result := ItemComparer.Compare(Left[I], Right[I])
+      else Break;
+end;
+
+class function TComparerUtils.Compare<T>(const Left, Right: TList<T>; ItemComparer: IComparer<T>): integer;
+var
+  I: Integer;
+begin
+  if Left = Right then result := 0 else
+    if Left = nil then result := -1 else
+      if Right = nil then result := 1 else
+      begin
+        result := Left.Count - Right.Count;
+        for I := 0 to Left.Count-1 do
+          if result = 0
+            then result := ItemComparer.Compare(Left[I], Right[I])
+            else Break;
+      end;
+end;
+
+class function TComparerUtils.Compare(const Left, Right: string; CaseInsensitive: boolean = True): integer;
+begin
+  if CaseInsensitive
+    then result := CompareText(Left, Right)
+    else result := CompareStr(Left, Right);
+end;
 
 class function TComparerUtils.CompoundComparer<A, B, C>: IComparer<TCompound<A, B, C>>;
 begin
