@@ -79,7 +79,7 @@ interface
 uses
   adot.Types,
   adot.Tools, { min3 etc }
-  adot.Collections, { TVector etc }
+  adot.Collections, { TArr etc }
   System.Character,
   System.Math,
   System.SysUtils,
@@ -102,6 +102,149 @@ type
 
   TStrCharsPos = (scAll, scFirst, scLast);
   TTextEncoding = (teUnknown, teAnsi,  teUTF8,  teUTF16LE,  teUTF16BE,  teUTF32LE,  teUTF32BE);
+
+  { Lightweight and managed analog of TStringStream:
+    - write operations are faster on large input in comparing with regular string concatenation
+    - supports stream-like read/write operations
+    - lighter/faster than TStringStream }
+  TStringBuffer = record
+  public
+  private
+    FData: string;
+    FSize: integer;
+    FPosition: integer;
+
+    procedure SetSize(Value: integer);
+    function GetCapacity: integer;
+    procedure SetCapacity(Value: integer);
+    procedure CheckCapacity(MinCapacity: integer);
+    function GetLeft: integer;
+    procedure SetLeft(Value: integer);
+    function GetEOF: boolean;
+    function GetText: string;
+    procedure SetText(const Value: string);
+    function GetEmpty: Boolean;
+  public
+
+    procedure Clear;
+
+    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
+    procedure Write(const Src: string); overload;
+    procedure Write(const Src: char); overload;
+
+    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
+      Dst should be preallocated to fit all requested characters. }
+    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
+    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
+    procedure Read(var Dst: string; CharCount: integer); overload;
+    { Reads one character from current position of the buffer to Dst. }
+    procedure Read(var Dst: char); overload;
+
+    procedure TrimExcess;
+
+    { default encoding is UTF8 }
+    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
+
+    { assign as string }
+    class operator Implicit(const Buffer: TStringBuffer): String; static;
+    class operator Implicit(const Data: string): TStringBuffer; static;
+    class operator Implicit(const Data: integer): TStringBuffer; static;
+    class operator Implicit(const Data: double): TStringBuffer; static;
+
+    { case insensitive compare: AnsiSameText(ALeft.Text,ARight.Text) }
+    class operator Equal(const ALeft, ARight: TStringBuffer): Boolean; overload;
+    class operator Equal(const ALeft: TStringBuffer; const ARight: string): Boolean; overload;
+    class operator Equal(const ALeft: string; const ARight: TStringBuffer): Boolean; overload;
+    class operator NotEqual(const Left, Right: TStringBuffer): Boolean;
+
+    { Concatenation. Position will be set behind last char of ARight. }
+    class operator Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
+    class operator Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
+    class operator Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
+
+    { 'tests'-'s'='test', 'c:\1\2\'-'\'='c:\1\2', ...}
+    class operator Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
+
+    { -'123'='321' }
+    class operator Negative(Value: TStringBuffer): TStringBuffer;
+
+    { 'test'*3='testtesttest'}
+    class operator Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
+    class operator Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
+
+    class operator In(const Left,Right: TStringBuffer): Boolean; overload;
+    class operator In(const Left: TStringBuffer; const Right: string): Boolean; overload;
+
+    property Size: integer read FSize write SetSize;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Position: integer read FPosition write FPosition;
+    property Left: integer read GetLeft write SetLeft;
+    property EOF: boolean read GetEOF;
+    property Empty: boolean read GetEmpty;
+    property Text: string read GetText write SetText;
+    { Returns dirty buffer (capacity can be larger than size). }
+    property Data: string read FData;
+  end;
+
+  { Position of token in the text. Starts from zero. }
+  TTokenPos = record
+  public
+    Start, Len: Integer;
+
+    constructor Create(AStart,ALen: integer);
+    procedure SetPos(AStart,ALen: integer);
+
+    { [StartBytes; LenBytes] -> [StartChars; LenChars] }
+    function BytesToChars: TTokenPos;
+
+    class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
+    class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
+    class operator In(const A: integer; const B: TTokenPos): Boolean;
+  end;
+
+  { List of string edit commands (insert/delete/replace). Can be applied to any string.
+    Any operation is applied to initial text (without changes made by other commands). }
+  TStringEditor = record
+  private
+    type
+      { we translate all comands to sequence of "replace" }
+      TReplace = record
+        SrcText : string;
+        SrcPos  : TTokenPos;
+        DstPos  : TTokenPos;
+        Order   : integer;
+
+        procedure Clear;
+      end;
+      PReplace = ^TReplace;
+
+    var
+      Instructions: TArr<TReplace>;
+
+    procedure Add(const Instr: TReplace);
+    procedure Sort;
+
+  public
+
+    procedure Clear;
+
+    procedure Delete(const Start,Len: integer); overload;
+    procedure Delete(const Pos: TTokenPos); overload;
+    procedure Delete(const Pos: integer); overload;
+
+    procedure Insert(Pos: integer; const Substr: string; const SubStrOffset,SubStrLen: integer); overload;
+    procedure Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos); overload;
+    procedure Insert(Pos: integer; const Substr: string); overload;
+
+    procedure Replace(const Start,Len : integer;   const Substr: string; const SubStrOffset,SubStrLen : integer); overload;
+    procedure Replace(const Pos       : TTokenPos; const Substr: string; const SubStrPos : TTokenPos); overload;
+    procedure Replace(const Start,Len : integer;   const Substr: string); overload;
+    procedure Replace(const Pos       : TTokenPos; const Substr: string); overload;
+
+    { Apply all commands to string Src and get result }
+    function Apply(const Src: string): string;
+  end;
 
   { string utils }
   TStr = class
@@ -150,7 +293,7 @@ type
 
     { concatanate not empty values from Src }
     class function Concat(const Src: array of string; Delimeter: string = ' '): string; overload; static;
-    class function Concat(Src: TVector<string>; Delimeter: string = ' '): string; overload; static;
+    class function Concat(Src: TArray<string>; Delimeter: string = ' '): string; overload; static;
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
@@ -172,6 +315,22 @@ type
       Delphi (up to Delphi 10 Seattle at least) doesn't allow string literals to be longer than 255 chars.
       MakeStringLiteral will add quote char and split to several lines if necessary }
     class function MakeValidStringLiteral(const s: string): string; static;
+    { General function for escaping special characters. To be more precise it is allowed to escape
+      any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
+        Escape( 'key=value', '=' ) = 'key\3D00value' }
+    class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
+    class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
+    { Can be used to encode strings as Delphi-compatible string literals.
+      TTokPascal tokenizer can be used to extract and decode strings (or DecodeStringLiterals).
+      "abc" -> "'abc'"
+      " abc" -> "' abc'"
+      "a'bc" -> "a'''bc"
+      " a'bc " -> "' a'''bc '"}
+    class function EncodeStringLiteral(const Value: string): string; overload; static;
+    class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuffer); overload; static;
+    class function EncodeStringLiterals(const Values: TArray<string>): string; static;
+    class function DecodeStringLiterals(const Values: string): TArray<string>; static;
+
     { TTestApp -> "Test app" }
     class function ClassNameToCaption(const AClassName: string): string; static;
 
@@ -246,12 +405,6 @@ type
     class function Random(ALen: integer): string; overload;
     class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
     class function Random: string; overload;
-
-    { General function for escaping special characters. To be more precise it is allowed to escape
-      any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
-        Escape( 'key=value', '=' ) = 'key\3D00value' }
-    class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
-    class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
 
     class function FixDecimalSeparator(const Src: string): string; static;
 
@@ -366,22 +519,6 @@ type
     class function DecodeText(const Bytes: TArray<byte>; CodePageId: TCodePageId): string; static;
     class function StringToBuf(const Text: string; BufSize: integer; var CodePageId: TCodePageId; var Buf; var Len: integer): boolean; static;
     class function BufToString(const Buf; BufSize: integer; CodePageId: TCodePageId): string; static;
-  end;
-
-  { Position of token in the text. Starts from zero. }
-  TTokenPos = record
-  public
-    Start, Len: Integer;
-
-    constructor Create(AStart,ALen: integer);
-    procedure SetPos(AStart,ALen: integer);
-
-    { [StartBytes; LenBytes] -> [StartChars; LenChars] }
-    function BytesToChars: TTokenPos;
-
-    class operator Subtract(const A,B: TTokenPos): TTokenPos; { find "space" between   }
-    class operator Add(const A,B: TTokenPos): TTokenPos;      { "merge" into one token }
-    class operator In(const A: integer; const B: TTokenPos): Boolean;
   end;
 
   {# Internal structure to describe the token just found by tokenizer.
@@ -762,133 +899,6 @@ type
     property LastTokenType: TPasTokenType read FTokenType;
   end;
 
-  { Lightweight and managed analog of TStringStream:
-    - write operations are faster on large input in comparing with regular string concatenation
-    - supports stream-like read/write operations
-    - lighter/faster than TStringStream }
-  TStringBuffer = record
-  public
-  private
-    FData: string;
-    FSize: integer;
-    FPosition: integer;
-
-    procedure SetSize(Value: integer);
-    function GetCapacity: integer;
-    procedure SetCapacity(Value: integer);
-    procedure CheckCapacity(MinCapacity: integer);
-    function GetLeft: integer;
-    procedure SetLeft(Value: integer);
-    function GetEOF: boolean;
-    function GetText: string;
-    procedure SetText(const Value: string);
-    function GetEmpty: Boolean;
-  public
-
-    procedure Clear;
-
-    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
-    procedure Write(const Src: string); overload;
-    procedure Write(const Src: char); overload;
-
-    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
-      Dst should be preallocated to fit all requested characters. }
-    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
-    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
-    procedure Read(var Dst: string; CharCount: integer); overload;
-    { Reads one character from current position of the buffer to Dst. }
-    procedure Read(var Dst: char); overload;
-
-    procedure TrimExcess;
-
-    { default encoding is UTF8 }
-    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
-    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
-
-    { assign as string }
-    class operator Implicit(const Buffer: TStringBuffer): String; static;
-    class operator Implicit(const Data: string): TStringBuffer; static;
-    class operator Implicit(const Data: integer): TStringBuffer; static;
-    class operator Implicit(const Data: double): TStringBuffer; static;
-
-    { case insensitive compare: AnsiSameText(ALeft.Text,ARight.Text) }
-    class operator Equal(const ALeft, ARight: TStringBuffer): Boolean; overload;
-    class operator Equal(const ALeft: TStringBuffer; const ARight: string): Boolean; overload;
-    class operator Equal(const ALeft: string; const ARight: TStringBuffer): Boolean; overload;
-    class operator NotEqual(const Left, Right: TStringBuffer): Boolean;
-
-    { Concatenation. Position will be set behind last char of ARight. }
-    class operator Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
-    class operator Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
-    class operator Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
-
-    { 'tests'-'s'='test', 'c:\1\2\'-'\'='c:\1\2', ...}
-    class operator Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
-
-    { -'123'='321' }
-    class operator Negative(Value: TStringBuffer): TStringBuffer;
-
-    { 'test'*3='testtesttest'}
-    class operator Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
-    class operator Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
-
-    class operator In(const Left,Right: TStringBuffer): Boolean; overload;
-    class operator In(const Left: TStringBuffer; const Right: string): Boolean; overload;
-
-    property Size: integer read FSize write SetSize;
-    property Capacity: integer read GetCapacity write SetCapacity;
-    property Position: integer read FPosition write FPosition;
-    property Left: integer read GetLeft write SetLeft;
-    property EOF: boolean read GetEOF;
-    property Empty: boolean read GetEmpty;
-    property Text: string read GetText write SetText;
-    { Returns dirty buffer (capacity can be larger than size). }
-    property Data: string read FData;
-  end;
-
-  { List of string edit commands (insert/delete/replace). Can be applied to any string.
-    Any operation is applied to initial text (without changes made by other commands). }
-  TStringEditor = record
-  private
-    type
-      { we translate all comands to sequence of "replace" }
-      TReplace = record
-        SrcText : string;
-        SrcPos  : TTokenPos;
-        DstPos  : TTokenPos;
-        Order   : integer;
-
-        procedure Clear;
-      end;
-      PReplace = ^TReplace;
-
-    var
-      Instructions: TVector<TReplace>;
-
-    procedure Add(const Instr: TReplace);
-    procedure Sort;
-
-  public
-
-    procedure Clear;
-
-    procedure Delete(const Start,Len: integer); overload;
-    procedure Delete(const Pos: TTokenPos); overload;
-    procedure Delete(const Pos: integer); overload;
-
-    procedure Insert(Pos: integer; const Substr: string; const SubStrOffset,SubStrLen: integer); overload;
-    procedure Insert(Pos: integer; const Substr: string; const SubStrPos: TTokenPos); overload;
-    procedure Insert(Pos: integer; const Substr: string); overload;
-
-    procedure Replace(const Start,Len : integer;   const Substr: string; const SubStrOffset,SubStrLen : integer); overload;
-    procedure Replace(const Pos       : TTokenPos; const Substr: string; const SubStrPos : TTokenPos); overload;
-    procedure Replace(const Start,Len : integer;   const Substr: string); overload;
-    procedure Replace(const Pos       : TTokenPos; const Substr: string); overload;
-
-    { Apply all commands to string Src and get result }
-    function Apply(const Src: string): string;
-  end;
-
 implementation
 
 { TStr.TSplitOptions }
@@ -920,12 +930,12 @@ begin
         result := result + Delimeter + Src[i];
 end;
 
-class function TStr.Concat(Src: TVector<string>; Delimeter: string): string;
+class function TStr.Concat(Src: TArray<string>; Delimeter: string): string;
 var
   i: Integer;
 begin
   result := '';
-  for i := 0 to Src.Count-1 do
+  for i := Low(Src) to High(Src) do
     if Src[i]<>'' then
       if result=''
         then result := Src[i]
@@ -1626,10 +1636,10 @@ end;
 class function TStr.Split(const Src: string; const Options: TSplitOptions): TArray<string>;
 var
   Parser: TTokText;
-  Tokens: TVector<TCompound<TTokenPos, TTokText.TTextTokenType>>;
+  Tokens: TArr<TCompound<TTokenPos, TTokText.TTextTokenType>>;
   Pair: TCompound<TTokenPos, TTokText.TTextTokenType>;
   Buf: TStringBuffer;
-  Res: TVector<string>;
+  Res: TArr<string>;
   I,J,N,L: integer;
 begin
   if Options.MaxStrLen <= 0 then
@@ -2467,6 +2477,35 @@ end;
 class function TStr.Random: string;
 begin
   result := TStr.Random(System.Random(20));
+end;
+
+class function TStr.EncodeStringLiteral(const Value: string): string;
+var
+  Buf: TStringBuffer;
+begin
+  Buf.Clear;
+  EncodeStringLiteral(Value, Buf);
+  Result := Buf.Text;
+end;
+
+class procedure TStr.EncodeStringLiteral(const Value: string; var Dst: TStringBuffer);
+var
+  I: integer;
+begin
+  for I := Low(Value) to High(Value) do
+    if Value[I]=''''
+      then Dst.Write('''''')
+      else Dst.Write(Value[I]);
+end;
+
+class function TStr.EncodeStringLiterals(const Values: TArray<string>): string;
+begin
+
+end;
+
+class function TStr.DecodeStringLiterals(const Values: string): TArray<string>;
+begin
+
 end;
 
 { TTokenPos }

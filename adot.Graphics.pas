@@ -198,7 +198,7 @@ type
 
   { Some area of the image, stored as set of horizontal segments. }
 (*  TImageArea = class
-    Segments: TVector<TPoint>; { X=YLeft, Y=YRight }
+    Segments: TArr<TPoint>; { X=YLeft, Y=YRight }
     RoundingRect: TRect;
     Area: int64;
     MassCenter: TPoint;
@@ -207,7 +207,7 @@ type
   TLinkedAreas = class
   private
   protected
-    FPoints: TVector<TPoint>; { X=YLeft, Y=YRight }
+    FPoints: TArr<TPoint>; { X=YLeft, Y=YRight }
     FRoundingRect: TRect;
     FArea: integer;
     FMassCenter: TPoint;

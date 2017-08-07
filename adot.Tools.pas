@@ -461,6 +461,8 @@ type
     class function EndsWith<T>(const Data,Template: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
     class function Contains<T>(const Template: T; const Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
     class function Contains<T>(const Template,Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
+    class function Sorted<T>(const Arr: TArray<T>; AComparer: IComparer<T> = nil): boolean; overload; static;
+    class function Sorted<T>(const Arr: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil): boolean; overload; static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -1889,6 +1891,26 @@ begin
   result := IndexOf<T>(Template, Data, AComparer) >= 0;
 end;
 
+class function TArrayUtils.Sorted<T>(const Arr: TArray<T>; AComparer: IComparer<T> = nil): boolean;
+begin
+  result := Sorted<T>(Arr, 0, Length(Arr), AComparer);
+end;
+
+class function TArrayUtils.Sorted<T>(const Arr: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil): boolean;
+var
+  I: Integer;
+begin
+  if ACount <= 0 then
+    Exit(True);
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  Assert((AStartIndex >= 0) and (AStartIndex + ACount - 1 < Length(Arr)));
+  for I := AStartIndex to AStartIndex + ACount - 2 do
+    if AComparer.Compare(Arr[I], Arr[I+1]) > 0 then
+      Exit(False);
+  result := True;
+end;
+
 class procedure TArrayUtils.Delete<T>(var Arr: TArray<T>; AFilter: TFuncConst<T, Boolean>);
 var
   i,j: Integer;
@@ -2346,7 +2368,7 @@ end;
 
 class function TArrayUtils.Slice<T>(const Src: TArray<T>; CopyValue: TFunc<T, boolean>): TArray<T>;
 var
-  V: TVector<T>;
+  V: TArr<T>;
   I: Integer;
 begin
   V.Clear;
@@ -3810,7 +3832,7 @@ end;
 
 class function TComponentUtils.GetAll(AStart: TComponent): TArray<TComponent>;
 var
-  V: TVector<TComponent>;
+  V: TArr<TComponent>;
 begin
   V.Clear;
   V.Capacity := AStart.ComponentCount;
@@ -3825,7 +3847,7 @@ end;
 
 class function TComponentUtils.GetAll<T>(AStart: TComponent): TArray<T>;
 var
-  V: TVector<T>;
+  V: TArr<T>;
 begin
   V.Clear;
   V.Capacity := AStart.ComponentCount;

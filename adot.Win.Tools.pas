@@ -1115,7 +1115,7 @@ end;
 class procedure TMessenger.SendInputString(const S: string);
 var
   I: Integer;
-  V: TVector<TInput>;
+  V: TArr<TInput>;
   InputValue: TInput;
 begin
   if Length(S)=0 then
