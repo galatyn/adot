@@ -940,7 +940,8 @@ type
     { Exchange=Swap }
     procedure Swap(Index1,Index2: integer);
     { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
-    procedure Reverse(Index1,Index2: integer);
+    procedure Reverse; overload;
+    procedure Reverse(AStartIndex,ACount: integer); overload;
     { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
       RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
     procedure RotateLeft(Index1,Index2,Shift: integer);
@@ -948,7 +949,8 @@ type
       RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
     procedure RotateRight(Index1,Index2,Shift: integer);
     { Shuffle items of the range in random order }
-    procedure Shuffle(Index1,Index2: integer);
+    procedure Shuffle; overload;
+    procedure Shuffle(AStartIndex,ACount: integer); overload;
     { Generate all permutations. Permutations of [2,1,3]:
       1,2,3
       1,3,2
@@ -992,7 +994,7 @@ type
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
-    property Comparer: IComparer<T> read FComparer;
+    property Comparer: IComparer<T> read FComparer write FComparer;
     property OwnsValues: boolean read FOwnsValues write FOwnsValues;
     property AsString: string read GetAsString;
     property AsText: string read GetAsText;
@@ -1024,6 +1026,8 @@ type
     procedure SetFirst(const Value: T);
     procedure SetItem(ItemIndex: integer; const Value: T);
     procedure SetLast(const Value: T);
+    function GetComparer: IComparer<T>;
+    procedure SetComparer(Value: IComparer<T>);
 
     property RO: TVectorClass<T> read GetRO;
     property RW: TVectorClass<T> read GetRW;
@@ -1090,7 +1094,8 @@ type
     { Exchange=Swap }
     procedure Swap(Index1,Index2: integer);
     { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
-    procedure Reverse(Index1,Index2: integer);
+    procedure Reverse; overload;
+    procedure Reverse(AStartIndex,ACount: integer); overload;
     { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
       RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
     procedure RotateLeft(Index1,Index2,Shift: integer);
@@ -1098,14 +1103,10 @@ type
       RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
     procedure RotateRight(Index1,Index2,Shift: integer);
     { Shuffle items of the range in random order }
-    procedure Shuffle(Index1,Index2: integer);
+    procedure Shuffle; overload;
+    procedure Shuffle(AStartIndex,ACount: integer); overload;
     { Generate all permutations. Permutations of [2,1,3]:
-      1,2,3
-      1,3,2
-      2,1,3
-      2,3,1
-      3,1,2
-      3,2,1 }
+      [1,2,3] [1,3,2] [2,1,3] [2,3,1] [3,1,2] [3,2,1 }
     procedure FirstPermutation;
     function NextPermutation: boolean;
     function PrevPermutation: boolean;
@@ -1199,6 +1200,7 @@ type
     property AsArray: TArray<T> read GetAsArray;
     property Collection: TEnumerable<T> read GetCollection;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property Comparer: IComparer<T> read GetComparer write SetComparer;
   end;
 
   { Wrapper for TArray<T> (array with Add/Delete functionality). Example:
@@ -8874,7 +8876,7 @@ end;
 
 procedure TVectorClass<T>.Delete(const AIndices: TArray<integer>);
 var
-  S,D,I: Integer;
+  S,D,I,V: Integer;
 begin
   if System.Length(AIndices) = 0 then
     Exit;
@@ -8889,16 +8891,25 @@ begin
 
   Assert((AIndices[0] >= 0) and (AIndices[High(AIndices)] < Count));
   S := 0;
-  D := AIndices[0];
+  V := AIndices[0];
+  D := V;
   for I := AIndices[0] to Count-1 do
-    if I = AIndices[S] then
-      inc(S)
+    if I = V then
+      if S >= High(AIndices) then
+        V := -1
+      else
+      begin
+        inc(S);
+        V := AIndices[S];
+      end
     else
     begin
       FItems[D] := FItems[I];
       inc(D);
     end;
-  dec(FCount, System.Length(AIndices));
+  for I := D to FCount-1 do
+    FItems[I] := Default(T);
+  FCount := D;
 end;
 
 procedure TVectorClass<T>.Delete(AIndices: TSet<integer>);
@@ -8918,6 +8929,9 @@ begin
       FItems[D] := FItems[I];
       inc(D);
     end;
+  for I := D to FCount-1 do
+    FItems[I] := Default(T);
+  FCount := D;
 end;
 
 procedure TVectorClass<T>.DeleteLast;
@@ -9312,25 +9326,24 @@ begin
   Remove(TSet<T>.Create(V, 0, AComparer));
 end;
 
-procedure TVectorClass<T>.Reverse(Index1, Index2: integer);
+procedure TVectorClass<T>.Reverse;
+begin
+  Reverse(0, Count);
+end;
+
+procedure TVectorClass<T>.Reverse(AStartIndex,ACount: integer);
 var
   I: Integer;
   Value: T;
 begin
-  Assert((Index1>=0) and (Index1<Count) and (Index2>=0) and (Index2<Count));
-  if Index2 < Index1 then
+  if ACount <= 0 then
+    Exit;
+  Assert((AStartIndex >= 0) and (AStartIndex + ACount <= Count));
+  for I := 0 to (ACount shr 1) - 1 do
   begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  for I := 0 to ((Index2-Index1+1) shr 1) - 1 do
-  begin
-    Value := FItems[Index1];
-    FItems[Index1] := FItems[Index2];
-    FItems[Index2] := Value;
-    inc(Index1);
-    dec(Index2);
+    Value := FItems[AStartIndex+I];
+    FItems[AStartIndex+I] := FItems[AStartIndex+ACount-1-I];
+    FItems[AStartIndex+ACount-1-I] := Value;
   end;
 end;
 
@@ -9422,19 +9435,20 @@ begin
   FItems[Count-1] := Value;
 end;
 
-procedure TVectorClass<T>.Shuffle(Index1, Index2: integer);
+procedure TVectorClass<T>.Shuffle;
+begin
+  Shuffle(0, Count);
+end;
+
+procedure TVectorClass<T>.Shuffle(AStartIndex,ACount: integer);
 var
   I: Integer;
 begin
-  Assert((Index1>=0) and (Index1<Count) and (Index2>=0) and (Index2<Count));
-  if Index2 < Index1 then
-  begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  for I := Index1 to Index2 do
-    Exchange(I, Index1 + Random(Index2-Index1+1));
+  if ACount <= 1 then
+    Exit;
+  Assert((AStartIndex >= 0) and (AStartIndex + ACount <= Count));
+  for I := AStartIndex+ACount-1 downto AStartIndex+1 do
+    Exchange(I, Random(I+1));
 end;
 
 procedure TVectorClass<T>.Sort(AComparer: IComparer<T> = nil);
@@ -9649,13 +9663,8 @@ end;
 
 function TVector<T>.Copy: TVector<T>;
 begin
-  if FVectorInt=nil then
-    result.FVectorInt := nil
-  else
-  begin
-    result := TVector<T>.Create(Count, FVectorInt.Data.Comparer);
-    result.Add(Self);
-  end;
+  result := TVector<T>.Create(Comparer);
+  result.Add(Self);
 end;
 
 class function TVector<T>.Create(AComparer: IComparer<T>): TVector<T>;
@@ -9840,6 +9849,11 @@ end;
 function TVector<T>.GetCollection: TEnumerable<T>;
 begin
   result := RO;
+end;
+
+function TVector<T>.GetComparer: IComparer<T>;
+begin
+  result := RO.Comparer;
 end;
 
 function TVector<T>.GetCount: integer;
@@ -10075,9 +10089,14 @@ begin
   RW.Remove(V);
 end;
 
-procedure TVector<T>.Reverse(Index1, Index2: integer);
+procedure TVector<T>.Reverse;
 begin
-  RW.Reverse(Index1, Index2);
+  RW.Reverse;
+end;
+
+procedure TVector<T>.Reverse(AStartIndex,ACount: integer);
+begin
+  RW.Reverse(AStartIndex,ACount);
 end;
 
 procedure TVector<T>.RotateLeft(Index1, Index2, Shift: integer);
@@ -10093,6 +10112,11 @@ end;
 procedure TVector<T>.SetCapacity(const Value: integer);
 begin
   RW.Capacity := Value;
+end;
+
+procedure TVector<T>.SetComparer(Value: IComparer<T>);
+begin
+  RW.Comparer := Value;
 end;
 
 procedure TVector<T>.SetCount(const Value: integer);
@@ -10120,9 +10144,14 @@ begin
   RW.OwnsValues := AOwnsValues;
 end;
 
-procedure TVector<T>.Shuffle(Index1, Index2: integer);
+procedure TVector<T>.Shuffle;
 begin
-  RW.Shuffle(Index1, Index2);
+  RW.Shuffle;
+end;
+
+procedure TVector<T>.Shuffle(AStartIndex,ACount: integer);
+begin
+  RW.Shuffle(AStartIndex,ACount);
 end;
 
 procedure TVector<T>.Sort(AIndex, ACount: Integer; AComparer: IComparer<T>);

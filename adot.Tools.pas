@@ -3987,13 +3987,14 @@ begin
 end;
 
 class procedure TCustomHash.Update(const S: string; var Hash: THashData);
+var
+  L: integer;
 begin
-  if Length(S) = 0 then
-    DoUpdate(nil^, 0, Hash)
-  else
-    DoUpdate(S[Low(S)], length(S)*SizeOf(S[Low(S)]), Hash);
+  L := Length(S);
+  DoUpdate(L, SizeOf(L), Hash);
+  if L > 0 then
+    DoUpdate(S[Low(S)], L*SizeOf(Char), Hash);
 end;
-
 
 class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;
 begin
