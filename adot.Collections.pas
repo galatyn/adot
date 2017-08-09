@@ -866,7 +866,7 @@ type
     procedure SetItem(ItemIndex: integer; const Value: T);
     procedure SetLast(const Value: T);
     procedure Grow;
-    function ContainsAll(TempValues: TSet<T>): boolean;
+    function ContainsAll(V: TArray<T>): boolean;
     function GetAsString: string;
     function GetAsArray: TArray<T>;
     procedure SetAsArray(const Value: TArray<T>);
@@ -1134,10 +1134,14 @@ type
     class operator Implicit(const a : T) : TVector<T>;
     class operator Implicit(const a : TArray<T>) : TVector<T>;
     class operator Implicit(const a : TEnumerable<T>) : TVector<T>;
+    class operator Implicit(a : TVector<T>) : TEnumerable<T>;
+    class operator Implicit(a : TVector<T>) : TArray<T>;
 
     class operator Explicit(const a : T) : TVector<T>;
     class operator Explicit(const a : TArray<T>) : TVector<T>;
     class operator Explicit(const a : TEnumerable<T>) : TVector<T>;
+    class operator Explicit(a : TVector<T>) : TEnumerable<T>;
+    class operator Explicit(a : TVector<T>) : TArray<T>;
 
     class operator Add(a: TVector<T>; const b: T): TVector<T>;
     class operator Add(a: TVector<T>;       b: TVector<T>): TVector<T>;
@@ -3531,10 +3535,9 @@ procedure TSet<T>.CreateSet(ACapacity: integer = 0; AComparer: IEqualityComparer
 var
   C: IEqualityComparer<T>;
 begin
-  if AComparer=nil then
-    C := TComparerUtils.DefaultEqualityComparer<T>
-  else
-    C := AComparer;
+  if AComparer=nil
+    then C := TComparerUtils.DefaultEqualityComparer<T>
+    else C := AComparer;
   FSetInt := TInterfacedObject<TSetClass<T>>.Create( TSetClass<T>.Create(ACapacity, C) );
 end;
 
@@ -5636,7 +5639,9 @@ end;
 
 class function TComparerUtils.FindEqualityComparer<T>(Comparer: IComparer<T>): IEqualityComparer<T>;
 begin
-  result := TEqualityByComparer<T>.Create(Comparer);
+  if Comparer=nil
+    then result := DefaultEqualityComparer<T>
+    else result := TEqualityByComparer<T>.Create(Comparer);
 end;
 
 class function TComparerUtils.Equal<T>(A, B: TEnumerable<T>): boolean;
@@ -8812,25 +8817,54 @@ begin
     end;
 end;
 
-function TVectorClass<T>.ContainsAll(TempValues: TSet<T>): boolean;
+function TVectorClass<T>.ContainsAll(V: TArray<T>): boolean;
 var
-  Value: T;
+  C: IComparer<T>;
+  B: TArray<boolean>;
+  I,J,N: Integer;
 begin
-  for Value in FItems do
-    if TempValues.Empty
-      then Break
-      else TempValues.Remove(Value);
-  result := TempValues.Empty;
+  if (Length(V) = 0) or (Count = 0) then
+    Exit(False);
+
+  { We can't use TSet, because it needs IEqualityComparer.GetHash,
+    IComparer can not be tranformed into IEqualityComparer hasher }
+  if Comparer=nil
+    then C := TComparerUtils.DefaultComparer<T>
+    else C := Comparer;
+  TArray.Sort<T>(V, C);
+
+  { remove duplicates }
+  J := 0;
+  for I := 1 to High(V) do
+    if C.Compare(V[I], V[J])<>0 then
+    begin
+      inc(J);
+      FItems[J] := FItems[I];
+    end;
+  SetLength(V, J+1);
+
+  { find items in sorted version of Values }
+  SetLength(B, Length(V));
+  N := Length(V);
+  for I := 0 to FCount-1 do
+    if TArray.BinarySearch<T>(V, FItems[I], J, C) and not B[J] then
+    begin
+      B[J] := True;
+      dec(N);
+      if N <= 0 then
+        Exit(True);
+    end;
+  result := False;
 end;
 
 function TVectorClass<T>.Contains(const Values: TArray<T>): boolean;
 begin
-  result := ContainsAll(TSet<T>.Create(Values));
+  result := ContainsAll(TArrayUtils.Copy<T>(Values));
 end;
 
 function TVectorClass<T>.Contains(const Values: TEnumerable<T>): boolean;
 begin
-  result := ContainsAll(TSet<T>.Create(Values));
+  result := ContainsAll(Values.ToArray);
 end;
 
 function TVectorClass<T>.Contains(const Value: T): boolean;
@@ -10249,6 +10283,26 @@ end;
 procedure TVector<T>.TrimExcess;
 begin
   RW.TrimExcess;
+end;
+
+class operator TVector<T>.Implicit(a: TVector<T>): TEnumerable<T>;
+begin
+  result := a.Collection;
+end;
+
+class operator TVector<T>.Explicit(a: TVector<T>): TEnumerable<T>;
+begin
+  result := a.Collection;
+end;
+
+class operator TVector<T>.Implicit(a: TVector<T>): TArray<T>;
+begin
+  result := a.AsArray;
+end;
+
+class operator TVector<T>.Explicit(a: TVector<T>): TArray<T>;
+begin
+  result := a.AsArray;
 end;
 
 { TComparerUtils.TEqualityByComparer<T> }
