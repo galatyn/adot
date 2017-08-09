@@ -228,9 +228,11 @@ type
 
     { streaming functions }
     class procedure Init(out Hash: THashData);
-    class procedure Update(const Buf; ByteBufSize: integer; var Hash: THashData); overload;
-    class procedure Update(const S: TBytes; var Hash: THashData); overload;
-    class procedure Update(const S: string; var Hash: THashData); overload;
+    class procedure Update(const Value; ValueByteSize: integer; var Hash: THashData); overload;
+    class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
+    class procedure Update(const Value: string;       var Hash: THashData); overload;
+    class procedure Update(const Value: integer;      var Hash: THashData); overload;
+    class procedure Update(const Value: double;       var Hash: THashData); overload;
     class function Done(var Hash: THashData): TBytes;
 
   end;
@@ -3976,24 +3978,37 @@ begin
   DoInit(Hash);
 end;
 
-class procedure TCustomHash.Update(const Buf; ByteBufSize: integer; var Hash: TArray<byte>);
+class procedure TCustomHash.Update(const Value; ValueByteSize: integer; var Hash: THashData);
 begin
-  DoUpdate(Buf, ByteBufSize, Hash);
+  DoUpdate(Value, ValueByteSize, Hash);
 end;
 
-class procedure TCustomHash.Update(const S: TBytes; var Hash: THashData);
+class procedure TCustomHash.Update(const Value: integer; var Hash: THashData);
 begin
-  Update(S, 0, Hash);
+  DoUpdate(Value, SizeOf(Value), Hash);
 end;
 
-class procedure TCustomHash.Update(const S: string; var Hash: THashData);
-var
-  L: integer;
+class procedure TCustomHash.Update(const Value: double; var Hash: THashData);
 begin
-  L := Length(S);
-  DoUpdate(L, SizeOf(L), Hash);
-  if L > 0 then
-    DoUpdate(S[Low(S)], L*SizeOf(Char), Hash);
+  DoUpdate(Value, SizeOf(Value), Hash);
+end;
+
+class procedure TCustomHash.Update(const Value: TArray<byte>; var Hash: THashData);
+begin
+  { Length must be included in hash, otherwise arrays
+    [a, ab] and [aa, b] will produce same hash }
+  Update(Length(Value), Hash);
+  if Length(Value) > 0 then
+    DoUpdate(Value[0], Length(Value), Hash);
+end;
+
+class procedure TCustomHash.Update(const Value: string; var Hash: THashData);
+begin
+  { Length must be included in hash, otherwise arrays
+    ["a", "ab"] and ["aa", "b"] will produce same hash }
+  Update(Length(Value), Hash);
+  if Value <> '' then
+    DoUpdate(Value[Low(Value)], Length(Value)*SizeOf(Char), Hash);
 end;
 
 class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;

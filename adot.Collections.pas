@@ -916,7 +916,7 @@ type
     procedure Remove(const V: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
     procedure Remove(V: TSet<T>); overload;
 
-    { Get item and delete from the vector }
+    { Removes item from the vector. Unlike Delete it returns the value and will not free the item }
     function Extract(ItemIndex: integer): T;
     function ExtractAll: TArray<T>;
     function ExtractLast: T;
@@ -983,9 +983,8 @@ type
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
     property Count: integer read FCount write SetCount;
-    property Length: integer read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
-    property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
+    property Items[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property Comparer: IComparer<T> read FComparer write FComparer;
@@ -1183,9 +1182,8 @@ type
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
     property Count: integer read GetCount write SetCount;
-    property Length: integer read GetCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
-    property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
+    property Items[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property AsString: string read GetAsString;
@@ -8990,7 +8988,7 @@ end;
 
 function TVectorClass<T>.ExtractAll: TArray<T>;
 begin
-  result := ToArray;
+  result := AsArray;
   SetLength(FItems, 0);
   FCount := 0;
 end;
@@ -9299,14 +9297,20 @@ var
 begin
   FindEqualityComparer(AComparer);
   D := 0;
-  for I := 0 to Count-1 do
+  for I := 0 to FCount-1 do
     if AComparer.Equals(FItems[I], V) then
-      dec(FCount)
+    begin
+      if FOwnsValues then
+        PObject(@FItems[I])^.DisposeOf;
+    end
     else
     begin
       FItems[D] := FItems[I];
       inc(D);
     end;
+  for I := D to FCount-1 do
+    FItems[I] := Default(T);
+  FCount := D;
 end;
 
 procedure TVectorClass<T>.Remove(V: TSet<T>);
@@ -9314,14 +9318,20 @@ var
   I,D: Integer;
 begin
   D := 0;
-  for I := 0 to Count-1 do
+  for I := 0 to FCount-1 do
     if FItems[I] in V then
-      dec(FCount)
+    begin
+      if FOwnsValues then
+        PObject(@FItems[I])^.DisposeOf;
+    end
     else
     begin
       FItems[D] := FItems[I];
       inc(D);
     end;
+  for I := D to FCount-1 do
+    FItems[I] := Default(T);
+  FCount := D;
 end;
 
 procedure TVectorClass<T>.Remove(const V: TArray<T>; AComparer: IEqualityComparer<T> = nil);
@@ -9617,6 +9627,7 @@ end;
 
 procedure TVector<T>.Clear;
 begin
+  RW.Clear;
   Self := Default(TVector<T>);
 end;
 
