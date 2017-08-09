@@ -873,6 +873,7 @@ type
     function GetAsText: string;
     procedure FindEqualityComparer(var AComparer: IEqualityComparer<T>);
     procedure FindComparer(var AComparer: IComparer<T>);
+    procedure SetOwnsValues(const Value: boolean);
 
   protected
     FItems: TArray<T>;
@@ -937,8 +938,6 @@ type
     function Contains(const Values: TEnumerable<T>): boolean; overload;
 
     procedure Exchange(Index1,Index2: integer);
-    { Exchange=Swap }
-    procedure Swap(Index1,Index2: integer);
     { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
     procedure Reverse; overload;
     procedure Reverse(AStartIndex,ACount: integer); overload;
@@ -952,12 +951,7 @@ type
     procedure Shuffle; overload;
     procedure Shuffle(AStartIndex,ACount: integer); overload;
     { Generate all permutations. Permutations of [2,1,3]:
-      1,2,3
-      1,3,2
-      2,1,3
-      2,3,1
-      3,1,2
-      3,2,1 }
+        [1,2,3] [1,3,2] [2,1,3] [2,3,1] [3,1,2] [3,2,1] }
     procedure FirstPermutation;
     function NextPermutation: boolean;
     function PrevPermutation: boolean;
@@ -995,7 +989,7 @@ type
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property Comparer: IComparer<T> read FComparer write FComparer;
-    property OwnsValues: boolean read FOwnsValues write FOwnsValues;
+    property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
     property AsString: string read GetAsString;
     property AsText: string read GetAsText;
     property AsArray: TArray<T> read GetAsArray write SetAsArray;
@@ -1091,8 +1085,6 @@ type
     function Contains(const Values: TEnumerable<T>): boolean; overload;
 
     procedure Exchange(Index1,Index2: integer);
-    { Exchange=Swap }
-    procedure Swap(Index1,Index2: integer);
     { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
     procedure Reverse; overload;
     procedure Reverse(AStartIndex,ACount: integer); overload;
@@ -8728,7 +8720,12 @@ begin
 end;
 
 procedure TVectorClass<T>.Clear;
+var
+  I: Integer;
 begin
+  if FOwnsValues then
+    for I := FCount-1 downto 0 do
+      PObject(@FItems[I])^.DisposeOf;
   SetLength(FItems, 0);
   FCount := 0;
 end;
@@ -8855,6 +8852,9 @@ var
   I,C: Integer;
 begin
   Assert((AStartIndex>=0) and (AStartIndex<Count) and (ACount>=0) and (AStartIndex+ACount-1<Count));
+  if FOwnsValues then
+    for I := AStartIndex to AStartIndex+ACount-1 do
+      PObject(@FItems[I])^.DisposeOf;
   C := Count-ACount; { new Count }
   for I := AStartIndex to C-1 do
     FItems[I] := FItems[I+ACount];
@@ -8868,6 +8868,8 @@ var
   I: Integer;
 begin
   Assert((ItemIndex>=0) and (ItemIndex<FCount));
+  if FOwnsValues then
+    PObject(@FItems[ItemIndex])^.DisposeOf;
   for I := ItemIndex to Count-2 do
     FItems[I] := FItems[I+1];
   Dec(FCount);
@@ -8895,6 +8897,9 @@ begin
   D := V;
   for I := AIndices[0] to Count-1 do
     if I = V then
+    begin
+      if FOwnsValues then
+        PObject(@FItems[I])^.DisposeOf;
       if S >= High(AIndices) then
         V := -1
       else
@@ -8902,6 +8907,7 @@ begin
         inc(S);
         V := AIndices[S];
       end
+    end
     else
     begin
       FItems[D] := FItems[I];
@@ -8921,6 +8927,8 @@ begin
   for I := 0 to Count-1 do
     if I in AIndices then
     begin
+      if FOwnsValues then
+        PObject(@FItems[I])^.DisposeOf;
       inc(S);
       dec(FCount);
     end
@@ -8936,8 +8944,10 @@ end;
 
 procedure TVectorClass<T>.DeleteLast;
 begin
-  Assert(FCount>=0);
+  Assert(FCount>0);
   Dec(FCount);
+  if FOwnsValues then
+    PObject(@FItems[FCount])^.DisposeOf;
   FItems[FCount] := Default(T);
 end;
 
@@ -9435,6 +9445,13 @@ begin
   FItems[Count-1] := Value;
 end;
 
+procedure TVectorClass<T>.SetOwnsValues(const Value: boolean);
+begin
+  if Value and not TRttiUtils.IsInstance<T> then
+    raise Exception.Create('Generic type is not a class.');
+  FOwnsValues := Value;
+end;
+
 procedure TVectorClass<T>.Shuffle;
 begin
   Shuffle(0, Count);
@@ -9493,11 +9510,6 @@ function TVectorClass<T>.Sorted(AStartIndex, ACount: integer; AComparer: ICompar
 begin
   FindComparer(AComparer);
   result := TArrayUtils.Sorted<T>(FItems, AStartIndex, ACount, AComparer);
-end;
-
-procedure TVectorClass<T>.Swap(Index1, Index2: integer);
-begin
-  Exchange(Index1, Index2);
 end;
 
 procedure TVectorClass<T>.TrimExcess;
@@ -10221,11 +10233,6 @@ begin
   result.Clear;
   result.Add(A);
   result.Remove(B);
-end;
-
-procedure TVector<T>.Swap(Index1, Index2: integer);
-begin
-  RW.Swap(Index1, Index2);
 end;
 
 procedure TVector<T>.TrimExcess;
