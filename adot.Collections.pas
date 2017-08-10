@@ -837,6 +837,8 @@ type
     property Keys: TKeyCollection read GetKeys;
   end;
 
+  TSortFunc<T> = reference to function(const Left,Right: T): integer;
+
   TVectorClass<T> = class(TEnumerableExt<T>)
   protected
     type
@@ -961,23 +963,19 @@ type
 
     procedure Sort(AComparer: IComparer<T> = nil); overload;
     procedure Sort(AIndex, ACount: Integer; AComparer: IComparer<T> = nil); overload;
-    procedure Sort(AComparer: TFunc<T,T,integer>); overload;
-    procedure Sort(AIndex, ACount: Integer; AComparer: TFunc<T,T,integer>); overload;
+    procedure Sort(AComparer: TSortFunc<T>); overload;
+    procedure Sort(AIndex, ACount: Integer; AComparer: TSortFunc<T>); overload;
 
     function BinarySearch(const Item: T; out FoundIndex: Integer; AComparer: IComparer<T> = nil): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; AStartIndex,ACount: Integer; AComparer: IComparer<T> = nil): Boolean; overload;
 
-    { TVectorClass }
-    function Compare(B: TVectorClass<T>): integer; overload;
-    function Compare(B: TVectorClass<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
     { TArray }
-    function Compare(const B: TArray<T>): integer; overload;
+    function Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer; overload;
     function Compare(const B: TArray<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
     { TEnumerable }
-    function Compare(B: TEnumerable<T>): integer; overload;
+    function Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer; overload;
     function Compare(B: TEnumerable<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
 
-    function Equal(B: TVectorClass<T>): boolean; overload;
     function Equal(const B: TArray<T>): boolean; overload;
     function Equal(B: TEnumerable<T>): boolean; overload;
 
@@ -1115,23 +1113,19 @@ type
 
     procedure Sort(AComparer: IComparer<T> = nil); overload;
     procedure Sort(AIndex, ACount: Integer; AComparer: IComparer<T> = nil); overload;
-    procedure Sort(AComparer: TFunc<T,T,integer>); overload;
-    procedure Sort(AIndex, ACount: Integer; AComparer: TFunc<T,T,integer>); overload;
+    procedure Sort(AComparer: TSortFunc<T>); overload;
+    procedure Sort(AIndex, ACount: Integer; AComparer: TSortFunc<T>); overload;
 
     function BinarySearch(const Item: T; out FoundIndex: Integer; AComparer: IComparer<T> = nil): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; AStartIndex,ACount: Integer; AComparer: IComparer<T> = nil): Boolean; overload;
 
-    { TVectorClass }
-    function Compare(B: TVectorClass<T>): integer; overload;
-    function Compare(B: TVectorClass<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
     { TArray }
-    function Compare(const B: TArray<T>): integer; overload;
+    function Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer; overload;
     function Compare(const B: TArray<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
     { TEnumerable }
-    function Compare(B: TEnumerable<T>): integer; overload;
+    function Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer; overload;
     function Compare(B: TEnumerable<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
 
-    function Equal(B: TVectorClass<T>): boolean; overload;
     function Equal(const B: TArray<T>): boolean; overload;
     function Equal(B: TEnumerable<T>): boolean; overload;
 
@@ -8752,25 +8746,10 @@ begin
   FCount := 0;
 end;
 
-function TVectorClass<T>.Compare(B: TVectorClass<T>): integer;
-begin
-  if Count = B.Count then
-    result := Compare(B.FItems,0,0,Count, Comparer)
-  else
-    if Count < B.Count
-      then result := -1
-      else result := 1;
-end;
-
-function TVectorClass<T>.Compare(B: TVectorClass<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T>): integer;
-begin
-  result := Compare(B.FItems, AStartIndex, BStartIndex, ACount, AComparer);
-end;
-
-function TVectorClass<T>.Compare(const B: TArray<T>): integer;
+function TVectorClass<T>.Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer;
 begin
   if Count = System.Length(B) then
-    result := Compare(B,0,0,Count, Comparer)
+    result := Compare(B,0,0,Count, AComparer)
   else
     if Count < System.Length(B)
       then result := -1
@@ -8795,7 +8774,7 @@ begin
     end;
 end;
 
-function TVectorClass<T>.Compare(B: TEnumerable<T>): integer;
+function TVectorClass<T>.Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer;
 var
   Value: T;
   BItemsCount: integer;
@@ -8804,7 +8783,7 @@ begin
   for Value in B do
     inc(BItemsCount);
   if Count = BItemsCount then
-    result := Compare(B,0,0,Count, Comparer)
+    result := Compare(B,0,0,Count, AComparer)
   else
     if Count < BItemsCount
       then result := -1
@@ -9005,11 +8984,6 @@ end;
 function TVectorClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
   result := TVEctorEnumerator.Create(Self);
-end;
-
-function TVectorClass<T>.Equal(B: TVectorClass<T>): boolean;
-begin
-  result := Compare(B) = 0;
 end;
 
 function TVectorClass<T>.Equal(const B: TArray<T>): boolean;
@@ -9543,12 +9517,12 @@ begin
   TArray.Sort<T>(FItems, AComparer, AIndex, ACount);
 end;
 
-procedure TVectorClass<T>.Sort(AComparer: TFunc<T,T,integer>);
+procedure TVectorClass<T>.Sort(AComparer: TSortFunc<T>);
 begin
   Sort(0, Count, AComparer);
 end;
 
-procedure TVectorClass<T>.Sort(AIndex, ACount: Integer; AComparer: TFunc<T,T,integer>);
+procedure TVectorClass<T>.Sort(AIndex, ACount: Integer; AComparer: TSortFunc<T>);
 var
   C: IComparer<T>;
 begin
@@ -9705,20 +9679,9 @@ begin
   Self := Default(TVector<T>);
 end;
 
-function TVector<T>.Compare(B: TVectorClass<T>): integer;
+function TVector<T>.Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer;
 begin
-  result := RO.Compare(B);
-end;
-
-function TVector<T>.Compare(const B: TArray<T>): integer;
-begin
-  result := RO.Compare(B);
-end;
-
-function TVector<T>.Compare(B: TVectorClass<T>; AStartIndex, BStartIndex, ACount: integer;
-  AComparer: IComparer<T>): integer;
-begin
-  result := RO.Compare(B, AStartIndex, BStartIndex, ACount, AComparer);
+  result := RO.Compare(B, AComparer);
 end;
 
 function TVector<T>.Compare(const B: TArray<T>; AStartIndex, BStartIndex, ACount: integer;
@@ -9733,9 +9696,9 @@ begin
   result := RO.Compare(B, AStartIndex, BStartIndex, ACount, AComparer);
 end;
 
-function TVector<T>.Compare(B: TEnumerable<T>): integer;
+function TVector<T>.Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer;
 begin
-  result := RO.Compare(B);
+  result := RO.Compare(B, AComparer);
 end;
 
 function TVector<T>.Contains(const Values: TArray<T>): boolean;
@@ -9838,11 +9801,6 @@ end;
 class operator TVector<T>.Equal(a: TVector<T>; const b: TEnumerable<T>): Boolean;
 begin
   result := A.Equal(B);
-end;
-
-function TVector<T>.Equal(B: TVectorClass<T>): boolean;
-begin
-  result := RO.Equal(B);
 end;
 
 function TVector<T>.Equal(const B: TArray<T>): boolean;
@@ -10256,12 +10214,12 @@ begin
   RW.Sort(AComparer);
 end;
 
-procedure TVector<T>.Sort(AIndex, ACount: Integer; AComparer: TFunc<T, T, integer>);
+procedure TVector<T>.Sort(AIndex, ACount: Integer; AComparer: TSortFunc<T>);
 begin
   RW.Sort(AIndex, ACount, AComparer);
 end;
 
-procedure TVector<T>.Sort(AComparer: TFunc<T, T, integer>);
+procedure TVector<T>.Sort(AComparer: TSortFunc<T>);
 begin
   RW.Sort(AComparer);
 end;
