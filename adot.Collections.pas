@@ -897,6 +897,7 @@ type
     procedure Add(const Value: TArray<T>; AStartIndex,ACount: integer); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
 
+    { Get new instance with copy of the data }
     function Copy: TVectorClass<T>;
 
     function Insert(Index: integer; const Value: T): integer;
@@ -980,6 +981,12 @@ type
     function Equal(const B: TArray<T>): boolean; overload;
     function Equal(B: TEnumerable<T>): boolean; overload;
 
+    { get copy of data }
+    function ToArray: TArray<T>; overload; override;
+    { Readonly=False : get copy of data
+      Readonly=True  : get pointer to stored data }
+    function ToArray(Readonly: boolean): TArray<T>; reintroduce; overload;
+
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
     property Count: integer read FCount write SetCount;
@@ -991,6 +998,9 @@ type
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
     property AsString: string read GetAsString;
     property AsText: string read GetAsText;
+    { No data copying happens here:
+        read  : get pointer to stored data
+        write : use provided array as data }
     property AsArray: TArray<T> read GetAsArray write SetAsArray;
   end;
 
@@ -1079,7 +1089,6 @@ type
     function FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
 
     function Contains(const Value: T): boolean; overload;
-    function Contains(Values: TVector<T>): Boolean; overload;
     function Contains(const Values: TArray<T>): boolean; overload;
     function Contains(const Values: TEnumerable<T>): boolean; overload;
 
@@ -1126,6 +1135,10 @@ type
     function Equal(const B: TArray<T>): boolean; overload;
     function Equal(B: TEnumerable<T>): boolean; overload;
 
+    { Readonly=False : get copy of data
+      Readonly=True  : get pointer to stored data }
+    function ToArray(ReadOnly: boolean = False): TArray<T>;
+
     class operator In(const a: T; b: TVector<T>) : Boolean;
     class operator In(a: TVector<T>; b: TVector<T>) : Boolean;
     class operator In(const a: TArray<T>; b: TVector<T>) : Boolean;
@@ -1134,14 +1147,17 @@ type
     class operator Implicit(const a : T) : TVector<T>;
     class operator Implicit(const a : TArray<T>) : TVector<T>;
     class operator Implicit(const a : TEnumerable<T>) : TVector<T>;
+    { We don't want to have both conversions: ->TArray and ->TEnumerable,
+      because in many cases it will create ambiguity (many methods support both as input).
+      We support TEnumerable because it is safe. If someone needs TArray, he can use
+      wither AsArray (for readobly access) or ToArray }
     class operator Implicit(a : TVector<T>) : TEnumerable<T>;
-    class operator Implicit(a : TVector<T>) : TArray<T>;
 
     class operator Explicit(const a : T) : TVector<T>;
     class operator Explicit(const a : TArray<T>) : TVector<T>;
     class operator Explicit(const a : TEnumerable<T>) : TVector<T>;
+    { see comments for Implicit(a : TVector<T>) : TEnumerable<T>; }
     class operator Explicit(a : TVector<T>) : TEnumerable<T>;
-    class operator Explicit(a : TVector<T>) : TArray<T>;
 
     class operator Add(a: TVector<T>; const b: T): TVector<T>;
     class operator Add(a: TVector<T>;       b: TVector<T>): TVector<T>;
@@ -1191,6 +1207,9 @@ type
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property AsString: string read GetAsString;
+    { No data copying happens here:
+        read  : get pointer to stored data
+        write : use provided array as data }
     property AsArray: TArray<T> read GetAsArray;
     property Collection: TEnumerable<T> read GetCollection;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
@@ -9094,15 +9113,15 @@ end;
 function TVectorClass<T>.NextPermutation: boolean;
 var
   i,x,n: integer;
-  Comparer: IComparer<T>;
+  C: IComparer<T>;
 begin
-
-  Comparer := TComparerUtils.DefaultComparer<T>;
+  C := Comparer;
+  FindComparer(C);
 
   { find max N where A[N] < A[N+1] }
   n := -1;
   for i := Count-2 downto 0 do
-    if Comparer.Compare(FItems[i], FItems[i+1]) < 0 then
+    if C.Compare(FItems[i], FItems[i+1]) < 0 then
     begin
       n := i;
       break;
@@ -9113,15 +9132,15 @@ begin
   if not result then
     exit;
 
-  { let's order range [N+1; FCoun-1]
+  { let's order range [N+1; FCount-1]
     now it has reverse order so just call .reverse }
-  Reverse(n+1,Count-1);
+  Reverse(n+1,FCount-n-1);
 
   { find value next to A[N] in range [N+1; Count-1]
     such value exists because at least original A[N+1] > A[N] }
   x := -1;
   for i := N+1 to Count-1 do
-    if Comparer.Compare(FItems[i], FItems[N]) > 0 then
+    if C.Compare(FItems[i], FItems[N]) > 0 then
     begin
       x := i;
       break;
@@ -9132,9 +9151,9 @@ begin
 
   { change position of A[X] to make range [N+1; FCoun-1] ordered again }
   i := x;
-  while (i > n+1) and (Comparer.Compare(FItems[i-1], FItems[x]) > 0) do
+  while (i > n+1) and (C.Compare(FItems[i-1], FItems[x]) > 0) do
     dec(i);
-  while (i < Count-1) and (Comparer.Compare(FItems[x], FItems[i+1]) > 0) do
+  while (i < Count-1) and (C.Compare(FItems[x], FItems[i+1]) > 0) do
     inc(i);
   if i<>x then
     Move(x,i);
@@ -9143,14 +9162,15 @@ end;
 function TVectorClass<T>.PrevPermutation: boolean;
 var
   i,x,n: integer;
-  Comparer: IComparer<T>;
+  C: IComparer<T>;
 begin
-  Comparer := TComparerUtils.DefaultComparer<T>;
+  C := Comparer;
+  FindComparer(C);
 
   { find max N where A[N] > A[N+1] }
   n := -1;
   for i := FCount-2 downto 0 do
-    if Comparer.Compare(FItems[i], FItems[i+1]) > 0 then
+    if C.Compare(FItems[i], FItems[i+1]) > 0 then
     begin
       n := i;
       break;
@@ -9163,13 +9183,13 @@ begin
 
   { let's order range [N+1; FCoun-1]
     now it has reverse order so just call .reverse }
-  reverse(n+1,FCount-1);
+  reverse(n+1,FCount-n-1);
 
   { find value previous to A[N] in range [N+1; FCount-1]
     such value exists because at least original A[N+1] < A[N] }
   x := -1;
   for i := N+1 to FCount-1 do
-    if Comparer.Compare(FItems[i], FItems[N]) < 0 then
+    if C.Compare(FItems[i], FItems[N]) < 0 then
     begin
       x := i;
       break;
@@ -9180,9 +9200,9 @@ begin
 
   { change position of A[X] to make range [N+1; FCoun-1] back ordered again }
   i := x;
-  while (i > n+1) and (Comparer.Compare(FItems[i-1], FItems[x]) < 0) do
+  while (i > n+1) and (C.Compare(FItems[i-1], FItems[x]) < 0) do
     dec(i);
-  while (i < FCount-1) and (Comparer.Compare(FItems[x], FItems[i+1]) < 0) do
+  while (i < FCount-1) and (C.Compare(FItems[x], FItems[i+1]) < 0) do
     inc(i);
   if i<>x then
     Move(x,i);
@@ -9419,9 +9439,9 @@ begin
       Inc(Shift, I)
     else
       Exit;
-  Reverse(Index1, Index2);
-  Reverse(Index1, Index1+Shift-1);
-  Reverse(Index1+Shift, Index2);
+  Reverse(Index1, Index2-Index1+1);
+  Reverse(Index1, Shift);
+  Reverse(Index1+Shift, Index2-Index1+1-Shift);
 end;
 
 procedure TVectorClass<T>.RotateRight(Index1, Index2, Shift: integer);
@@ -9442,9 +9462,9 @@ begin
       Inc(Shift, I)
     else
       Exit;
-  Reverse(Index1, Index2);
-  Reverse(Index1, Index1+Shift-1);
-  Reverse(Index1+Shift, Index2);
+  Reverse(Index1, Index2-Index1+1);
+  Reverse(Index1, Shift);
+  Reverse(Index1+Shift, Index2-Index1+1-Shift);
 end;
 
 procedure TVectorClass<T>.SetAsArray(const Value: TArray<T>);
@@ -9508,8 +9528,8 @@ begin
   if ACount <= 1 then
     Exit;
   Assert((AStartIndex >= 0) and (AStartIndex + ACount <= Count));
-  for I := AStartIndex+ACount-1 downto AStartIndex+1 do
-    Exchange(I, Random(I+1));
+  for I := ACount-1 downto 1 do
+    Exchange(I+AStartIndex, Random(I+1)+AStartIndex);
 end;
 
 procedure TVectorClass<T>.Sort(AComparer: IComparer<T> = nil);
@@ -9554,6 +9574,26 @@ function TVectorClass<T>.Sorted(AStartIndex, ACount: integer; AComparer: ICompar
 begin
   FindComparer(AComparer);
   result := TArrayUtils.Sorted<T>(FItems, AStartIndex, ACount, AComparer);
+end;
+
+function TVectorClass<T>.ToArray: TArray<T>;
+var
+  I: Integer;
+begin
+  SetLength(Result, FCount);
+  for I := 0 to FCount-1 do
+    Result[I] := FItems[I];
+end;
+
+function TVectorClass<T>.ToArray(Readonly: boolean): TArray<T>;
+begin
+  if not Readonly then
+    result := ToArray
+  else
+  begin
+    TrimExcess;
+    result := FItems;
+  end;
 end;
 
 procedure TVectorClass<T>.TrimExcess;
@@ -9706,11 +9746,6 @@ end;
 function TVector<T>.Contains(const Values: TEnumerable<T>): boolean;
 begin
   result := RO.Contains(Values);
-end;
-
-function TVector<T>.Contains(Values: TVector<T>): Boolean;
-begin
-  result := RO.Contains(Values.Collection);
 end;
 
 function TVector<T>.Contains(const Value: T): boolean;
@@ -10043,7 +10078,7 @@ end;
 
 class operator TVector<T>.In(a, b: TVector<T>): Boolean;
 begin
-  result := B.Contains(A);
+  result := B.Contains(A.Collection);
 end;
 
 function TVector<T>.IndexOf(const Value: T; AComparer: IComparer<T>): integer;
@@ -10123,7 +10158,7 @@ end;
 
 function TVector<T>.PrevPermutation: boolean;
 begin
-  RW.PrevPermutation;
+  result := RW.PrevPermutation;
 end;
 
 procedure TVector<T>.Remove(const V: T; AComparer: IEqualityComparer<T> = nil);
@@ -10280,6 +10315,11 @@ begin
   result.Remove(B);
 end;
 
+function TVector<T>.ToArray(ReadOnly: boolean): TArray<T>;
+begin
+  result := RO.ToArray(ReadOnly);
+end;
+
 procedure TVector<T>.TrimExcess;
 begin
   RW.TrimExcess;
@@ -10293,16 +10333,6 @@ end;
 class operator TVector<T>.Explicit(a: TVector<T>): TEnumerable<T>;
 begin
   result := a.Collection;
-end;
-
-class operator TVector<T>.Implicit(a: TVector<T>): TArray<T>;
-begin
-  result := a.AsArray;
-end;
-
-class operator TVector<T>.Explicit(a: TVector<T>): TArray<T>;
-begin
-  result := a.AsArray;
 end;
 
 { TComparerUtils.TEqualityByComparer<T> }

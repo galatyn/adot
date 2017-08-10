@@ -228,11 +228,16 @@ type
 
     { streaming functions }
     class procedure Init(out Hash: THashData);
+
+    { for values with fixed length, hash will be generated from data only }
     class procedure Update(const Value; ValueByteSize: integer; var Hash: THashData); overload;
-    class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
-    class procedure Update(const Value: string;       var Hash: THashData); overload;
     class procedure Update(const Value: integer;      var Hash: THashData); overload;
     class procedure Update(const Value: double;       var Hash: THashData); overload;
+
+    { for values with variable length, hash will be generated from length and data }
+    class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
+    class procedure Update(const Value: string;       var Hash: THashData); overload;
+
     class function Done(var Hash: THashData): TBytes;
 
   end;
