@@ -870,8 +870,8 @@ type
     procedure Grow;
     function ContainsAll(V: TArray<T>): boolean;
     function GetAsString: string;
-    function GetAsArray: TArray<T>;
-    procedure SetAsArray(const Value: TArray<T>);
+    function GetItemsArray: TArray<T>;
+    procedure SetItemsArray(const Value: TArray<T>);
     function GetAsText: string;
     procedure FindEqualityComparer(var AComparer: IEqualityComparer<T>);
     procedure FindComparer(var AComparer: IComparer<T>);
@@ -996,10 +996,7 @@ type
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
     property AsString: string read GetAsString;
     property AsText: string read GetAsText;
-    { No data copying happens here:
-        read  : get pointer to stored data
-        write : use provided array as data }
-    property AsArray: TArray<T> read GetAsArray write SetAsArray;
+    property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
   end;
 
   TVector<T> = record
@@ -1011,7 +1008,7 @@ type
     function GetRO: TVectorClass<T>;
     function GetRW: TVectorClass<T>;
     function GetAsString: string;
-    function GetAsArray: TArray<T>;
+    function GetItemsArray: TArray<T>;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetCount: integer;
@@ -1029,6 +1026,7 @@ type
     procedure SetLast(const Value: T);
     function GetComparer: IComparer<T>;
     procedure SetComparer(Value: IComparer<T>);
+    procedure SetItemsArray(const Value: TArray<T>);
 
     property RO: TVectorClass<T> read GetRO;
     property RW: TVectorClass<T> read GetRW;
@@ -1201,10 +1199,7 @@ type
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property AsString: string read GetAsString;
-    { No data copying happens here:
-        read  : get pointer to stored data
-        write : use provided array as data }
-    property AsArray: TArray<T> read GetAsArray;
+    property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
     property Collection: TEnumerable<T> read GetCollection;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property Comparer: IComparer<T> read GetComparer write SetComparer;
@@ -9015,7 +9010,8 @@ end;
 
 function TVectorClass<T>.ExtractAll: TArray<T>;
 begin
-  result := AsArray;
+  TrimExcess;
+  result := FItems;
   SetLength(FItems, 0);
   FCount := 0;
 end;
@@ -9182,7 +9178,7 @@ begin
     Move(x,i);
 end;
 
-function TVectorClass<T>.GetAsArray: TArray<T>;
+function TVectorClass<T>.GetItemsArray: TArray<T>;
 begin
   TrimExcess;
   result := FItems;
@@ -9441,7 +9437,7 @@ begin
   Reverse(Index1+Shift, Index2-Index1+1-Shift);
 end;
 
-procedure TVectorClass<T>.SetAsArray(const Value: TArray<T>);
+procedure TVectorClass<T>.SetItemsArray(const Value: TArray<T>);
 begin
   FItems := Value;
   FCount := System.Length(FItems);
@@ -9881,9 +9877,9 @@ begin
   RW.FirstPermutation;
 end;
 
-function TVector<T>.GetAsArray: TArray<T>;
+function TVector<T>.GetItemsArray: TArray<T>;
 begin
-  result := RO.AsArray;
+  result := RW.ItemsArray;
 end;
 
 function TVector<T>.GetAsString: string;
@@ -10182,6 +10178,11 @@ end;
 procedure TVector<T>.SetItem(ItemIndex: integer; const Value: T);
 begin
   RW[ItemIndex] := Value;
+end;
+
+procedure TVector<T>.SetItemsArray(const Value: TArray<T>);
+begin
+  RW.ItemsArray := Value;
 end;
 
 procedure TVector<T>.SetLast(const Value: T);
