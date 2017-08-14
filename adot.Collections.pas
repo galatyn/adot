@@ -869,10 +869,8 @@ type
     procedure SetLast(const Value: T);
     procedure Grow;
     function ContainsAll(V: TArray<T>): boolean;
-    function GetAsString: string;
     function GetItemsArray: TArray<T>;
     procedure SetItemsArray(const Value: TArray<T>);
-    function GetAsText: string;
     procedure FindEqualityComparer(var AComparer: IEqualityComparer<T>);
     procedure FindComparer(var AComparer: IComparer<T>);
     procedure SetOwnsValues(const Value: boolean);
@@ -890,6 +888,7 @@ type
     constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
     constructor Create(AItems: TArray<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(AItems: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    destructor Destroy; override;
 
     procedure Clear;
 
@@ -984,6 +983,9 @@ type
     { Readonly=False : get copy of data
       Readonly=True  : get pointer to stored data }
     function ToArray(Readonly: boolean): TArray<T>; reintroduce; overload;
+    function ToString: string; reintroduce; overload;
+    function ToString(const ValueSeparator: string; SepAfterLastValue: boolean): string; reintroduce; overload;
+    function ToText: string;
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
@@ -994,8 +996,6 @@ type
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
     property Comparer: IComparer<T> read FComparer write FComparer;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
-    property AsString: string read GetAsString;
-    property AsText: string read GetAsText;
     property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
   end;
 
@@ -1007,7 +1007,6 @@ type
 
     function GetRO: TVectorClass<T>;
     function GetRW: TVectorClass<T>;
-    function GetAsString: string;
     function GetItemsArray: TArray<T>;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
@@ -1130,6 +1129,9 @@ type
     { Readonly=False : get copy of data
       Readonly=True  : get pointer to stored data }
     function ToArray(ReadOnly: boolean = False): TArray<T>;
+    function ToString: string; overload;
+    function ToString(const ValueSeparator: string; SepAfterLastValue: boolean = False): string; overload;
+    function ToText: string;
 
     class operator In(const a: T; b: TVector<T>) : Boolean;
     class operator In(a: TVector<T>; b: TVector<T>) : Boolean;
@@ -1198,7 +1200,6 @@ type
     property Items[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
-    property AsString: string read GetAsString;
     property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
     property Collection: TEnumerable<T> read GetCollection;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
@@ -8976,6 +8977,12 @@ begin
   FItems[FCount] := Default(T);
 end;
 
+destructor TVectorClass<T>.Destroy;
+begin
+  Clear;
+  inherited;
+end;
+
 function TVectorClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
   result := TVEctorEnumerator.Create(Self);
@@ -9182,34 +9189,6 @@ function TVectorClass<T>.GetItemsArray: TArray<T>;
 begin
   TrimExcess;
   result := FItems;
-end;
-
-function TVectorClass<T>.GetAsString: string;
-var
-  Buf: TStringBuffer;
-  I: Integer;
-begin
-  Buf.Clear;
-  for I := 0 to Count-1 do
-    Buf.Write(
-      IfThen(Buf.Empty,'',' ') +
-      TRttiUtils.ValueAsString<T>(FItems[I])
-    );
-  Result := Buf.Text;
-end;
-
-function TVectorClass<T>.GetAsText: string;
-var
-  Buf: TStringBuffer;
-  I: Integer;
-begin
-  Buf.Clear;
-  for I := 0 to Count-1 do
-    Buf.Write(
-      TRttiUtils.ValueAsString<T>(FItems[I]) +
-      IfThen(I<Count-1,'',#13#10)
-    );
-  Result := Buf.Text;
 end;
 
 function TVectorClass<T>.GetCapacity: integer;
@@ -9439,6 +9418,7 @@ end;
 
 procedure TVectorClass<T>.SetItemsArray(const Value: TArray<T>);
 begin
+  Clear; { to properly destroy items }
   FItems := Value;
   FCount := System.Length(FItems);
 end;
@@ -9454,28 +9434,41 @@ var
   I: Integer;
 begin
   Assert(Value>=0);
-  for I := Value to Count-1 do
-    FItems[I] := Default(T);
+  if not FOwnsValues then
+    for I := Value to Count-1 do
+      FItems[I] := Default(T)
+  else
+    for I := Value to Count-1 do
+    begin
+      PObject(@FItems[I])^.DisposeOf;
+      FItems[I] := Default(T)
+    end;
   FCount := Value;
   if Value > Capacity then
     Capacity := Value;
 end;
 
-procedure TVectorClass<T>.SetFirst(const Value: T);
-begin
-  Assert(Count>0);
-  FItems[0] := Value;
-end;
-
 procedure TVectorClass<T>.SetItem(ItemIndex: integer; const Value: T);
 begin
   Assert((ItemIndex >= 0) and (ItemIndex < Count));
+  if FOwnsValues then
+    PObject(@FItems[ItemIndex])^.DisposeOf;
   FItems[ItemIndex] := Value;
+end;
+
+procedure TVectorClass<T>.SetFirst(const Value: T);
+begin
+  Assert(Count>0);
+  if FOwnsValues then
+    PObject(@FItems[0])^.DisposeOf;
+  FItems[0] := Value;
 end;
 
 procedure TVectorClass<T>.SetLast(const Value: T);
 begin
   Assert(Count>0);
+  if FOwnsValues then
+    PObject(@FItems[Count-1])^.DisposeOf;
   FItems[Count-1] := Value;
 end;
 
@@ -9564,6 +9557,31 @@ begin
     TrimExcess;
     result := FItems;
   end;
+end;
+
+function TVectorClass<T>.ToString: string;
+begin
+  result := ToString(' ', False);
+end;
+
+function TVectorClass<T>.ToString(const ValueSeparator: string; SepAfterLastValue: boolean): string;
+var
+  Buf: TStringBuffer;
+  I: Integer;
+begin
+  Buf.Clear;
+  if Count > 0 then
+    Buf.Write(TRttiUtils.ValueAsString<T>(FItems[0]));
+  for I := 1 to Count-1 do
+    Buf.Write(ValueSeparator + TRttiUtils.ValueAsString<T>(FItems[I]));
+  if (Count > 0) and SepAfterLastValue then
+    Buf.Write(ValueSeparator);
+  Result := Buf.Text;
+end;
+
+function TVectorClass<T>.ToText: string;
+begin
+  result := ToString(#13#10, False);
 end;
 
 procedure TVectorClass<T>.TrimExcess;
@@ -9672,7 +9690,6 @@ end;
 procedure TVector<T>.Clear;
 begin
   RW.Clear;
-  Self := Default(TVector<T>);
 end;
 
 function TVector<T>.Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer;
@@ -9880,11 +9897,6 @@ end;
 function TVector<T>.GetItemsArray: TArray<T>;
 begin
   result := RW.ItemsArray;
-end;
-
-function TVector<T>.GetAsString: string;
-begin
-  result := RO.AsString;
 end;
 
 function TVector<T>.GetCapacity: integer;
@@ -10277,6 +10289,21 @@ end;
 function TVector<T>.ToArray(ReadOnly: boolean): TArray<T>;
 begin
   result := RO.ToArray(ReadOnly);
+end;
+
+function TVector<T>.ToString: string;
+begin
+  result := RO.ToString;
+end;
+
+function TVector<T>.ToString(const ValueSeparator: string; SepAfterLastValue: boolean): string;
+begin
+  result := RO.ToString(ValueSeparator, SepAfterLastValue);
+end;
+
+function TVector<T>.ToText: string;
+begin
+  result := RO.ToText;
 end;
 
 procedure TVector<T>.TrimExcess;
