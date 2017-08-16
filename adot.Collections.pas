@@ -1036,7 +1036,6 @@ type
       Delphi doesn't allow parameterless constructor, but fine with function }
     class function Create(AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(Values: TVector<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
 
@@ -1172,26 +1171,38 @@ type
     class operator Equal(a: TVector<T>;       b: TVector<T>) : Boolean;
     class operator Equal(a: TVector<T>; const b: TArray<T>) : Boolean;
     class operator Equal(a: TVector<T>; const b: TEnumerable<T>) : Boolean;
+    class operator Equal(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator Equal(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     class operator NotEqual(a: TVector<T>;       b: TVector<T>): Boolean;
     class operator NotEqual(a: TVector<T>; const b: TArray<T>) : Boolean;
     class operator NotEqual(a: TVector<T>; const b: TEnumerable<T>) : Boolean;
+    class operator NotEqual(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator NotEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     class operator GreaterThanOrEqual(a: TVector<T>;       b: TVector<T>): Boolean;
     class operator GreaterThanOrEqual(a: TVector<T>; const b: TArray<T>): Boolean;
     class operator GreaterThanOrEqual(a: TVector<T>; const b: TEnumerable<T>): Boolean;
+    class operator GreaterThanOrEqual(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator GreaterThanOrEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     class operator GreaterThan(a: TVector<T>;       b: TVector<T>): Boolean;
     class operator GreaterThan(a: TVector<T>; const b: TArray<T>): Boolean;
     class operator GreaterThan(a: TVector<T>; const b: TEnumerable<T>): Boolean;
+    class operator GreaterThan(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator GreaterThan(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     class operator LessThan(a: TVector<T>;       b: TVector<T>): Boolean;
     class operator LessThan(a: TVector<T>; const b: TArray<T>): Boolean;
     class operator LessThan(a: TVector<T>; const b: TEnumerable<T>): Boolean;
+    class operator LessThan(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator LessThan(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     class operator LessThanOrEqual(a: TVector<T>;       b: TVector<T>): Boolean;
     class operator LessThanOrEqual(a: TVector<T>; const b: TArray<T>): Boolean;
     class operator LessThanOrEqual(a: TVector<T>; const b: TEnumerable<T>): Boolean;
+    class operator LessThanOrEqual(const b: TArray<T>;      a: TVector<T>): Boolean;
+    class operator LessThanOrEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
@@ -9758,12 +9769,6 @@ begin
   Add(Values);
 end;
 
-constructor TVector<T>.Create(Values: TVector<T>; AComparer: IComparer<T>);
-begin
-  CreateVector(Values.Count, AComparer);
-  Add(Values);
-end;
-
 procedure TVector<T>.CreateVector(ACapacity: integer; AComparer: IComparer<T>);
 begin
   FVectorInt := TInterfacedObject<TVectorClass<T>>.Create(
@@ -10087,6 +10092,21 @@ begin
   result := A.Compare(B) <= 0;
 end;
 
+class operator TVector<T>.LessThan(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) > 0;
+end;
+
+class operator TVector<T>.LessThan(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) > 0;
+end;
+
+class operator TVector<T>.LessThanOrEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) >= 0;
+end;
+
 class operator TVector<T>.LessThanOrEqual(a, b: TVector<T>): Boolean;
 begin
   result := A.Compare(B.Collection) <= 0;
@@ -10097,6 +10117,11 @@ begin
   result := A.Compare(B) <= 0;
 end;
 
+class operator TVector<T>.LessThanOrEqual(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) >= 0;
+end;
+
 procedure TVector<T>.Move(SrcIndex, DstIndex: integer);
 begin
   RW.Move(SrcIndex, DstIndex);
@@ -10105,6 +10130,16 @@ end;
 function TVector<T>.NextPermutation: boolean;
 begin
   result := RW.NextPermutation;
+end;
+
+class operator TVector<T>.NotEqual(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := not A.Equal(B);
+end;
+
+class operator TVector<T>.NotEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := not A.Equal(B);
 end;
 
 class operator TVector<T>.NotEqual(a, b: TVector<T>): Boolean;
@@ -10319,6 +10354,36 @@ end;
 class operator TVector<T>.Explicit(a: TVector<T>): TEnumerable<T>;
 begin
   result := a.Collection;
+end;
+
+class operator TVector<T>.Equal(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Equal(B);
+end;
+
+class operator TVector<T>.Equal(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Equal(B);
+end;
+
+class operator TVector<T>.GreaterThanOrEqual(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) <= 0;
+end;
+
+class operator TVector<T>.GreaterThanOrEqual(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) <= 0;
+end;
+
+class operator TVector<T>.GreaterThan(const b: TArray<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) < 0;
+end;
+
+class operator TVector<T>.GreaterThan(const b: TEnumerable<T>; a: TVector<T>): Boolean;
+begin
+  result := A.Compare(B) < 0;
 end;
 
 { TComparerUtils.TEqualityByComparer<T> }
