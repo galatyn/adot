@@ -885,6 +885,7 @@ type
 
   public
     constructor Create(AComparer: IComparer<T> = nil); overload;
+    constructor Create(AComparer: TComparison<T>); overload;
     constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
     constructor Create(AItems: TArray<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(AItems: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
@@ -1035,6 +1036,7 @@ type
       need some customization: set Capacity, provide custom comparer etc.
       Delphi doesn't allow parameterless constructor, but fine with function }
     class function Create(AComparer: IComparer<T> = nil): TVector<T>; overload; static;
+    constructor Create(AComparer: TComparison<T>); overload;
     constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
     constructor Create(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
     constructor Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
@@ -8682,6 +8684,11 @@ begin
   Add(AItems);
 end;
 
+constructor TVectorClass<T>.Create(AComparer: TComparison<T>);
+begin
+  Create(TDelegatedComparer<T>.Create(AComparer));
+end;
+
 procedure TVectorClass<T>.Add(const Value: TArray<T>);
 begin
   Add(Value, 0, System.Length(Value));
@@ -9755,6 +9762,11 @@ end;
 constructor TVector<T>.Create(ACapacity: integer; AComparer: IComparer<T>);
 begin
   CreateVector(ACapacity, AComparer);
+end;
+
+constructor TVector<T>.Create(AComparer: TComparison<T>);
+begin
+  CreateVector(0, TDelegatedComparer<T>.Create(AComparer));
 end;
 
 constructor TVector<T>.Create(const Values: TEnumerable<T>; ACapacity: integer; AComparer: IComparer<T>);
