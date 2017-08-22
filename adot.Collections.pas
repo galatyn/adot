@@ -87,7 +87,8 @@ uses
   System.Character,
   System.Contnrs,
   System.Math,
-  System.Classes, System.Hash;
+  System.Classes, 
+  System.Hash;
 
 const
   RecordTypes = [tkInteger, tkChar, tkEnumeration, tkFloat, tkSet,

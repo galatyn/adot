@@ -108,7 +108,6 @@ type
     ): Boolean; static;
     class function IsInteger(const s: string): Boolean; static;
     class function GetActionObjComparer(const ASoeketekst: string): TDelegatedComparer<TAppActions.TVerb>; static;
-    class function MixCaptionAndHint(C: TAction): string; static;
 
   public
 
@@ -145,6 +144,8 @@ type
       AAutoAppendActionsTag   : integer;
       ATest                   : TFunc<TComponent,Boolean>
     ): TList<TAppActions.TVerb>;
+
+    class function MixCaptionAndHint(C: TAction): string; static;
 
   end;
 

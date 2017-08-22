@@ -574,8 +574,13 @@ type
       NullGuid: TGUID = '{00000000-0000-0000-0000-000000000000}';
 
     class function IsValid(const S: string): Boolean; static;
-    class function TryStringToGUID(const S: string; out Dst: TGUID): boolean; static;
+    class function TryStrToGuid(const S: string; out Dst: TGUID): boolean; static;
+    class function StrToGuid(const S: string): TGUID; static;
+    class function StrToGuidDef(const S: string; const Def: TGUID): TGUID; overload; static;
+    class function StrToGuidDef(const S: string): TGUID; overload; static;
+
     class function IntToGuid(N: integer): TGUID; static;
+    class function GuidToInt(const Src: TGUID): integer; static;
 
     class function GetNew: TGUID; static;
     class function GetNewAsString: string; static;
@@ -2538,6 +2543,14 @@ begin
   result.D1 := cardinal(N);
 end;
 
+class function TGUIDUtils.GuidToInt(const Src: TGUID): integer;
+begin
+  {$If SizeOf(integer)<>4}
+    {$MESSAGE ERROR 'unexpected size of integer type' }
+  {$EndIf}
+  result := integer(Src.D1);
+end;
+
 class function TGUIDUtils.IsValid(const S: string): Boolean;
 var
   i: Integer;
@@ -2570,11 +2583,28 @@ begin
   result := GuidToString(G);
 end;
 
-class function TGUIDUtils.TryStringToGUID(const S: string; out Dst: TGUID): boolean;
+class function TGUIDUtils.TryStrToGuid(const S: string; out Dst: TGUID): boolean;
 begin
   result := IsValid(S);
   if result then
     Dst := StringToGuid(S);
+end;
+
+class function TGUIDUtils.StrToGuid(const S: string): TGUID;
+begin
+  result := StringToGuid(S);
+end;
+
+class function TGUIDUtils.StrToGuidDef(const S: string): TGUID;
+begin
+  result := StrToGuidDef(S, NullGuid);
+end;
+
+class function TGUIDUtils.StrToGuidDef(const S: string; const Def: TGUID): TGUID;
+begin
+  if IsValid(S)
+    then result := StringToGuid(S)
+    else result := Def;
 end;
 
 { TStreamUtils.TReader }
