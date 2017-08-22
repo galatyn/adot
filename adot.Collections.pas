@@ -1230,8 +1230,7 @@ type
          for I := 0 to High(Src) do
            if Filter(Src[I]) then
              V.Add(Src[I]); // more efficient than resizing TArray<> every time
-         V.TrimExcess;
-         Result := V.Items; // no copying of data here, we copy pointer to array only
+         Result := V.ToArray; // there is no copying of data here, we get array pointer only
        end; }
   TArr<T> = record
   public
@@ -1283,48 +1282,19 @@ type
     function Copy: TArr<T>;
 
     function Insert(Index: integer; const Value: T): integer;
-
     procedure Delete(ItemIndex: integer); overload;
-    procedure Delete(StartIndex,FinishIndex: integer); overload;
-
     procedure Move(SrcIndex, DstIndex: integer);
-
-    function IndexOf(const Value: T): integer; overload;
-    function IndexOf(const Value: T; Comparer: IEqualityComparer<T>): integer; overload;
-    function IndexOf(const Value: T; Comparer: IComparer<T>): integer; overload;
-    function FindFirst(const Value: T; var Index: integer): boolean; overload;
-    function FindFirst(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean; overload;
-    function FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
-    function FindNext(const Value: T; var Index: integer): boolean; overload;
-    function FindNext(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean; overload;
-    function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
-
     procedure Exchange(Index1,Index2: integer);
-    { Exchange=Swap }
-    procedure Swap(Index1,Index2: integer);
-    { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
-    procedure Reverse(Index1,Index2: integer);
-    { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
-      RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
-    procedure RotateLeft(Index1,Index2,Shift: integer);
-    { RotateRight( [1,2,3,4,5], 1, 3, 1 ) = [1, 4,2,3, 5]
-      RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
-    procedure RotateRight(Index1,Index2,Shift: integer);
-    { Shuffle items of the range in random order }
-    procedure Shuffle(Index1,Index2: integer);
-    { Permutations }
-    procedure FirstPermutation;
-    function NextPermutation: boolean;
-    function PrevPermutation: boolean;
-
-    { Delete(Count-1) }
     procedure DeleteLast;
-    { Get last item and delete from the vector }
     function ExtractLast: T;
 
-    { Get item and delete from the vector }
-    function Extract(ItemIndex: integer): T;
-    function ExtractAll: TArray<T>;
+    function IndexOf(const Value: T): integer; overload;
+    function IndexOf(const Value: T; Comparer: IComparer<T>): integer; overload;
+    function FindFirst(const Value: T; var Index: integer): boolean; overload;
+    function FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+    function FindNext(const Value: T; var Index: integer): boolean; overload;
+    function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+
     function ToArray: TArray<T>;
 
     function GetEnumerator: TEnumerator; reintroduce;
@@ -1337,28 +1307,9 @@ type
     procedure Sort(Comparer: TFunc<T,T,integer>); overload;
     procedure Sort(Comparer: TFunc<T,T,integer>; AIndex, ACount: Integer); overload;
 
-    procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
-    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
-
     function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
-
-    class operator Implicit(const AValue: T): TArr<T>;
-    class operator Implicit(const AValue: TArray<T>): TArr<T>;
-    class operator Implicit(AValue: TEnumerable<T>): TArr<T>;
-
-    class operator Equal(ALeft, ARight: TArr<T>): Boolean; overload;
-    class operator Equal(ALeft: TArr<T>; ARight: TEnumerable<T>): Boolean; overload;
-    class operator Equal(ALeft: TEnumerable<T>; ARight:TArr<T>): Boolean; overload;
-    class operator Equal(ALeft: TArr<T>; const ARight: TArray<T>): Boolean; overload;
-    class operator Equal(const ALeft: TArray<T>; ARight: TArr<T>): Boolean; overload;
-
-    class operator NotEqual(ALeft, ARight: TArr<T>): Boolean; overload;
-    class operator NotEqual(ALeft: TArr<T>; ARight: TEnumerable<T>): Boolean; overload;
-    class operator NotEqual(ALeft: TEnumerable<T>; ARight:TArr<T>): Boolean; overload;
-    class operator NotEqual(ALeft: TArr<T>; const ARight: TArray<T>): Boolean; overload;
-    class operator NotEqual(const ALeft: TArray<T>; ARight: TArr<T>): Boolean; overload;
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
@@ -5789,104 +5740,12 @@ begin
   Items[FCount] := Default(T);
 end;
 
-procedure TArr<T>.Delete(StartIndex, FinishIndex: integer);
-var
-  I,C: Integer;
- begin
-  if FinishIndex < StartIndex then
-  begin
-    I := StartIndex;
-    StartIndex := FinishIndex;
-    FinishIndex := I;
-  end;
-  C := Count-(FinishIndex-StartIndex+1); { new Count }
-  for I := StartIndex to C-1 do
-    Items[I] := Items[FinishIndex + (I-StartIndex+1)];
-  for I := C to Count-1 do
-    Items[I] := Default(T);
-  FCount := C;
-end;
-
-class operator TArr<T>.Equal(ALeft, ARight: TArr<T>): Boolean;
-var
-  Comparer: IEqualityComparer<T>;
-  I: Integer;
-begin
-  if ALeft.Count<>ARight.Count then
-    Exit(False);
-  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
-  for I := 0 to ALeft.Count-1 do
-    if not Comparer.Equals(ALeft[I], ARight[I]) then
-      Exit(False);
-  result := True;
-end;
-
-class operator TArr<T>.Equal(ALeft: TArr<T>; ARight: TEnumerable<T>): Boolean;
-var
-  Comparer: IEqualityComparer<T>;
-  Value: T;
-  I,Count: Integer;
-begin
-  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
-  Count := ALeft.Count;
-  I := 0;
-  for Value in ARight do
-    if (I >= Count) or not Comparer.Equals(Value, ALeft[I]) then
-      Exit(False)
-    else
-      inc(I);
-  result := True;
-end;
-
-class operator TArr<T>.Equal(ALeft: TEnumerable<T>; ARight: TArr<T>): Boolean;
-begin
-  { we have implementation for Left:Vector + Right:TEnumerable already }
-  result := ARight=ALeft;
-end;
-
-class operator TArr<T>.Equal(ALeft: TArr<T>; const ARight: TArray<T>): Boolean;
-var
-  Comparer: IEqualityComparer<T>;
-  I: Integer;
-begin
-  if ALeft.Count<>High(ARight)-Low(ARight)+1 then
-    Exit(False);
-  Comparer := TComparerUtils.DefaultEqualityComparer<T>;
-  for I := 0 to ALeft.Count-1 do
-    if not Comparer.Equals(ALeft[I], ARight[I+Low(ARight)]) then
-      Exit(False);
-  Result := True;
-end;
-
-class operator TArr<T>.Equal(const ALeft: TArray<T>; ARight: TArr<T>): Boolean;
-begin
-  { we have implementation for Left:Vector + Right:TArray already }
-  result := ARight=ALeft;
-end;
-
 procedure TArr<T>.Exchange(Index1, Index2: integer);
 var Value: T;
 begin
   Value := Items[Index1];
   Items[Index1] := Items[Index2];
   Items[Index2] := Value;
-end;
-
-procedure TArr<T>.Swap(Index1, Index2: integer);
-begin
-  Exchange(Index1, Index2);
-end;
-
-function TArr<T>.Extract(ItemIndex: integer): T;
-begin
-  result := Items[ItemIndex];
-  Delete(ItemIndex);
-end;
-
-function TArr<T>.ExtractAll: TArray<T>;
-begin
-  result := ToArray;
-  Clear;
 end;
 
 function TArr<T>.ToArray: TArray<T>;
@@ -5910,108 +5769,6 @@ begin
   Items[FCount] := Default(T);
 end;
 
-procedure TArr<T>.FirstPermutation;
-begin
-  Sort;
-end;
-
-function TArr<T>.NextPermutation: boolean;
-var
-  i,x,n: integer;
-  Comparer: IComparer<T>;
-begin
-
-  Comparer := TComparerUtils.DefaultComparer<T>;
-
-  { find max N where A[N] < A[N+1] }
-  n := -1;
-  for i := Count-2 downto 0 do
-    if Comparer.Compare(Items[i], Items[i+1]) < 0 then
-    begin
-      n := i;
-      break;
-    end;
-
-  { if A[N] > A[N+1] for any N then there is no more permutations }
-  result := n<>-1;
-  if not result then
-    exit;
-
-  { let's order range [N+1; FCoun-1]
-    now it has reverse order so just call .reverse }
-  Reverse(n+1,Count-1);
-
-  { find value next to A[N] in range [N+1; Count-1]
-    such value exists because at least original A[N+1] > A[N] }
-  x := -1;
-  for i := N+1 to Count-1 do
-    if Comparer.Compare(Items[i], Items[N]) > 0 then
-    begin
-      x := i;
-      break;
-    end;
-
-  { swap A[N] and A[X] }
-  Exchange(n, x);
-
-  { change position of A[X] to make range [N+1; FCoun-1] ordered again }
-  i := x;
-  while (i > n+1) and (Comparer.Compare(Items[i-1], Items[x]) > 0) do
-    dec(i);
-  while (i < Count-1) and (Comparer.Compare(Items[x], Items[i+1]) > 0) do
-    inc(i);
-  if i<>x then
-    Move(x,i);
-end;
-
-function TArr<T>.PrevPermutation: boolean;
-var
-  i,x,n: integer;
-  Comparer: IComparer<T>;
-begin
-  Comparer := TComparerUtils.DefaultComparer<T>;
-
-  { find max N where A[N] > A[N+1] }
-  n := -1;
-  for i := FCount-2 downto 0 do
-    if Comparer.Compare(Items[i], Items[i+1]) > 0 then
-    begin
-      n := i;
-      break;
-    end;
-
-  { if A[N] > A[N+1] for any N then there is no more permutations }
-  result := n<>-1;
-  if not result then
-    exit;
-
-  { let's order range [N+1; FCoun-1]
-    now it has reverse order so just call .reverse }
-  reverse(n+1,FCount-1);
-
-  { find value previous to A[N] in range [N+1; FCount-1]
-    such value exists because at least original A[N+1] < A[N] }
-  x := -1;
-  for i := N+1 to FCount-1 do
-    if Comparer.Compare(Items[i], Items[N]) < 0 then
-    begin
-      x := i;
-      break;
-    end;
-
-  { swap A[N] and A[X] }
-  Exchange(n,x);
-
-  { change position of A[X] to make range [N+1; FCoun-1] back ordered again }
-  i := x;
-  while (i > n+1) and (Comparer.Compare(Items[i-1], Items[x]) < 0) do
-    dec(i);
-  while (i < FCount-1) and (Comparer.Compare(Items[x], Items[i+1]) < 0) do
-    inc(i);
-  if i<>x then
-    Move(x,i);
-end;
-
 procedure TArr<T>.Grow;
 begin
   if Capacity < 4 then
@@ -6021,12 +5778,6 @@ begin
     Capacity := 64
   else
     Capacity := Capacity * 2;
-end;
-
-function TArr<T>.IndexOf(const Value: T; Comparer: IEqualityComparer<T>): integer;
-begin
-  if not FindFirst(Value, Result, Comparer) then
-    result := -1;
 end;
 
 function TArr<T>.IndexOf(const Value: T; Comparer: IComparer<T>): integer;
@@ -6049,13 +5800,7 @@ end;
 function TArr<T>.FindFirst(const Value: T; var Index: integer): boolean;
 begin
   Index := -1;
-  result := FindNext(Value, Index, TComparerUtils.DefaultEqualityComparer<T>);
-end;
-
-function TArr<T>.FindFirst(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean;
-begin
-  Index := -1;
-  result := FindNext(Value, Index, Comparer);
+  result := FindNext(Value, Index, TComparerUtils.DefaultComparer<T>);
 end;
 
 function TArr<T>.FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
@@ -6066,22 +5811,7 @@ end;
 
 function TArr<T>.FindNext(const Value: T; var Index: integer): boolean;
 begin
-  result := FindNext(Value, Index, TComparerUtils.DefaultEqualityComparer<T>);
-end;
-
-function TArr<T>.FindNext(const Value: T; var Index: integer; Comparer: IEqualityComparer<T>): boolean;
-var
-  I: Integer;
-begin
-  if Comparer = nil then
-    Comparer := TComparerUtils.DefaultEqualityComparer<T>;
-  for I := Index+1 to Count-1 do
-    if Comparer.Equals(Items[I], Value) then
-    begin
-      Index := I;
-      Exit(True);
-    end;
-  result := False;
+  result := FindNext(Value, Index, TComparerUtils.DefaultComparer<T>);
 end;
 
 function TArr<T>.FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
@@ -6097,24 +5827,6 @@ begin
       Exit(True);
     end;
   result := False;
-end;
-
-class operator TArr<T>.Implicit(const AValue: T): TArr<T>;
-begin
-  result.Clear;
-  result.Add(AValue);
-end;
-
-class operator TArr<T>.Implicit(AValue: TEnumerable<T>): TArr<T>;
-begin
-  result.Clear;
-  result.Add(AValue);
-end;
-
-class operator TArr<T>.Implicit(const AValue: TArray<T>): TArr<T>;
-begin
-  result.Clear;
-  result.Add(AValue);
 end;
 
 function TArr<T>.Insert(Index: integer; const Value: T): integer;
@@ -6149,110 +5861,6 @@ begin
       Items[I] := Items[I-1];
     Items[DstIndex] := Value;
   end;
-end;
-
-class operator TArr<T>.NotEqual(ALeft: TArr<T>; ARight: TEnumerable<T>): Boolean;
-begin
-  result := not (ALeft = ARight);
-end;
-
-class operator TArr<T>.NotEqual(ALeft, ARight: TArr<T>): Boolean;
-begin
-  result := not (ALeft = ARight);
-end;
-
-class operator TArr<T>.NotEqual(ALeft: TEnumerable<T>; ARight: TArr<T>): Boolean;
-begin
-  result := not (ALeft = ARight);
-end;
-
-class operator TArr<T>.NotEqual(const ALeft: TArray<T>; ARight: TArr<T>): Boolean;
-begin
-  result := not (ALeft = ARight);
-end;
-
-class operator TArr<T>.NotEqual(ALeft: TArr<T>; const ARight: TArray<T>): Boolean;
-begin
-  result := not (ALeft = ARight);
-end;
-
-procedure TArr<T>.Shuffle(Index1, Index2: integer);
-var
-  I: Integer;
-begin
-  if Index2 < Index1 then
-  begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  for I := Index1 to Index2 do
-    Exchange(I, Index1 + Random(Index2-Index1+1));
-end;
-
-procedure TArr<T>.Reverse(Index1, Index2: integer);
-var
-  I: Integer;
-  Value: T;
-begin
-  if Index2 < Index1 then
-  begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  for I := 0 to ((Index2-Index1+1) shr 1) - 1 do
-  begin
-    Value := Items[Index1];
-    Items[Index1] := Items[Index2];
-    Items[Index2] := Value;
-    inc(Index1);
-    dec(Index2);
-  end;
-end;
-
-procedure TArr<T>.RotateRight(Index1, Index2, Shift: integer);
-var
-  I: integer;
-begin
-  if Index2 < Index1 then
-  begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  I := Index2-Index1+1;
-  Shift := Shift mod I;
-  if Shift <= 0 then
-    if Shift < 0 then
-      Inc(Shift, I)
-    else
-      Exit;
-  Reverse(Index1, Index2);
-  Reverse(Index1, Index1+Shift-1);
-  Reverse(Index1+Shift, Index2);
-end;
-
-procedure TArr<T>.RotateLeft(Index1, Index2, Shift: integer);
-var
-  I: integer;
-begin
-  if Index2 < Index1 then
-  begin
-    I := Index1;
-    Index1 := Index2;
-    Index2 := I;
-  end;
-  I := Index2-Index1+1;
-  Shift := (I - (Shift mod I)) mod I;
-  if Shift <= 0 then
-    if Shift < 0 then
-      Inc(Shift, I)
-    else
-      Exit;
-  Reverse(Index1, Index2);
-  Reverse(Index1, Index1+Shift-1);
-  Reverse(Index1+Shift, Index2);
 end;
 
 function TArr<T>.GetCapacity: integer;
@@ -6385,40 +5993,6 @@ var
 begin
   for I := 0 to Value.Count-1 do
     Items[Add] := Value[I];
-end;
-
-procedure TArr<T>.SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
-var
-  I: Integer;
-  S: string;
-  B: TArray<byte>;
-begin
-  if Encoding = nil then
-    Encoding := TEncoding.UTF8;
-  B := Encoding.GetPreamble;
-  Dst.WriteBuffer(B, System.Length(B));
-  for I := 0 to Count-1 do
-  begin
-    S := IfThen(I=0,'',#13#10) + TRttiUtils.ValueAsString<T>(Elements[I]);
-    B := Encoding.GetBytes(S);
-    Dst.WriteBuffer(B, System.Length(B));
-  end;
-end;
-
-procedure TArr<T>.SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
-var
-  S: TStream;
-begin
-  if MemStream
-    then S := TMemoryStream.Create
-    else S := TFileStream.Create(FileName, System.Classes.fmCreate);
-  try
-    SaveToStream(S, Encoding);
-    if MemStream then
-      TMemoryStream(S).SaveToFile(FileName);
-  finally
-    Sys.FreeAndNil(S);
-  end;
 end;
 
 { TEnumerableExt<T> }
