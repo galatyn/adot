@@ -159,7 +159,9 @@ type
     class function Encode(const s: TBytes):String; overload; static;
     class function Encode(const s: string): string; overload; static;
     class function Encode(const s: string; utf8: boolean): string; overload; static;
-    class function EncodeAnsiString(const s: AnsiString):String; static;
+    {$If Defined(MSWindows)}
+      class function EncodeAnsiString(const s: AnsiString):String; static;
+    {$EndIf}
     class function EncodeByteH(Src: byte): char; static;
     class function EncodeByteL(Src: byte): char; static;
 
@@ -168,7 +170,9 @@ type
     class function DecodeBytes(const HexEncodedStr: String):TBytes; static;
     class function DecodeString(const HexEncodedStr: string): string; overload; static;
     class function DecodeString(const HexEncodedStr: string; utf8: boolean): string; overload; static;
-    class function DecodeAnsiString(const HexEncodedStr: String):AnsiString; static;
+    {$If Defined(MSWindows)}
+      class function DecodeAnsiString(const HexEncodedStr: String):AnsiString; static;
+    {$EndIf}
     class function DecodeByte(H,L: Char): byte; static;
     class function DecodeHexChar(HexChar: Char): byte; static;
 
@@ -222,7 +226,9 @@ type
     class function Encode(const S: TBytes; StartIndex,Count: integer): TBytes; overload;
     class function Encode(const S: TBytes): TBytes; overload;
     class function Encode(const S: string): TBytes; overload;
-    class function EncodeAnsiString(const S: AnsiString): TBytes;
+    {$If Defined(MSWindows)}
+      class function EncodeAnsiString(const S: AnsiString): TBytes;
+    {$EndIf}
     class function EncodeFile(const AFileName: string): TBytes; overload;
 
     { streaming functions }
@@ -1343,18 +1349,36 @@ begin
   result := H2B[HexChar];
 end;
 
-class function THex.Encode(const Buf; ByteBufSize: integer): String;
-begin
-  SetLength(result, EncodedSizeChars(ByteBufSize));
-  BinToHex(@Buf, PChar(result), ByteBufSize);
-end;
+{$IF Defined(NEXTGEN)}
+  class function THex.Encode(const Buf; ByteBufSize: integer): String;
+  const
+    B2HConvert: array[0..15] of Byte = ($30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $41, $42, $43, $44, $45, $46);
+  var
+    I: Integer;
+  begin
+    SetLength(result, EncodedSizeChars(ByteBufSize));
+    for I := 0 to ByteBufSize - 1 do
+    begin
+      Result[Low(Result) + I*2    ] := Char(B2HConvert[PByte(@Buf)[I] shr 4]);
+      Result[Low(Result) + I*2 + 1] := Char(B2HConvert[PByte(@Buf)[I] and $0F]);
+    end;
+  end;
+{$Else}
+  class function THex.Encode(const Buf; ByteBufSize: integer): String;
+  begin
+    SetLength(result, EncodedSizeChars(ByteBufSize));
+    BinToHex(@Buf, PChar(result), ByteBufSize);
+  end;
+{$EndIF}
 
+{$If Defined(MSWindows)}
 class function THex.EncodeAnsiString(const s: AnsiString): String;
 begin
   { need this check only to range check error (when "check range check" is on) }
   if s='' then result := '' else
     result := Encode(s[Low(s)], length(s)*SizeOf(s[Low(s)]));
 end;
+{$EndIf}
 
 class function THex.Encode<T>(const Value: T): String;
 begin
@@ -1383,16 +1407,42 @@ begin
     result := Encode(s);
 end;
 
-class procedure THex.Decode(const HexEncodedStr: String; var Buf);
-begin
-  HexToBin(PChar(HexEncodedStr), Buf, DecodedSizeBytes(length(HexEncodedStr)));
-end;
+{$IF Defined(NEXTGEN)}
+  class procedure THex.Decode(const HexEncodedStr: String; var Buf);
+  const
+    H2BValidSet = ['0'..'9','A'..'F','a'..'f'];
+    H2BConvert: array['0'..'f'] of SmallInt =
+      ( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,-1,-1,-1,-1,-1,-1,
+       -1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+       -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+       -1,10,11,12,13,14,15);
+  var
+    I: Integer;
+  begin
+    for I := 0  to DecodedSizeBytes(length(HexEncodedStr)) - 1 do
+    begin
+      if not (HexEncodedStr[Low(String) + I * 2    ] in H2BValidSet) or
+         not (HexEncodedStr[Low(String) + I * 2 + 1] in H2BValidSet)
+      then
+        Break;
+      PByte(@Buf)[I] :=
+        (H2BConvert[HexEncodedStr[Low(String) + I * 2    ]] shl 4) or
+         H2BConvert[HexEncodedStr[Low(String) + I * 2 + 1]];
+    end;
+  end;
+{$Else}
+  class procedure THex.Decode(const HexEncodedStr: String; var Buf);
+  begin
+    HexToBin(PChar(HexEncodedStr), Buf, DecodedSizeBytes(length(HexEncodedStr)));
+  end;
+{$EndIf}
 
 class function THex.Decode<T>(const HexEncodedStr: String): T;
 begin
   Decode(HexEncodedStr, Result);
 end;
 
+{$If Defined(MSWindows)}
 class function THex.DecodeAnsiString(const HexEncodedStr: String): AnsiString;
 begin
   { need this check only to range check error (when "check range check" is on) }
@@ -1402,6 +1452,7 @@ begin
     Decode(HexEncodedStr, result[Low(result)]);
   end;
 end;
+{$EndIf}
 
 class function THex.DecodeByte(H, L: Char): byte;
 begin
@@ -2782,7 +2833,9 @@ begin
   result := '{' + OpenMode[AMode and 3];
   if AMode and fmShareExclusive = fmShareExclusive then result := result + ', fmShareExclusive';
   if AMode and fmShareDenyWrite = fmShareDenyWrite then result := result + ', fmShareDenyWrite';
+  {$IFDEF MSWINDOWS}
   if AMode and fmShareDenyRead  = fmShareDenyRead  then result := result + ', fmShareDenyRead';
+  {$EndIf}
   if AMode and fmShareDenyNone  = fmShareDenyNone  then result := result + ', fmShareDenyNone';
   result := result + '}';
   {$WARN SYMBOL_PLATFORM ON}
@@ -2836,7 +2889,7 @@ const
     'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
     'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9'
   );
-  DisabledChars = [#0..#31, '<', '>', ':', '"', '/', '\', '|', '?', '*'];
+  DisabledChars = [0..31, Byte('<'), Byte('>'), Byte(':'), Byte('"'), Byte('/'), Byte('\'), Byte('|'), Byte('?'), Byte('*')];
 var
   i: Integer;
   c: Char;
@@ -2856,7 +2909,7 @@ begin
   for i := Low(Name) to High(Name) do
   begin
     c := Name[i];
-    if (c<#127) and (AnsiChar(Byte(c)) in DisabledChars) then
+    if (c<#127) and (Byte(c) in DisabledChars) then
       result := result + '%' + THex.Encode(c, SizeOf(c))
     else
       result := result + c;
@@ -3914,6 +3967,7 @@ begin
     result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
 end;
 
+{$If Defined(MSWindows)}
 class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
 begin
   if Length(S)=0 then
@@ -3921,6 +3975,7 @@ begin
   else
     result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
 end;
+{$EndIf}
 
 class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
 var

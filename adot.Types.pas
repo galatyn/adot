@@ -29,7 +29,6 @@ type
 
   TEmptyRec = record end;
   TSetOfByte = set of Byte;
-  TSetOfAnsiChar = set of AnsiChar;
 
   TProcConst<T> = reference to procedure (const Arg1: T);
   TProcConst<T1,T2> = reference to procedure (const Arg1: T1; const Arg2: T2);

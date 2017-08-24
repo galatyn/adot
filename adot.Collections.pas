@@ -93,7 +93,7 @@ uses
   System.StrUtils,
   System.SysUtils,
   System.Character,
-  System.Contnrs,
+  //System.Contnrs,
   System.Math,
   System.Classes, 
   System.Hash;
@@ -149,7 +149,7 @@ type
 
       TAutoFreeCollectionImpl = class(TInterfacedObject, IAutoFreeCollection)
       protected
-        FList: TObjectList;
+        FList: TObjectList<TObject>;
       public
         constructor Create;
         destructor Destroy; override;
@@ -742,7 +742,7 @@ end;
 constructor TAutoFreeCollection.TAutoFreeCollectionImpl.Create;
 begin
   inherited Create;
-  FList := TObjectList.Create(True);
+  FList := TObjectList<TObject>.Create(True);
 end;
 
 destructor TAutoFreeCollection.TAutoFreeCollectionImpl.Destroy;

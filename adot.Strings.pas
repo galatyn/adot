@@ -97,7 +97,9 @@ type
     soMatchSubst         // [soMatchSubst]        -> "hap"="New year happens every year" (big diff, but "hap" is substring)
   );
   TSimilarityOptions = set of TSimilarityOption;
-  TAnsiChars = set of AnsiChar;
+  {$IF Defined(MSWindows)}
+    TAnsiChars = set of AnsiChar;
+  {$EndIf}
 
   TStrCharsPos = (scAll, scFirst, scLast);
   TTextEncoding = (teUnknown, teAnsi,  teUTF8,  teUTF16LE,  teUTF16BE,  teUTF32LE,  teUTF32BE);
@@ -388,9 +390,11 @@ type
     class procedure SaveArrayToStream(const Src: TArray<string>; const Dst: TStream; Encoding: TEncoding = nil); static;
 
     { set-string, number-string etc }
+    {$IF Defined(MSWindows)}
     class function CharsCount(const AChars: TAnsiChars): integer;
     class function SetToString(const AChars: TAnsiChars): string;
     class function StringToSet(const s: string): TAnsiChars;
+    {$EndIf}
     class function IntToString(const N: int64; MinResLen: integer = -1; LeadingSpaceChar: char = '0'): string; static;
 
     { make string printable (replace all unprintable/control chars):
@@ -399,7 +403,9 @@ type
     class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
 
     { randomization }
+    {$IF Defined(MSWindows)}
     class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
+    {$EndIf}
     class function Random(ALen: integer; const AChars: string): string; overload;
     class function Random(ALen: integer): string; overload;
     class function Random(ALen: integer; AFrom,ATo: Char): string; overload;
@@ -496,19 +502,39 @@ type
   );
   TCodePages = class
   private
-    type
-      TStrCyr = type AnsiString(1251);
-      TStrEur = type AnsiString(1252);
+    const
+      CyrToUnicode: array[Byte] of Char = (
+        #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #$A, #$B, #$C, #$D, #$E, #$F, #$10, #$11, #$12, #$13, #$14, #$15, #$16, #$17,
+        #$18, #$19, #$1A, #$1B, #$1C, #$1D, #$1E, #$1F, ' ', '!', '"', '#', '$', '%', '&', '''', '(', ')', '*', '+', ',',
+        '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C',
+        'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        '[', '\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
+        'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~', #$7F, 'Ђ', 'Ѓ', '‚', 'ѓ', '„', '…', '†', '‡', '€',
+        '‰', 'Љ', '‹', 'Њ', 'Ќ', 'Ћ', 'Џ', 'ђ', '‘', '’', '“', '”', '•', '–', '—', #$0098, '™', 'љ', '›', 'њ', 'ќ', 'ћ', 'џ',
+        ' ', 'Ў', 'ў', 'Ј', '¤', 'Ґ', '¦', '§', 'Ё', '©', 'Є', '«', '¬', #$00AD, '®', 'Ї', '°', '±', 'І', 'і', 'ґ', 'µ', '¶',
+        '·', 'ё', '№', 'є', '»', 'ј', 'Ѕ', 'ѕ', 'ї', 'А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'Й', 'К', 'Л', 'М', 'Н', 'О',
+        'П', 'Р', 'С', 'Т', 'У', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ', 'Ъ', 'Ы', 'Ь', 'Э', 'Ю', 'Я', 'а', 'б', 'в', 'г', 'д', 'е', 'ж',
+        'з', 'и', 'й', 'к', 'л', 'м', 'н', 'о', 'п', 'р', 'с', 'т', 'у', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'ы', 'ь', 'э', 'ю', 'я');
+      EurToUnicode: array[Byte] of Char = (
+        #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #$A, #$B, #$C, #$D, #$E, #$F, #$10, #$11, #$12, #$13, #$14, #$15, #$16, #$17,
+        #$18, #$19, #$1A, #$1B, #$1C, #$1D, #$1E, #$1F, ' ', '!', '"', '#', '$', '%', '&', '''', '(', ')', '*', '+', ',', '-',
+        '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E',
+        'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\', ']',
+        '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
+        'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~', #$7F, '€', #$0081, '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ',
+        #$008D, 'Ž', #$008F, #$0090, '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', #$009D, 'ž', 'Ÿ', ' ', '¡', '¢',
+        '£', '¤', '¥', '¦', '§', '¨', '©', 'ª', '«', '¬', #$00AD, '®', '¯', '°', '±', '²', '³', '´', 'µ', '¶', '·', '¸', '¹', 'º',
+        '»', '¼', '½', '¾', '¿', 'À', 'Á', 'Â', 'Ã', 'Ä', 'Å', 'Æ', 'Ç', 'È', 'É', 'Ê', 'Ë', 'Ì', 'Í', 'Î', 'Ï', 'Ð', 'Ñ', 'Ò', 'Ó',
+         'Ô', 'Õ', 'Ö', '×', 'Ø', 'Ù', 'Ú', 'Û', 'Ü', 'Ý', 'Þ', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë',
+         'ì', 'í', 'î', 'ï', 'ð', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö', '÷', 'ø', 'ù', 'ú', 'û', 'ü', 'ý', 'þ', 'ÿ');
 
     class var
-      CyrToUnicode: array[Byte] of Char;
       UnicodeToCyr: TDictionary<Char, Byte>;
-      EurToUnicode: array[Byte] of Char;
       UnicodeToEur: TDictionary<Char, Byte>;
 
+    class procedure InitCyr;
+    class procedure InitEur;
     class destructor Destroy;
-    class procedure InitCyr; static;
-    class procedure InitEur; static;
     class function EncodeTextEur(const Text: string; Len: integer; var Dst): Boolean; static;
     class function EncodeTextCyr(const Text: string; Len: integer; var Dst): Boolean; static;
     class function DecodeTextCyr(const Src; Size: integer): string; static;
@@ -871,11 +897,7 @@ type
     FTokenType: TPasTokenType;
 
     const
-      Delimiters = [
-        ',', '.', ';', '#', '@', '&', '^','$',
-        '[','(','{', ']',')','}',
-        '+','-','/','*','<','>','=',':'
-      ];
+      Delimiters = ',.;#@&^$[({])}+-/*<>=:';
 
     procedure SaveTokenizerPos(W: TWriter); override; { save .Position and other fields if necessary }
     procedure LoadTokenizerPos(R: TReader); override;
@@ -1133,6 +1155,7 @@ begin
   result := AnsiSameText(A,B);
 end;
 
+{$IF Defined(MSWindows)}
 class function TStr.CharsCount(const AChars: TAnsiChars): integer;
 var
   C: AnsiChar;
@@ -1141,6 +1164,7 @@ begin
   for C in AChars do
     inc(result);
 end;
+{$EndIf}
 
 class function TStr.IntToString(const N: int64; MinResLen: integer = -1; LeadingSpaceChar: char = '0'): string;
 begin
@@ -1152,6 +1176,7 @@ begin
       result := StringOfChar(LeadingSpaceChar, MinResLen-Length(result)) + result;
 end;
 
+{$IF Defined(MSWindows)}
 class function TStr.StringToSet(const s: string): TAnsiChars;
 var
   I: Integer;
@@ -1174,6 +1199,7 @@ begin
     inc(i);
   end;
 end;
+{$EndIf}
 
 class function TStr.Random(ALen: integer; const AChars: string): string;
 var
@@ -1185,14 +1211,25 @@ begin
     result[I] := AChars[Low(AChars)+System.Random(J)];
 end;
 
+{$IF Defined(MSWindows)}
 class function TStr.Random(ALen: integer; const AChars: TAnsiChars): string;
 begin
   result := Random(ALen, SetToString(AChars));
 end;
+{$EndIf}
 
 class function TStr.Random(ALen: integer): string;
+var
+  I,J: Integer;
 begin
-  result := Random(ALen, ['a'..'z','0'..'9']);
+  SetLength(result, ALen);
+  for I := Low(Result) to High(Result) do
+  begin
+    J := System.Random(byte('z')-byte('a')+1 + byte('9')-byte('0')+1);
+    if J < byte('z')-byte('a')+1
+      then Result[I] := Char(J+byte('a'))
+      else Result[I] := Char(J+byte('0'));
+  end;
 end;
 
 class function TStr.RemoveDigits(const s: string): String;
@@ -3926,7 +3963,7 @@ end;
 
 class function TTokPascal.IsDelimiterChar(C: Char): Boolean;
 begin
-  result := (Word(C)<127) and (AnsiChar(Byte(C)) in Delimiters);
+  result := String(Delimiters).IndexOf(C) >= Low(String);
 end;
 
 function TTokPascal.FindNextToken(Text: PChar; Len: integer; var Res: TTokenInfo): Boolean;
@@ -4413,41 +4450,23 @@ end;
 class procedure TCodePages.InitCyr;
 var
   I: Integer;
-  S: TStrCyr;
-  T: string;
 begin
   if UnicodeToCyr<>nil then
     Exit;
   UnicodeToCyr := TDictionary<Char, Byte>.Create;
-  SetLength(S, 256);
-  for I := 0 to 255 do
-    Byte(S[I+Low(S)]) := I;
-  T := String(S);
-  for I := 0 to 255 do
-  begin
-    CyrToUnicode[I] := T.Chars[I];
-    UnicodeToCyr.Add(T.Chars[I], I);
-  end;
+  for I := Low(CyrToUnicode) to High(CyrToUnicode) do
+    UnicodeToCyr.Add(CyrToUnicode[I], I);
 end;
 
 class procedure TCodePages.InitEur;
 var
   I: Integer;
-  S: TStrEur;
-  T: string;
 begin
   if UnicodeToEur<>nil then
     Exit;
   UnicodeToEur := TDictionary<Char, Byte>.Create;
-  SetLength(S, 256);
-  for I := 0 to 255 do
-    Byte(S[I+Low(S)]) := I;
-  T := String(S);
-  for I := 0 to 255 do
-  begin
-    EurToUnicode[I] := T.Chars[I];
-    UnicodeToEur.Add(T.Chars[I], I);
-  end;
+  for I := Low(EurToUnicode) to High(EurToUnicode) do
+    UnicodeToEur.Add(EurToUnicode[I], I);
 end;
 
 class function TCodePages.EncodeTextCyr(const Text: string; Len: integer; var Dst): Boolean;

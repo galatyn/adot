@@ -11,10 +11,12 @@ interface
 
 uses
   adot.Types,
+  {$If Defined(MSWindows)}
+    System.AnsiStrings,
+    System.WideStrings,
+  {$EndIf}
   System.SysUtils,
-  System.Character,
-  System.AnsiStrings,
-  System.WideStrings;
+  System.Character;
 
 type
   TArithmeticUtils<T> = class
@@ -274,6 +276,7 @@ type
 
       { string types }
 
+      {$If Defined(MSWindows)}
       TArithmeticAnsiString = class(TCustomArithmetic<AnsiString>)
       protected
         class var
@@ -286,6 +289,7 @@ type
         function Divide(Left: AnsiString; Right: AnsiString): AnsiString; override;
         function Negative(Value: AnsiString): AnsiString; override;
       end;
+      {$EndIf}
 
       TArithmeticString = class(TCustomArithmetic<String>)
       protected
@@ -355,10 +359,12 @@ begin
     if TypeInfo(T) = TypeInfo(Currency)   then FArithmetic := IArithmetic<T>( IArithmetic<Currency>  (TArithmeticCurrency.Ordinal) )   else
 
     { String types }
-    if TypeInfo(T) = TypeInfo(AnsiString) then FArithmetic := IArithmetic<T>( IArithmetic<AnsiString>(TArithmeticAnsiString.Ordinal) ) else
+    {$IFDEF MSWINDOWS}
+      if TypeInfo(T) = TypeInfo(AnsiString) then FArithmetic := IArithmetic<T>( IArithmetic<AnsiString>(TArithmeticAnsiString.Ordinal) ) else
+    {$ENDIF}
     if TypeInfo(T) = TypeInfo(String)     then FArithmetic := IArithmetic<T>( IArithmetic<String>    (TArithmeticString.Ordinal) )     else
     {$IFDEF MSWINDOWS}
-    if TypeInfo(T) = TypeInfo(WideString) then FArithmetic := IArithmetic<T>( IArithmetic<WideString>(TArithmeticWideString.Ordinal) ) else
+      if TypeInfo(T) = TypeInfo(WideString) then FArithmetic := IArithmetic<T>( IArithmetic<WideString>(TArithmeticWideString.Ordinal) ) else
     {$ENDIF}
 
     { unsupported type}
@@ -979,6 +985,7 @@ begin
   Result := Left - Right;
 end;
 
+{$IFDEF MSWINDOWS}
 { TArithmeticUtils<T>.TArithmeticAnsiString }
 
 class function TArithmeticUtils<T>.TArithmeticAnsiString.Ordinal: TArithmeticAnsiString;
@@ -1024,6 +1031,7 @@ function TArithmeticUtils<T>.TArithmeticAnsiString.Divide(Left, Right: AnsiStrin
 begin
   raise Exception.Create('Bad operation');
 end;
+{$EndIf}
 
 { TArithmeticUtils<T>.TArithmeticString }
 
