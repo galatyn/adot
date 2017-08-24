@@ -12,10 +12,12 @@
 interface
 
 uses
-  System.Generics.Defaults;
+  System.Generics.Defaults,
+  System.SysUtils;
 
 const
   NullGuid: TGUID = '{00000000-0000-0000-0000-000000000000}';
+  RecordTypes = [tkInteger, tkChar, tkEnumeration, tkFloat, tkSet, tkMethod, tkWChar, tkRecord, tkInt64, tkPointer, tkProcedure];
 
 type
 
@@ -40,6 +42,11 @@ type
   TProcVar1<T> = reference to procedure (var Arg1: T);
   TProcVar1<T1,T2> = reference to procedure (Arg1: T1; var Arg2: T2);
   TProcVar1<T1,T2,T3> = reference to procedure (Arg1: T1; Arg2: T2; var Arg3: T3);
+
+  TFuncCompareValues<T> = reference to function(const Left,Right: T): integer;
+  TFuncFilterValueIndex<T> = reference to function(const Value: T; ValueIndex: integer): boolean;
+
+  EForbiddenOperation = class(Exception);
 
   { interfaces }
 

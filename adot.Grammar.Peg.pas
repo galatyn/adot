@@ -12,6 +12,7 @@ uses
   adot.Grammar,
   adot.Tools,
   adot.Collections,
+  adot.Collections.Vectors,
   adot.Strings,
   {$IF Defined(LogExceptions)}
     {$Define LogGrammar}

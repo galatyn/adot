@@ -55,9 +55,6 @@
     Generic implementation of IfThen (to accept virtually any type). Example:
      A := TIfThen.Get(Visible, fsMDIChild, fsNormal);
 
-  TIndex = class
-    Utils for index arrays (RandomSelection, Direct, Inverse etc)
-
   TIndexBackEnumerator = record
     Index enumerator "from last to first".
 
@@ -95,6 +92,8 @@ interface
 uses
   adot.Types,
   adot.Collections,
+  adot.Collections.Sets,
+  adot.Collections.Maps,
   adot.Arithmetic,
   adot.Tools.Rtti,
 {$IFDEF MSWINDOWS}
@@ -1312,7 +1311,7 @@ type
 implementation
 
 Uses
-  adot.Strings;
+  adot.Strings, adot.Collections.Vectors;
 
 { THex }
 

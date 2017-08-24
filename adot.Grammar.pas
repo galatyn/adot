@@ -7,6 +7,8 @@ interface
 uses
   adot.Types,
   adot.Collections,
+  adot.Collections.Vectors,
+  adot.Collections.Sets,
   adot.Tools,
   adot.Strings,
   adot.Grammar.Types,

@@ -5,6 +5,9 @@ interface
 uses
   adot.Types,
   adot.Collections,
+  adot.Collections.Vectors,
+  adot.Collections.Sets,
+  adot.Collections.Trees,
   adot.Tools,
   adot.Tools.Rtti,
   adot.Strings,

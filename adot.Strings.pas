@@ -78,8 +78,7 @@ interface
 
 uses
   adot.Types,
-  adot.Tools, { min3 etc }
-  adot.Collections, { TArr etc }
+  adot.Collections.Vectors,
   System.Character,
   System.Math,
   System.SysUtils,
@@ -300,7 +299,7 @@ type
     class function Reverse(const S: string): string; static;
 
     { returns new string where all specified chars replaced by string }
-    class function Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string; static;
+    class function Replace(const Src: string; const CharsToReplace: TArray<Char>; const CharReplacement: string): string; static;
 
     { split text into lines of fixed length with transfering words and punctuation }
     class function Split(const Src: string; MaxStrLen: integer = 80): TArray<string>; overload; static;
@@ -335,7 +334,7 @@ type
     class function ClassNameToCaption(const AClassName: string): string; static;
 
     { returns new string where all specified chars are deleted }
-    class function Remove(const Src: string; CharsToDelete: TSet<Char>): string; static;
+    class function Remove(const Src: string; const CharsToDelete: TArray<Char>): string; static;
 
     { case insensitive with support of internation chars }
     class function SameText(const A,B: string): Boolean; overload;
@@ -901,6 +900,11 @@ type
 
 implementation
 
+uses
+  adot.Tools,
+  adot.Collections.Sets,
+  adot.Collections;
+
 { TStr.TSplitOptions }
 
 class function TStr.TSplitOptions.Create: TSplitOptions;
@@ -1241,28 +1245,31 @@ begin
     end;
 end;
 
-class function TStr.Replace(const Src: string; CharsToReplace: TSet<Char>; const CharReplacement: string): string;
+class function TStr.Replace(const Src: string; const CharsToReplace: TArray<Char>; const CharReplacement: string): string;
 var
   Buf: TStringBuffer;
   I: Integer;
+  S: TSet<Char>;
 begin
+  S := TSet<Char>.Create(CharsToReplace);
   Buf.Clear;
   for I := 0 to Src.Length-1 do
-    if Src.Chars[I] in CharsToReplace then
-      Buf.Write(CharReplacement)
-    else
-      Buf.Write(Src.Chars[I]);
+    if Src.Chars[I] in S
+      then Buf.Write(CharReplacement)
+      else Buf.Write(Src.Chars[I]);
   result := Buf.Text;
 end;
 
-class function TStr.Remove(const Src: string; CharsToDelete: TSet<Char>): string;
+class function TStr.Remove(const Src: string; const CharsToDelete: TArray<Char>): string;
 var
   Buf: TStringEditor;
   I: Integer;
+  S: TSet<Char>;
 begin
+  S := TSet<Char>.Create(CharsToDelete);
   Buf.Clear;
   for I := 0 to Src.Length-1 do
-    if Src.Chars[I] in CharsToDelete then
+    if Src.Chars[I] in S then
       Buf.Delete(I);
   result := Buf.Apply(Src);
 end;
