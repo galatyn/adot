@@ -549,24 +549,6 @@ type
     function Extract: T;
   end;
 
-
-  { Sometimes we need to access array/TList etc according to specific order.
-    This record type helps to create index providing comparator and basic properties:
-      Idx := TIndex.Get(List.Count, 0,
-        function(const Left,Right: integer): integer
-        begin
-          result := integer(List[Left].Period) - integer(List[Right].Period);
-        end);  }
-  { Utils for index arrays (RandomSelection, Direct, Inverse etc) }		
-  TIndex = class
-  public
-    class function Get(Count,StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>; static;
-    class function Random(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
-    class function RandomSelection(Count, StartIndex, SelectionCount: integer): TArray<integer>; static;
-    class function Direct(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
-    class function Inverse(Count: integer; StartIndex: integer = 0): TArray<integer>; static;
-  end;
-
   { IsValid and other utils }
   TGUIDUtils = class
   public
@@ -2481,55 +2463,6 @@ end;
 function TInterfacedObject<T>.GetRefCount: integer;
 begin
   result := RefCount;
-end;
-
-{ TIndex }
-
-class function TIndex.Get(Count, StartIndex: integer; const AComparer: TComparison<integer>): TArray<integer>;
-var
-  Cmp: IComparer<integer>;
-begin
-  result := Direct(Count,StartIndex);
-  Cmp := TDelegatedComparer<integer>.Create(AComparer);
-  TArray.Sort<integer>(Result, Cmp);
-end;
-
-class function TIndex.Random(Count: integer; StartIndex: integer = 0): TArray<integer>;
-var
-  i,j,k: Integer;
-begin
-  result := Direct(Count,StartIndex);
-  for i := 0 to Count-1 do
-  begin
-    j := System.Random(Count);
-    k := result[i];
-    result[i] := result[j];
-    result[j] := k;
-  end;
-end;
-
-class function TIndex.RandomSelection(Count, StartIndex, SelectionCount: integer): TArray<integer>;
-begin
-  Result := Random(Count, StartIndex);
-  SetLength(Result, SelectionCount);
-end;
-
-class function TIndex.Direct(Count, StartIndex: integer): TArray<integer>;
-var
-  i: Integer;
-begin
-  SetLength(Result, Count);
-  for i := 0 to Count-1 do
-    Result[i] := i + StartIndex;
-end;
-
-class function TIndex.Inverse(Count, StartIndex: integer): TArray<integer>;
-var
-  i: Integer;
-begin
-  SetLength(Result, Count);
-  for i := 0 to Count-1 do
-    Result[i] := Count-1 + StartIndex - i;
 end;
 
 { TGUIDUtils }

@@ -838,9 +838,35 @@ type
     property Keys: TKeyCollection read GetKeys;
   end;
 
+  { Creates sorted index for quick (binary) search of elements
+    without sorting of array itself }
+  TBinarySearchIndexClass<T> = class
+  private
+    FValues: TArray<T>;
+    FIndex: TArray<integer>;
+    FComparer: IComparer<T>;
+
+    function GetIndex(IndexedPos: integer): integer;
+    function GetValue(IndexedPos: integer): T;
+    function GetCount: integer;
+
+  public
+    constructor Create(const AValues: TArray<T>; AComparer: IComparer<T> = nil);
+    function Find(const Value: T): integer;
+    procedure Clear;
+
+    property Indices[IndexedPos: integer]: integer read GetIndex; default;
+    property Values[IndexedPos: integer]: T read GetValue;
+    property Count: integer read GetCount;
+  end;
+
   TSortFunc<T> = reference to function(const Left,Right: T): integer;
 
   TVectorClass<T> = class(TEnumerableExt<T>)
+  public
+    type
+      TRemoveFilter = reference to function(const Value: T; Index: integer): boolean;
+
   protected
     type
       TVectorEnumerator = class(TEnumerator<T>)
@@ -872,7 +898,6 @@ type
     function ContainsAll(V: TArray<T>): boolean;
     function GetItemsArray: TArray<T>;
     procedure SetItemsArray(const Value: TArray<T>);
-    procedure FindEqualityComparer(var AComparer: IEqualityComparer<T>);
     procedure FindComparer(var AComparer: IComparer<T>);
     procedure SetOwnsValues(const Value: boolean);
 
@@ -915,10 +940,10 @@ type
     procedure Delete(AIndices: TSet<integer>); overload;
     procedure DeleteLast;
 
-    procedure Remove(const V: T; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(const V: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(const V: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(V: TSet<T>); overload;
+    procedure Remove(const V: T; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(AFilter: TRemoveFilter); overload;
 
     { Removes item from the vector. Unlike Delete it returns the value and will not free the item }
     function Extract(ItemIndex: integer): T;
@@ -928,13 +953,10 @@ type
     procedure Move(SrcIndex, DstIndex: integer);
 
     function IndexOf(const Value: T): integer; overload;
-    function IndexOf(const Value: T; AComparer: IEqualityComparer<T>): integer; overload;
     function IndexOf(const Value: T; AComparer: IComparer<T>): integer; overload;
     function FindFirst(const Value: T; var Index: integer): boolean; overload;
-    function FindFirst(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean; overload;
     function FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
     function FindNext(const Value: T; var Index: integer): boolean; overload;
-    function FindNext(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean; overload;
     function FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
 
     function Contains(const Value: T): boolean; overload;
@@ -1032,6 +1054,8 @@ type
     property RO: TVectorClass<T> read GetRO;
     property RW: TVectorClass<T> read GetRW;
   public
+    type
+      TRemoveFilter = TVectorClass<T>.TRemoveFilter;
 
     { Record type can be used without constructor, use constructor only if you
       need some customization: set Capacity, provide custom comparer etc.
@@ -1063,10 +1087,10 @@ type
     procedure Delete(AIndices: TSet<integer>); overload;
     procedure DeleteLast;
 
-    procedure Remove(const V: T; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(const V: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(const V: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Remove(V: TSet<T>); overload;
+    procedure Remove(const V: T; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(AFilter: TRemoveFilter); overload;
 
     { get & delete }
     function Extract(ItemIndex: integer): T;
@@ -1076,13 +1100,10 @@ type
     procedure Move(SrcIndex, DstIndex: integer);
 
     function IndexOf(const Value: T): integer; overload;
-    function IndexOf(const Value: T; AComparer: IEqualityComparer<T>): integer; overload;
     function IndexOf(const Value: T; AComparer: IComparer<T>): integer; overload;
     function FindFirst(const Value: T; var Index: integer): boolean; overload;
-    function FindFirst(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean; overload;
     function FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
     function FindNext(const Value: T; var Index: integer): boolean; overload;
-    function FindNext(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean; overload;
     function FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
 
     function Contains(const Value: T): boolean; overload;
@@ -1134,6 +1155,9 @@ type
     function ToString: string; overload;
     function ToString(const ValueSeparator: string; SepAfterLastValue: boolean = False): string; overload;
     function ToText: string;
+
+    procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
+    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
 
     class operator In(const a: T; b: TVector<T>) : Boolean;
     class operator In(a: TVector<T>; b: TVector<T>) : Boolean;
@@ -8624,12 +8648,6 @@ begin
   FItems[FCount] := Default(T);
 end;
 
-function TVectorClass<T>.FindFirst(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean;
-begin
-  Index := -1;
-  result := FindNext(Value, Index, AComparer);
-end;
-
 function TVectorClass<T>.FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean;
 begin
   Index := -1;
@@ -8649,20 +8667,6 @@ begin
   FindComparer(AComparer);
   for I := Index+1 to Count-1 do
     if AComparer.Compare(FItems[I], Value)=0 then
-    begin
-      Index := I;
-      Exit(True);
-    end;
-  result := False;
-end;
-
-function TVectorClass<T>.FindNext(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean;
-var
-  I: Integer;
-begin
-  FindEqualityComparer(AComparer);
-  for I := Index+1 to Count-1 do
-    if AComparer.Equals(FItems[I], Value) then
     begin
       Index := I;
       Exit(True);
@@ -8817,12 +8821,6 @@ begin
   result := (High(FItems)-Low(FItems)+1)*SizeOf(T);
 end;
 
-function TVectorClass<T>.IndexOf(const Value: T; AComparer: IEqualityComparer<T>): integer;
-begin
-  if not FindFirst(Value, Result, AComparer) then
-    result := -1;
-end;
-
 function TVectorClass<T>.IndexOf(const Value: T; AComparer: IComparer<T>): integer;
 begin
   if not FindFirst(Value, Result, AComparer) then
@@ -8871,14 +8869,6 @@ begin
   end;
 end;
 
-procedure TVectorClass<T>.FindEqualityComparer(var AComparer: IEqualityComparer<T>);
-begin
-  if AComparer = nil then
-    if FComparer <> nil
-      then AComparer := TComparerUtils.FindEqualityComparer<T>(FComparer)
-      else AComparer := TComparerUtils.DefaultEqualityComparer<T>;
-end;
-
 procedure TVectorClass<T>.FindComparer(var AComparer: IComparer<T>);
 begin
   if AComparer = nil then
@@ -8887,14 +8877,14 @@ begin
       else AComparer := TComparerUtils.DefaultComparer<T>;
 end;
 
-procedure TVectorClass<T>.Remove(const V: T; AComparer: IEqualityComparer<T> = nil);
+procedure TVectorClass<T>.Remove(const V: T; AComparer: IComparer<T> = nil);
 var
   I,D: Integer;
 begin
-  FindEqualityComparer(AComparer);
+  FindComparer(AComparer);
   D := 0;
   for I := 0 to FCount-1 do
-    if AComparer.Equals(FItems[I], V) then
+    if AComparer.Compare(FItems[I], V) = 0 then
     begin
       if FOwnsValues then
         PObject(@FItems[I])^.DisposeOf;
@@ -8909,13 +8899,13 @@ begin
   FCount := D;
 end;
 
-procedure TVectorClass<T>.Remove(V: TSet<T>);
+procedure TVectorClass<T>.Remove(AFilter: TRemoveFilter);
 var
   I,D: Integer;
 begin
   D := 0;
   for I := 0 to FCount-1 do
-    if FItems[I] in V then
+    if AFilter(FItems[I], I) then
     begin
       if FOwnsValues then
         PObject(@FItems[I])^.DisposeOf;
@@ -8930,16 +8920,39 @@ begin
   FCount := D;
 end;
 
-procedure TVectorClass<T>.Remove(const V: TArray<T>; AComparer: IEqualityComparer<T> = nil);
+procedure TVectorClass<T>.Remove(const V: TArray<T>; AComparer: IComparer<T> = nil);
+var
+  S: TBinarySearchIndexClass<T>;
+  I,D: integer;
 begin
-  FindEqualityComparer(AComparer);
-  Remove(TSet<T>.Create(V, System.Length(V), AComparer));
+  if (Length(V)=0) or (Count=0) then
+    Exit;
+  FindComparer(AComparer);
+  S := TBinarySearchIndexClass<T>.Create(V, AComparer);
+  try
+    D := 0;
+    for I := 0 to FCount-1 do
+      if S.Find(FItems[I]) >= 0 then
+      begin
+        if FOwnsValues then
+          PObject(@FItems[I])^.DisposeOf;
+      end
+      else
+      begin
+        FItems[D] := FItems[I];
+        inc(D);
+      end;
+    for I := D to FCount-1 do
+      FItems[I] := Default(T);
+    FCount := D;
+  finally
+    Sys.FreeAndNil(S);
+  end;
 end;
 
-procedure TVectorClass<T>.Remove(const V: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil);
+procedure TVectorClass<T>.Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil);
 begin
-  FindEqualityComparer(AComparer);
-  Remove(TSet<T>.Create(V, 0, AComparer));
+  Remove(V.ToArray, AComparer);
 end;
 
 procedure TVectorClass<T>.Reverse;
@@ -9456,11 +9469,6 @@ begin
   result := RO.FindFirst(Value, Index);
 end;
 
-function TVector<T>.FindFirst(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean;
-begin
-  result := RO.FindFirst(Value, Index, AComparer);
-end;
-
 function TVector<T>.FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean;
 begin
   result := RO.FindFirst(Value, Index, AComparer);
@@ -9472,11 +9480,6 @@ begin
 end;
 
 function TVector<T>.FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean;
-begin
-  result := RO.FindNext(Value, Index, AComparer);
-end;
-
-function TVector<T>.FindNext(const Value: T; var Index: integer; AComparer: IEqualityComparer<T>): boolean;
 begin
   result := RO.FindNext(Value, Index, AComparer);
 end;
@@ -9644,11 +9647,6 @@ begin
   result := RO.IndexOf(Value, AComparer);
 end;
 
-function TVector<T>.IndexOf(const Value: T; AComparer: IEqualityComparer<T>): integer;
-begin
-  result := RO.IndexOf(Value, AComparer);
-end;
-
 function TVector<T>.IndexOf(const Value: T): integer;
 begin
   result := RO.IndexOf(Value);
@@ -9749,24 +9747,19 @@ begin
   result := RW.PrevPermutation;
 end;
 
-procedure TVector<T>.Remove(const V: T; AComparer: IEqualityComparer<T> = nil);
+procedure TVector<T>.Remove(const V: T; AComparer: IComparer<T> = nil);
 begin
   RW.Remove(V, AComparer);
 end;
 
-procedure TVector<T>.Remove(const V: TArray<T>; AComparer: IEqualityComparer<T> = nil);
+procedure TVector<T>.Remove(const V: TArray<T>; AComparer: IComparer<T> = nil);
 begin
   RW.Remove(V, AComparer);
 end;
 
-procedure TVector<T>.Remove(const V: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil);
+procedure TVector<T>.Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil);
 begin
   RW.Remove(V, AComparer);
-end;
-
-procedure TVector<T>.Remove(V: TSet<T>);
-begin
-  RW.Remove(V);
 end;
 
 procedure TVector<T>.Reverse;
@@ -9787,6 +9780,16 @@ end;
 procedure TVector<T>.RotateRight(Index1, Index2, Shift: integer);
 begin
   RW.RotateRight(Index1, Index2, Shift);
+end;
+
+procedure TVector<T>.SaveToFile(const FileName: string; Encoding: TEncoding; MemStream: boolean);
+begin
+  RO.SaveToFile(FileName, Encoding, MemStream);
+end;
+
+procedure TVector<T>.SaveToStream(Dst: TStream; Encoding: TEncoding);
+begin
+  RO.SaveToStream(Dst, Encoding);
 end;
 
 procedure TVector<T>.SetCapacity(const Value: integer);
@@ -9973,6 +9976,11 @@ begin
   result := A.Compare(B) < 0;
 end;
 
+procedure TVector<T>.Remove(AFilter: TRemoveFilter);
+begin
+  RW.Remove(AFilter);
+end;
+
 { TComparerUtils.TEqualityByComparer<T> }
 
 constructor TComparerUtils.TEqualityByComparer<T>.Create(AComparer: IComparer<T>);
@@ -9993,6 +10001,80 @@ begin
   H.Reset(0);
   H.Update(Value, SizeOf(Value));
   result := H.HashAsInteger;
+end;
+
+{ TBinarySearchIndexClass<T> }
+
+procedure TBinarySearchIndexClass<T>.Clear;
+begin
+  SetLength(FValues, 0);
+  SetLength(FIndex, 0);
+  FComparer := nil;
+end;
+
+constructor TBinarySearchIndexClass<T>.Create(const AValues: TArray<T>; AComparer: IComparer<T>);
+var
+  I: Integer;
+  C: IComparer<integer>;
+begin
+  Clear;
+  FValues := AValues;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  FComparer := AComparer;
+
+  { build sorted index}
+  SetLength(FIndex, Length(FValues));
+  for I := 0 to High(FIndex) do
+    FIndex[I] := I;
+  C := TDelegatedComparer<integer>.Create(
+    function(const L,R: integer): integer
+    begin
+      result := AComparer.Compare(AValues[L], AValues[R]);
+    end);
+  TArray.Sort<integer>(FIndex, C);
+
+end;
+
+function TBinarySearchIndexClass<T>.Find(const Value: T): integer;
+var L,R,C: integer;
+begin
+  if Length(FValues)=0 then
+    Exit(-1);
+  L := 0;
+  R := High(FIndex);
+  while (R-L>1) do
+  begin
+    Result := (L+R) div 2;
+    C := FComparer.Compare(FValues[FIndex[Result]], Value);
+    if C < 0 then L := Result else
+      if C > 0 then R := Result else
+        Exit;
+  end;
+  if FComparer.Compare(FValues[FIndex[L]], Value) = 0 then Result := L else
+    if FComparer.Compare(FValues[FIndex[R]], Value) = 0 then Result := R else
+      Result := -1;
+end;
+
+function TBinarySearchIndexClass<T>.GetCount: integer;
+begin
+  result := Length(FIndex);
+end;
+
+function TBinarySearchIndexClass<T>.GetIndex(IndexedPos: integer): integer;
+begin
+  {$IF Defined(Debug)}
+    Assert((IndexedPos>=0) and (IndexedPos<=High(FIndex)) and (Length(FIndex)=Length(FValues)));
+  {$EndIf}
+  result := FIndex[IndexedPos];
+end;
+
+function TBinarySearchIndexClass<T>.GetValue(IndexedPos: integer): T;
+begin
+  {$IF Defined(Debug)}
+    Assert((IndexedPos>=0) and (IndexedPos<=High(FIndex)) and (Length(FIndex)=Length(FValues)));
+  {$EndIf}
+  result := FValues[FIndex[IndexedPos]];
 end;
 
 end.
