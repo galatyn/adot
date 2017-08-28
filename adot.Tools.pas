@@ -901,6 +901,7 @@ type
     class function Create(const AValue: T): TBox<T>; overload; static;
 
     procedure Clear;
+    function Extract: T;
 
     { assign operators }
     class operator Implicit(const AValue: TBox<T>): T;
@@ -3463,6 +3464,13 @@ class operator TBox<T>.Equal(const Left: T; const Right: TBox<T>): Boolean;
 begin
   { We have implementation for (Left: TBox<T>; Right: T) already. }
   Result := Right=Left;
+end;
+
+function TBox<T>.Extract: T;
+begin
+  Assert(not Empty);
+  result := Value;
+  Clear;
 end;
 
 class operator TBox<T>.NotEqual(const Left, Right: TBox<T>): Boolean;
