@@ -18,6 +18,7 @@ type
   public
     procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
     procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
+    function ToString: string; override;
   end;
 
 implementation
@@ -74,6 +75,26 @@ end;
 procedure TEnumerableExt<T>.SaveToStream(Dst: TStream; Encoding: TEncoding);
 begin
   DoSaveTostream(Self, dst, Encoding);
+end;
+
+function TEnumerableExt<T>.ToString: string;
+var
+  Builder: TStringBuilder;
+  V: T;
+  N: Boolean;
+begin
+  Builder := TStringBuilder.Create;
+  try
+    N := False;
+    for V in Self do
+    begin
+      if N then Builder.Append(#13#10) else N := True;
+      Builder.Append(TRttiUtils.ValueAsString<T>(V));
+    end;
+    result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
 end;
 
 end.

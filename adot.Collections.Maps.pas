@@ -245,7 +245,7 @@ type
 
     procedure Clear;
     procedure Add(const AKey: TKey; const AValue: TValue); overload;
-    procedure Add(const AKey: TKey; const AValues: array of TValue); overload;
+    procedure Add(const AKey: TKey; const AValues: TArray<TValue>); overload;
     procedure Add(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
     procedure Add(const ACollection: TEnumerable<TPair<TKey,TValue>>); overload;
 
@@ -254,7 +254,7 @@ type
         if m.Current=10 then m.RemoveValue(e); }
     function Remove(const AKey: TKey):Boolean;
     procedure RemoveValue(const AEnum: TValueEnumerator);
-    procedure RemoveValues(const AKey: TKey; const AValues: array of TValue); overload;
+    procedure RemoveValues(const AKey: TKey; const AValues: TArray<TValue>); overload;
     procedure RemoveValues(const AKey: TKey; const AValues: TEnumerable<TValue>); overload;
 
     function ContainsKey(const AKey: TKey): Boolean;
@@ -262,7 +262,7 @@ type
     function ContainsKeys(const AKeys: TEnumerable<TKey>; AContainsCheckType: TContainsCheckType = cctAnyOf): Boolean; overload;
 
     function ContainsValue(const AKey: TKey; const AValue: TValue; AComparer: IEqualityComparer<TValue> = nil): Boolean;
-    function ContainsValues(const AKey: TKey; const AValues: array of TValue; AContainsCheckType: TContainsCheckType = cctAnyOf;
+    function ContainsValues(const AKey: TKey; const AValues: TArray<TValue>; AContainsCheckType: TContainsCheckType = cctAnyOf;
       AComparer: IEqualityComparer<TValue> = nil): Boolean; overload;
     function ContainsValues(const AKey: TKey; const AValues: TEnumerable<TValue>; AContainsCheckType: TContainsCheckType = cctAnyOf;
       AComparer: IEqualityComparer<TValue> = nil): Boolean; overload;
@@ -835,7 +835,7 @@ begin
   result := False;
 end;
 
-function TMultimapClass<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: array of TValue; AContainsCheckType: TContainsCheckType;
+function TMultimapClass<TKey, TValue>.ContainsValues(const AKey: TKey; const AValues: TArray<TValue>; AContainsCheckType: TContainsCheckType;
   AComparer: IEqualityComparer<TValue>): Boolean;
 var
   ValueSet: TSetClass<TValue>;
@@ -920,7 +920,7 @@ begin
   FCount.AddOrSetValue(AKey, MKey.Number);
 end;
 
-procedure TMultimapClass<TKey, TValue>.Add(const AKey: TKey; const AValues: array of TValue);
+procedure TMultimapClass<TKey, TValue>.Add(const AKey: TKey; const AValues: TArray<TValue>);
 var
   MKey: TMultimapKey;
   i: Integer;
@@ -990,7 +990,7 @@ begin
     FCount.AddOrSetValue(AEnum.Key, LastKey.Number);
 end;
 
-procedure TMultimapClass<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: array of TValue);
+procedure TMultimapClass<TKey, TValue>.RemoveValues(const AKey: TKey; const AValues: TArray<TValue>);
 var
   S: TSetClass<TValue>;
   E: TValueEnumerator;

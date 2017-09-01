@@ -18,7 +18,7 @@ uses
 type
   TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
 
-  { Generic class for set. }
+  { Generic class for unordered set }
   TSetClass<T> = class(TEnumerableExt<T>)
   public
     type
@@ -41,39 +41,46 @@ type
     function GetComparer: IEqualityComparer<T>;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetOwnsValues: boolean;
-    function GetAsArray: TArray<T>;
     function GetAsString: string;
 
   public
     constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const AValues: array of T; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
     constructor Create(const AValues: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
     constructor Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp; AComparer: IEqualityComparer<T> = nil); overload;
 
     destructor Destroy; override;
+
     function GetEnumerator: TEnumerator; reintroduce;
+
     procedure Add(const AValue: T); overload;
     procedure Add(const ASet: array of T); overload;
     procedure Add(const AValues: TEnumerable<T>); overload;
+
     procedure IncludeLogicalAnd(const A,B: TSetClass<T>);
     procedure IncludeLogicalOr(const A,B: TSetClass<T>);
     procedure IncludeLogicalXor(const A,B: TSetClass<T>);
+
     procedure Include(const AValue: T); overload;
     procedure Include(const ASet: array of T); overload;
     procedure Include(const AValues: TEnumerable<T>); overload;
+
     procedure Remove(const AValue: T); overload;
     procedure Remove(const ASet: array of T); overload;
     procedure Remove(const AValues: TEnumerable<T>); overload;
+
     function Contains(const AValue: T): boolean; overload;
     function Contains(const ASet: array of T): boolean; overload;
     function Contains(const AValues: TEnumerable<T>): boolean; overload;
+
     procedure Clear;
     function Empty: Boolean;
+    function ToArray: TArray<T>; override;
+
     property Count: integer read GetCount;
     property Comparer: IEqualityComparer<T> read GetComparer;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property AsString: string read GetAsString;
-    property AsArray: TArray<T> read GetAsArray;
   end;
 
   {  Example:
@@ -113,15 +120,14 @@ type
     function GetReadonly: TSetClass<T>;
     function GetReadWrite: TSetClass<T>;
     function GetAsString: string;
-    function GetAsArray: TArray<T>;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetCount: integer;
     function GetEmpty: Boolean;
     function GetCollection: TEnumerable<T>;
 
-    property ReadOnly: TSetClass<T> read GetReadonly;
-    property ReadWrite: TSetClass<T> read GetReadWrite;
+    property RO: TSetClass<T> read GetReadonly;
+    property RW: TSetClass<T> read GetReadWrite;
   public
     type
       TEnumerator = TSetClass<T>.TEnumerator;
@@ -155,6 +161,7 @@ type
     function Contains(a: TSet<T>) : Boolean; overload;
 
     function Copy: TSet<T>;
+    function ToArray: TArray<T>;
 
     procedure Clear;
 
@@ -216,7 +223,7 @@ type
     class operator LogicalXor(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
 
     property AsString: string read GetAsString;
-    property AsArray: TArray<T> read GetAsArray;
+    property AsArray: TArray<T> read ToArray; { Deprecated }
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property Empty: Boolean read GetEmpty;
     property Count: integer read GetCount;
@@ -250,9 +257,9 @@ begin
   FComparerCopy := AComparer;
 end;
 
-constructor TSetClass<T>.Create(const AValues: array of T; AComparer: IEqualityComparer<T> = nil);
+constructor TSetClass<T>.Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil);
 begin
-  Create(0, AComparer);
+  Create(Length(AValues), AComparer);
   Add(AValues);
 end;
 
@@ -340,7 +347,7 @@ begin
   result := FSet.Count=0;
 end;
 
-function TSetClass<T>.GetAsArray: TArray<T>;
+function TSetClass<T>.ToArray: TArray<T>;
 var
   i: Integer;
   Value: T;
@@ -352,6 +359,7 @@ begin
     Result[i] := Value;
     inc(i);
   end;
+  Assert(Count=i);
 end;
 
 function TSetClass<T>.GetAsString: string;
@@ -360,7 +368,7 @@ var
   Value: T;
   Buf: TStringBuffer;
 begin
-  Arr := AsArray;
+  Arr := ToArray;
   TArray.Sort<T>(Arr);
   Buf.Clear;
   for Value in Arr do
@@ -534,7 +542,7 @@ end;
 
 procedure TSet<T>.Add(const V: T);
 begin
-  ReadWrite.Include(V);
+  RW.Include(V);
 end;
 
 procedure TSet<T>.Add(const V: TEnumerable<T>);
@@ -542,7 +550,7 @@ var
   D: TSetClass<T>;
   Value: T;
 begin
-  D := ReadWrite;
+  D := RW;
   for Value in V do
     D.Include(Value);
 end;
@@ -552,7 +560,7 @@ var
   D: TSetClass<T>;
   Value: T;
 begin
-  D := ReadWrite;
+  D := RW;
   for Value in V do
     D.Include(Value);
 end;
@@ -562,8 +570,8 @@ var
   S,D: TSetClass<T>;
   Value: T;
 begin
-  D := ReadWrite;
-  S := V.ReadOnly;
+  D := RW;
+  S := V.RO;
   for Value in S do
     D.Include(Value);
 end;
@@ -574,7 +582,7 @@ var
   Enum: TEnumerable<T>;
   Value: T;
 begin
-  D := ReadWrite;
+  D := RW;
   for Enum in V do
     for Value in Enum do
       D.Include(Value);
@@ -587,7 +595,7 @@ end;
 
 function TSet<T>.GetEnumerator: TEnumerator;
 begin
-  result := Readonly.GetEnumerator;
+  result := RO.GetEnumerator;
 end;
 
 function TSet<T>.GetReadonly:TSetClass<T>;
@@ -625,55 +633,50 @@ begin
   FSetInt := TInterfacedObject<TSetClass<T>>.Create( TSetClass<T>.Create(ACapacity, C) );
 end;
 
-function TSet<T>.GetAsArray: TArray<T>;
-begin
-  Result := Readonly.AsArray;
-end;
-
 function TSet<T>.GetOwnsValues: boolean;
 begin
-  result := ReadOnly.OwnsValues;
+  result := RO.OwnsValues;
 end;
 
 procedure TSet<T>.SetOwnsValues(AOwnsValues: boolean);
 begin
   if AOwnsValues<>OwnsValues then
-    ReadWrite.OwnsValues := AOwnsValues;
+    RW.OwnsValues := AOwnsValues;
 end;
 
 function TSet<T>.GetAsString: string;
 begin
-  Result := Readonly.AsString;
+  Result := RO.AsString;
 end;
 
 function TSet<T>.Contains(const a: T) : Boolean;
 begin
-  result := ReadOnly.Contains(a);
+  result := RO.Contains(a);
 end;
 
 function TSet<T>.Contains(const a: TEnumerable<T>) : Boolean;
 begin
-  result := ReadOnly.Contains(a);
+  result := RO.Contains(a);
 end;
 
 function TSet<T>.Contains(a: TSet<T>) : Boolean;
 begin
-  result := ReadOnly.Contains(a.ReadOnly);
+  result := RO.Contains(a.RO);
 end;
 
 class operator TSet<T>.In(const a: TEnumerable<T>; b: TSet<T>): Boolean;
 begin
-  result := b.ReadOnly.Contains(a);
+  result := b.RO.Contains(a);
 end;
 
 class operator TSet<T>.In(const a: T; b: TSet<T>): Boolean;
 begin
-  result := b.ReadOnly.Contains(a);
+  result := b.RO.Contains(a);
 end;
 
 class operator TSet<T>.In(a, b: TSet<T>): Boolean;
 begin
-  result := b.ReadOnly.Contains(a.ReadOnly);
+  result := b.RO.Contains(a.RO);
 end;
 
 class operator TSet<T>.Implicit(const a: T): TSet<T>;
@@ -731,9 +734,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
-  D.Include(b.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
+  D.Include(b.RO);
 end;
 
 class operator TSet<T>.Add(a: TSet<T>; const b: T): TSet<T>;
@@ -741,8 +744,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Include(b);
 end;
 
@@ -751,8 +754,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Include(b);
 end;
 
@@ -761,8 +764,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Include(b);
 end;
 
@@ -771,9 +774,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Include(b.ReadOnly);
+  D.Include(b.RO);
 end;
 
 class operator TSet<T>.Add(const a: array of T; b: TSet<T>): TSet<T>;
@@ -781,9 +784,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Include(b.ReadOnly);
+  D.Include(b.RO);
 end;
 
 class operator TSet<T>.Add(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
@@ -791,9 +794,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Include(b.ReadOnly);
+  D.Include(b.RO);
 end;
 
 procedure TSet<T>.Clear;
@@ -803,12 +806,12 @@ end;
 
 function TSet<T>.GetCollection: TEnumerable<T>;
 begin
-  result := Readonly;
+  result := RO;
 end;
 
 function TSet<T>.GetCount: integer;
 begin
-  result := ReadOnly.Count;
+  result := RO.Count;
 end;
 
 constructor TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
@@ -853,22 +856,22 @@ end;
 
 procedure TSet<T>.Remove(const V: TEnumerable<T>);
 begin
-  ReadWrite.Remove(V);
+  RW.Remove(V);
 end;
 
 procedure TSet<T>.Remove(const V: array of T);
 begin
-  ReadWrite.Remove(V);
+  RW.Remove(V);
 end;
 
 procedure TSet<T>.Remove(const V: T);
 begin
-  ReadWrite.Remove(V);
+  RW.Remove(V);
 end;
 
 procedure TSet<T>.Remove(V: TSet<T>);
 begin
-  ReadWrite.Remove(V.ReadOnly);
+  RW.Remove(V.RO);
 end;
 
 procedure TSet<T>.Remove(const V: array of TEnumerable<T>);
@@ -876,7 +879,7 @@ var
   i: integer;
   D: TSetClass<T>;
 begin
-  D := ReadWrite;
+  D := RW;
   for i := 0 to High(v) do
     D.Remove(V[i]);
 end;
@@ -885,8 +888,8 @@ class operator TSet<T>.Equal(a, b: TSet<T>): Boolean;
 var
   S,D: TSetClass<T>;
 begin
-  S := a.ReadOnly;
-  D := b.ReadOnly;
+  S := a.RO;
+  D := b.RO;
   result := (S.Count=D.Count) and D.Contains(S);
 end;
 
@@ -896,7 +899,7 @@ var
   D: TSetClass<T>;
   N: Integer;
 begin
-  D := a.ReadOnly;
+  D := a.RO;
   N := 0;
   for Value in b do
     if D.Contains(Value) then
@@ -921,8 +924,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Remove(b);
 end;
 
@@ -931,9 +934,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
-  D.Remove(b.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
+  D.Remove(b.RO);
 end;
 
 class operator TSet<T>.Subtract(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
@@ -941,8 +944,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Remove(b);
 end;
 
@@ -951,8 +954,8 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Remove(b);
 end;
 
@@ -961,9 +964,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Remove(b.ReadOnly);
+  D.Remove(b.RO);
 end;
 
 class operator TSet<T>.Subtract(const a: array of T; b: TSet<T>): TSet<T>;
@@ -971,9 +974,9 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Remove(b.ReadOnly);
+  D.Remove(b.RO);
 end;
 
 class operator TSet<T>.Subtract(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
@@ -981,9 +984,14 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
+  D := result.RW;
   D.Include(a);
-  D.Remove(b.ReadOnly);
+  D.Remove(b.RO);
+end;
+
+function TSet<T>.ToArray: TArray<T>;
+begin
+  result := RO.ToArray;
 end;
 
 class operator TSet<T>.GreaterThanOrEqual(a, b: TSet<T>): Boolean;
@@ -1029,7 +1037,7 @@ end;
 class operator TSet<T>.LogicalAnd(a, b: TSet<T>): TSet<T>;
 begin
   result.FSetInt := nil;
-  result.ReadWrite.IncludeLogicalAnd(a.ReadOnly, b.ReadOnly);
+  result.RW.IncludeLogicalAnd(a.RO, b.RO);
 end;
 
 class operator TSet<T>.LogicalAnd(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
@@ -1038,8 +1046,8 @@ var
   Value: T;
 begin
   result.FSetInt := nil;
-  S := a.ReadOnly;
-  R := result.ReadWrite;
+  S := a.RO;
+  R := result.RW;
   for Value in b do
     if S.Contains(Value) then
       R.Include(Value);
@@ -1048,7 +1056,7 @@ end;
 class operator TSet<T>.LogicalOr(a, b: TSet<T>): TSet<T>;
 begin
   result.FSetInt := nil;
-  result.ReadWrite.IncludeLogicalOr(a.ReadOnly, b.ReadOnly);
+  result.RW.IncludeLogicalOr(a.RO, b.RO);
 end;
 
 class operator TSet<T>.LogicalOr(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
@@ -1056,15 +1064,15 @@ var
   D: TSetClass<T>;
 begin
   result.FSetInt := nil;
-  D := result.ReadWrite;
-  D.Include(a.ReadOnly);
+  D := result.RW;
+  D.Include(a.RO);
   D.Include(b);
 end;
 
 class operator TSet<T>.LogicalXor(a, b: TSet<T>): TSet<T>;
 begin
   result.FSetInt := nil;
-  result.ReadWrite.IncludeLogicalXor(a.ReadOnly, b.ReadOnly);
+  result.RW.IncludeLogicalXor(a.RO, b.RO);
 end;
 
 class operator TSet<T>.LogicalXor(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
