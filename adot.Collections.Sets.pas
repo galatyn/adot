@@ -22,8 +22,8 @@ type
   TSetClass<T> = class(TEnumerableExt<T>)
   public
     type
-      TEnumerator = TDictionary<T, TEmptyRec>.TKeyEnumerator;
-
+      { TObjectDictionary (Delphi 10.2.1) doesn't allow to change Ownership for existing objects,
+        we can provide Ownership in constructor only. We implement own version of ObjectDictionary to fix it. }
       TSetObjectDictionary<TSetDictKey,TSetDictValue> = class(TDictionary<TSetDictKey,TSetDictValue>)
       protected
         OwnsKeys: boolean;
@@ -41,7 +41,6 @@ type
     function GetComparer: IEqualityComparer<T>;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetOwnsValues: boolean;
-    function GetAsString: string;
 
   public
     constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
@@ -50,8 +49,6 @@ type
     constructor Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp; AComparer: IEqualityComparer<T> = nil); overload;
 
     destructor Destroy; override;
-
-    function GetEnumerator: TEnumerator; reintroduce;
 
     procedure Add(const AValue: T); overload;
     procedure Add(const ASet: array of T); overload;
@@ -80,7 +77,6 @@ type
     property Count: integer read GetCount;
     property Comparer: IEqualityComparer<T> read GetComparer;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
-    property AsString: string read GetAsString;
   end;
 
   {  Example:
@@ -119,7 +115,6 @@ type
 
     function GetReadonly: TSetClass<T>;
     function GetReadWrite: TSetClass<T>;
-    function GetAsString: string;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetCount: integer;
@@ -128,9 +123,8 @@ type
 
     property RO: TSetClass<T> read GetReadonly;
     property RW: TSetClass<T> read GetReadWrite;
+
   public
-    type
-      TEnumerator = TSetClass<T>.TEnumerator;
 
     { Record type TSet<T> can be used without constructor, use constructor only if you
       need some customization: set Capacity, provide custom comparer etc. }
@@ -140,7 +134,7 @@ type
     constructor Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
     constructor Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
 
-    function GetEnumerator: TEnumerator;
+    function GetEnumerator: TEnumerator<T>;
 
     procedure Add(const V: T); overload;
     procedure Add(const V: array of T); overload;
@@ -162,6 +156,7 @@ type
 
     function Copy: TSet<T>;
     function ToArray: TArray<T>;
+    function ToString: string;
 
     procedure Clear;
 
@@ -222,8 +217,6 @@ type
     class operator LogicalXor(a: TSet<T>;       b: TSet<T>): TSet<T>;
     class operator LogicalXor(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
 
-    property AsString: string read GetAsString;
-    property AsArray: TArray<T> read ToArray; { Deprecated }
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property Empty: Boolean read GetEmpty;
     property Count: integer read GetCount;
@@ -339,7 +332,7 @@ end;
 
 function TSetClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
-  Result := GetEnumerator;
+  result := FSet.Keys.GetEnumerator;
 end;
 
 function TSetClass<T>.Empty: Boolean;
@@ -354,26 +347,12 @@ var
 begin
   SetLength(Result, Count);
   i := 0;
-  for Value in Self do
+  for Value in FSet.Keys do
   begin
     Result[i] := Value;
     inc(i);
   end;
   Assert(Count=i);
-end;
-
-function TSetClass<T>.GetAsString: string;
-var
-  Arr: TArray<T>;
-  Value: T;
-  Buf: TStringBuffer;
-begin
-  Arr := ToArray;
-  TArray.Sort<T>(Arr);
-  Buf.Clear;
-  for Value in Arr do
-    Buf.Write(IfThen(Buf.Empty,'',' ') + TRttiUtils.ValueAsString<T>(Value));
-  Result := Buf.Text;
 end;
 
 function TSetClass<T>.GetComparer: IEqualityComparer<T>;
@@ -384,11 +363,6 @@ end;
 function TSetClass<T>.GetCount: integer;
 begin
   result := FSet.Count;
-end;
-
-function TSetClass<T>.GetEnumerator: TEnumerator;
-begin
-  result := FSet.Keys.GetEnumerator;
 end;
 
 procedure TSetClass<T>.Remove(const ASet: array of T);
@@ -593,7 +567,7 @@ begin
   result := Count = 0;
 end;
 
-function TSet<T>.GetEnumerator: TEnumerator;
+function TSet<T>.GetEnumerator: TEnumerator<T>;
 begin
   result := RO.GetEnumerator;
 end;
@@ -640,13 +614,7 @@ end;
 
 procedure TSet<T>.SetOwnsValues(AOwnsValues: boolean);
 begin
-  if AOwnsValues<>OwnsValues then
-    RW.OwnsValues := AOwnsValues;
-end;
-
-function TSet<T>.GetAsString: string;
-begin
-  Result := RO.AsString;
+  RW.OwnsValues := AOwnsValues;
 end;
 
 function TSet<T>.Contains(const a: T) : Boolean;
@@ -992,6 +960,11 @@ end;
 function TSet<T>.ToArray: TArray<T>;
 begin
   result := RO.ToArray;
+end;
+
+function TSet<T>.ToString: string;
+begin
+  result := RO.ToString;
 end;
 
 class operator TSet<T>.GreaterThanOrEqual(a, b: TSet<T>): Boolean;

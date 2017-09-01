@@ -7,13 +7,16 @@ uses
   System.Generics.Defaults,
   System.Classes,
   System.SysUtils,
-  System.StrUtils;
+  System.StrUtils,
+  System.Math;
 
 type
   TEnumerableExt<T> = class(TEnumerable<T>)
   protected
     class procedure DoSaveToStream(Src: TEnumerable<T>; Dst: TStream; Encoding: TEncoding = nil); static;
     class procedure DoSaveToFile(Src: TEnumerable<T>; const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True); static;
+    class function ArrayToString(const Src: TArray<T>; Index,Count: integer): string; overload;
+    class function ArrayToString(const Src: TArray<T>): string; overload;
 
   public
     procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
@@ -75,6 +78,30 @@ end;
 procedure TEnumerableExt<T>.SaveToStream(Dst: TStream; Encoding: TEncoding);
 begin
   DoSaveTostream(Self, dst, Encoding);
+end;
+
+class function TEnumerableExt<T>.ArrayToString(const Src: TArray<T>): string;
+begin
+  result := ArrayToString(Src, 0, Length(Src));
+end;
+
+class function TEnumerableExt<T>.ArrayToString(const Src: TArray<T>; Index, Count: integer): string;
+var
+  Builder: TStringBuilder;
+  I: integer;
+begin
+  Builder := TStringBuilder.Create;
+  try
+    for I := Index to Min(Index+Count-1, High(Src)) do
+    begin
+      if I > Index then
+        Builder.Append(#13#10);
+      Builder.Append(TRttiUtils.ValueAsString<T>(Src[I]));
+    end;
+    result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
 end;
 
 function TEnumerableExt<T>.ToString: string;
