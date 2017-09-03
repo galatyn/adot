@@ -29,6 +29,12 @@ uses
   Winapi.ShellAPI,
   Winapi.Windows,
   Winapi.Messages,
+  Vcl.ActnList,
+  Vcl.ExtCtrls,
+  Vcl.Forms,
+  Vcl.Graphics,
+  Vcl.Menus,
+  Vcl.Controls,
   System.Classes,
   System.SysUtils,
   System.Math,
@@ -37,12 +43,7 @@ uses
   System.Generics.Defaults,
   System.StrUtils,
   System.Types,
-  Vcl.ActnList,
-  Vcl.ExtCtrls,
-  Vcl.Forms,
-  Vcl.Graphics,
-  Vcl.Menus,
-  Vcl.Controls;
+  System.DateUtils, System.SyncObjs;
 
 type
 
@@ -228,6 +229,33 @@ type
     class function CopyFile(
       const SrcFileName,DstFileName : string;
         out ErrorMessage            : string): boolean; overload;
+  end;
+
+  TDebouncedEvent = class(TComponent)
+  private
+    class var
+      FInstCount: integer;
+    var
+      FSrcEvent: TNotifyEvent;
+      FMinInterval: integer;
+      FTimer: TTimer;
+      FSender: TObject;
+      FLastCallTime: TDateTime;
+
+    procedure OnTimer(Sender: TObject);
+    procedure EventHandler(Sender: TObject);
+    function GetDebouncedEvent: TNotifyEvent;
+    procedure CallSrcHandler(Sender: TObject);
+
+  public
+    constructor Create(AOwner: TComponent; AEventToDebounce: TNotifyEvent; AMinIntervalMs: integer); reintroduce;
+    destructor Destroy; override;
+
+    class function Debounce(AOwner: TComponent; AEventToDebounce: TNotifyEvent; AMinIntervalMs: integer): TNotifyEvent; static;
+
+    property DebouncedEvent: TNotifyEvent read GetDebouncedEvent;
+    property SourceEvent: TNotifyEvent read FSrcEvent;
+    class property InstanceCount: integer read FInstCount;
   end;
 
 implementation
@@ -528,16 +556,17 @@ class function TAppActions.FindFormActions(
   ATest                   : TFunc<TComponent,Boolean>
 ): TList<TAppActions.TVerb>;
 var
+  AutoFreeCollection: TAutoFreeCollection;
+  AddedItems: TDictionary<string, boolean>;
   InnholdSoek: Boolean;
   i: Integer;
   Cmp: TComponent;
   Tekst: String;
   Indeks: Integer;
-  AddedItems: TAutoFree<TDictionary<string, boolean>>;
   S: string;
 begin
   Assert(AForm <> nil, 'HostForm ikke satt under init.');
-  AddedItems.Value := TDictionary<string, boolean>.Create;
+  AddedItems := AutoFreeCollection.Add( TDictionary<string, boolean>.Create );
 
   InnholdSoek := Trim(ASoeketekst).StartsWith('*');
   while Trim(ASoeketekst).StartsWith('*') do
@@ -553,11 +582,11 @@ begin
         Cmp := TComponent(AExtraComponents.Objects[i]);
         if TAppActions.ComponentExecutable(Cmp) and
           (TAppActions.ComponentAccessible(Cmp) or Assigned(ATest) and ATest(Cmp)) and
-          FilterAccept(AExtraComponents[i], ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+          FilterAccept(AExtraComponents[i], ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems)
         then
         begin
           result.Add(TAppActions.TVerb.Create(Tekst, AExtraComponents.Objects[i] as TComponent));
-          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+          AddedItems.Add(AnsiLowerCase(Tekst), False);
         end;
       end;
 
@@ -574,11 +603,11 @@ begin
             TAppActions.ComponentAccessible(Cmp) or
             Assigned(ATest) and ATest(Cmp)
           ) and
-          FilterAccept(TMenuItem(Cmp).Caption, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value)
+          FilterAccept(TMenuItem(Cmp).Caption, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems)
         then
         begin
           result.Add(TAppActions.TVerb.Create(Tekst, Cmp));
-          AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+          AddedItems.Add(AnsiLowerCase(Tekst), False);
         end;
 
       if (AAutoAppendActionsTag<>0) and (Cmp is TAction) then
@@ -593,10 +622,10 @@ begin
           {Hint/Caption can be modified inside of TAction.Update. That is why we call ComponentAccessible
             first (it will trigger TAction.Update) and only after that we read Caption/Hint for processing }
           S := MixCaptionAndHint(TAction(Cmp));
-          if FilterAccept(S, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems.Value) then
+          if FilterAccept(S, ASoeketekst, InnholdSoek, Tekst, Indeks, AddedItems) then
           begin
             result.Add(TAppActions.TVerb.Create(Tekst, AForm.components[i]));
-            AddedItems.Value.Add(AnsiLowerCase(Tekst), False);
+            AddedItems.Add(AnsiLowerCase(Tekst), False);
           end;
         end;
 
@@ -1059,6 +1088,70 @@ begin
     else H := '0';
   P := '$'+THex.PointerToHex(C);
   result := format('%s: %s (hwnd=%s, ptr=%s)', [C.Name, C.Classname, H, P]);
+end;
+
+{ TDebouncedEvent }
+
+constructor TDebouncedEvent.Create(AOwner: TComponent; AEventToDebounce: TNotifyEvent; AMinIntervalMs: integer);
+begin
+  inherited Create(AOwner);
+  FSrcEvent := AEventToDebounce;
+  FMinInterval := AMinIntervalMs;
+  FTimer := TTimer.Create(Self);
+  FTimer.Interval := FMinInterval;
+  FTimer.OnTimer := OnTimer;
+  FTimer.Enabled := False;
+  TInterlocked.Increment(FInstCount);
+end;
+
+destructor TDebouncedEvent.Destroy;
+begin
+  TInterlocked.Decrement(FInstCount);
+  Sys.FreeAndNil(FTimer);
+  inherited;
+end;
+
+procedure TDebouncedEvent.EventHandler(Sender: TObject);
+var
+  ElapsedTimeMs: Int64;
+begin
+  ElapsedTimeMs := MilliSecondsBetween(Now, FLastCallTime);
+  if ElapsedTimeMs >= FMinInterval then
+  begin
+    FTimer.Enabled := False;
+    CallSrcHandler(Sender);
+  end
+  else
+  begin
+    FSender := Sender;
+    if not FTimer.Enabled then
+    begin
+      FTimer.Interval := FMinInterval - ElapsedTimeMs;
+      FTimer.Enabled := True;
+    end;
+  end;
+end;
+
+procedure TDebouncedEvent.OnTimer(Sender: TObject);
+begin
+  FTimer.Enabled := False;
+  CallSrcHandler(FSender);
+end;
+
+procedure TDebouncedEvent.CallSrcHandler(Sender: TObject);
+begin
+  FSrcEvent(Sender);
+  FLastCallTime := Now;
+end;
+
+function TDebouncedEvent.GetDebouncedEvent: TNotifyEvent;
+begin
+  result := EventHandler;
+end;
+
+class function TDebouncedEvent.Debounce(AOwner: TComponent; AEventToDebounce: TNotifyEvent; AMinIntervalMs: integer): TNotifyEvent;
+begin
+  result := TDebouncedEvent.Create(AOwner, AEventToDebounce, AMinIntervalMs).DebouncedEvent;
 end;
 
 end.

@@ -258,7 +258,9 @@ type
     class function GetCurrencyAsFloat(var Value): Double; static;
     class function GetStringAsFloat(var Value): Double; static;
 //    class function GetUnicodeStringAsFloat(var Value): Double; static;
-    class function GetWideStringAsFloat(var Value): Double; static;
+    {$IF Defined(MSWindows)}
+      class function GetWideStringAsFloat(var Value): Double; static;
+    {$EndIf}
     class function GetVariantAsFloat(var Value): Double; static;
 
     class procedure SetByteAsFloat(const Src: Double; var Value); static;
@@ -277,7 +279,9 @@ type
     class procedure SetCurrencyAsFloat(const Src: Double; var Value); static;
     class procedure SetStringAsFloat(const Src: Double; var Value); static;
 //    class procedure SetUnicodeStringAsFloat(const Src: Double; var Value); static;
-    class procedure SetWideStringAsFloat(const Src: Double; var Value); static;
+    {$IF Defined(MSWindows)}
+      class procedure SetWideStringAsFloat(const Src: Double; var Value); static;
+    {$EndIf}
     class procedure SetVariantAsFloat(const Src: Double; var Value); static;
 
   public
@@ -304,7 +308,9 @@ begin
     varDouble   : AHelper.SetAccessProc(GetDoubleAsFloat, SetDoubleAsFloat, SizeOf(Double));
     varCurrency : AHelper.SetAccessProc(GetCurrencyAsFloat, SetCurrencyAsFloat, SizeOf(Currency));
 //    varDate     = $0007; { vt_date         7 }
+  {$IF Defined(MSWindows)}
     varOleStr   : AHelper.SetAccessProc(GetWideStringAsFloat, SetWideStringAsFloat, SizeOf(WideString));
+  {$EndIf}
 //    varDispatch = $0009; { vt_dispatch     9 }
 //    varError    = $000A; { vt_error       10 }
 //    varBoolean  = $000B; { vt_bool        11 }
@@ -431,11 +437,13 @@ begin
   result := TVar.ToFloatDef(Variant(Value), 0);
 end;
 
+{$IF Defined(MSWindows)}
 class function TUnifiedVarAccess.GetWideStringAsFloat(var Value): Double;
 begin
   if not TryStrToFloat(WideString(Value), result) then
     result := 0;
 end;
+{$EndIf}
 
 class function TUnifiedVarAccess.GetWordAsFloat(var Value): Double;
 begin
@@ -522,10 +530,12 @@ begin
   Variant(Value) := Src;
 end;
 
+{$IF Defined(MSWindows)}
 class procedure TUnifiedVarAccess.SetWideStringAsFloat(const Src: Double; var Value);
 begin
   WideString(Value) := FloatToStr(Src);
 end;
+{$EndIf}
 
 class procedure TUnifiedVarAccess.SetWordAsFloat(const Src: Double; var Value);
 begin
@@ -951,15 +961,19 @@ begin
     vtObject        :
       if Value.VObject = nil
         then result := 'TObject(nil)'
-        else result := Value.VObject.ClassName + '($' + THex.PointerToHex(Value.VObject) + ')';
+        else result := TObject(Value.VObject).ClassName + '($' + THex.PointerToHex(Value.VObject) + ')';
     vtClass         : result := Value.VClass.ClassName;
     vtWideChar      : result := Value.VWideChar;
     vtPWideChar     : result := Value.VPWideChar^;
-    vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    {$IF Defined(MSWindows)}
+      vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    {$EndIf}
     vtCurrency      : result := CurrToStr(Value.VCurrency^);
     vtVariant       : result := TVar.ToStringDef(Value.VVariant^);
     vtInterface     : result := 'Interface($' + THex.PointerToHex(Value.VInterface) + ')';
-    vtWideString    : result := WideString(Value.VWideString);
+    {$IF Defined(MSWindows)}
+      vtWideString    : result := WideString(Value.VWideString);
+    {$EndIf}
     vtInt64         : result := Value.VInt64^.ToString;
     vtUnicodeString : result := String(Value.VUnicodeString);
   end;
@@ -981,11 +995,15 @@ begin
     vtClass         : result := VarRecAsString(Value);
     vtWideChar      : result := Value.VWideChar;
     vtPWideChar     : result := Value.VPWideChar^;
-    vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    {$IF Defined(MSWindows)}
+      vtAnsiString    : result := UnicodeString(AnsiString(Value.VAnsiString));
+    {$EndIf}
     vtCurrency      : result := Value.VCurrency^;
     vtVariant       : result := Value.VVariant^;
     vtInterface     : result := VarRecAsString(Value);
-    vtWideString    : result := WideString(Value.VWideString);
+    {$IF Defined(MSWindows)}
+      vtWideString    : result := WideString(Value.VWideString);
+    {$EndIf}
     vtInt64         : result := Value.VInt64^;
     vtUnicodeString : result := String(Value.VUnicodeString);
   end;

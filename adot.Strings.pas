@@ -442,7 +442,9 @@ type
         TextStartPos - position where text starts excluding BOM
         TextIsFragment - True if Text is (possibly) cut at the end, for example when we test first bytes of the file }
     class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
-      out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; static;
+      out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding; overload; static;
+    class function DetectEncoding(const Text: TArray<Byte>; Count: integer;
+      out TextStartPos: integer; TextIsFragment: boolean; out AEncoding: TEncoding): TTextEncoding; overload; static;
 
     { Will try to detect code page of input. Advantages over TEncoding.GetEncoding (Delphi 10.2):
         - supports UTF32 (little endian / big endian)
@@ -469,29 +471,39 @@ type
   { implementation of UTF32 big endian }
   TBigEndianUTF32Encoding = class(TUnicodeEncoding)
   strict protected
+    class var
+      FBigEndianUnicode32: TEncoding;
+
     function GetByteCount(Chars: PChar; CharCount: Integer): Integer; overload; override;
     function GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer; overload; override;
     function GetCharCount(Bytes: PByte; ByteCount: Integer): Integer; overload; override;
     function GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer; overload; override;
     function GetCodePage: Cardinal; override;
     function GetEncodingName: string; override;
+    class function GetBigEndianUnicode32: TEncoding; static;
   public
     function Clone: TEncoding; override;
     function GetPreamble: TBytes; override;
     function GetMaxByteCount(CharCount: Integer): Integer; override;
     function GetMaxCharCount(ByteCount: Integer): Integer; override;
+    class property BigEndianUnicode32: TEncoding read GetBigEndianUnicode32;
   end;
 
   { implementation of UTF32 little endian }
   TLittleEndianUTF32Encoding = class(TBigEndianUTF32Encoding)
   strict protected
+    class var
+      FLittleEndianUnicode32: TEncoding;
+
     function GetBytes(Chars: PChar; CharCount: Integer; Bytes: PByte; ByteCount: Integer): Integer; overload; override;
     function GetChars(Bytes: PByte; ByteCount: Integer; Chars: PChar; CharCount: Integer): Integer; overload; override;
     function GetCodePage: Cardinal; override;
     function GetEncodingName: string; override;
+    class function GetLittleEndianUnicode32: TEncoding; static;
   public
     function Clone: TEncoding; override;
     function GetPreamble: TBytes; override;
+    class property LittleEndianUnicode32: TEncoding read GetLittleEndianUnicode32;
   end;
 
   { Usually all chars of text belong to one code page.
@@ -2486,6 +2498,22 @@ begin
   result := DetectCodepage(AText, CodePage);
   if result then
     Encoding := TStr.GetEncoding(CodePage);
+end;
+
+class function TStr.DetectEncoding(const Text: TArray<Byte>; Count: integer; out TextStartPos: integer; TextIsFragment: boolean;
+  out AEncoding: TEncoding): TTextEncoding;
+begin
+  result := DetectEncoding(Text, Count, TextStartPos, TextIsFragment);
+  case result of
+    teUnknown : AEncoding := nil;
+    teAnsi    : AEncoding := TEncoding.ANSI;
+    teUTF8    : AEncoding := TEncoding.UTF8;
+    teUTF16LE : AEncoding := TEncoding.Unicode;
+    teUTF16BE : AEncoding := TEncoding.BigEndianUnicode;
+    teUTF32LE : AEncoding := TLittleEndianUTF32Encoding.LittleEndianUnicode32;
+    teUTF32BE : AEncoding := TBigEndianUTF32Encoding.BigEndianUnicode32;
+    else AEncoding := nil;
+  end;
 end;
 
 class function TStr.DetectCodepage(const AText: TArray<byte>; Count: integer; out CodePage: Cardinal): boolean;
@@ -4555,6 +4583,23 @@ begin
   Result := TBigEndianUTF32Encoding.Create;
 end;
 
+class function TBigEndianUTF32Encoding.GetBigEndianUnicode32: TEncoding;
+var
+  LEncoding: TEncoding;
+begin
+  if FBigEndianUnicode32 = nil then
+  begin
+    LEncoding := TBigEndianUTF32Encoding.Create;
+
+    if AtomicCmpExchange(Pointer(FBigEndianUnicode32), Pointer(LEncoding), nil) <> nil then
+      LEncoding.Free;
+{$IFDEF AUTOREFCOUNT}
+    FBigEndianUnicode32.__ObjAddRef;
+{$ENDIF AUTOREFCOUNT}
+  end;
+  Result := FBigEndianUnicode32;
+end;
+
 function TBigEndianUTF32Encoding.GetByteCount(Chars: PChar; CharCount: Integer): Integer;
 begin
   Result := CharCount * 4;
@@ -4682,6 +4727,23 @@ begin
   {$IFDEF POSIX}
     Result := 'Unicode (UTF-32LE)'; // do not localize
   {$ENDIF POSIX}
+end;
+
+class function TLittleEndianUTF32Encoding.GetLittleEndianUnicode32: TEncoding;
+var
+  LEncoding: TEncoding;
+begin
+  if FLittleEndianUnicode32 = nil then
+  begin
+    LEncoding := TLittleEndianUTF32Encoding.Create;
+
+    if AtomicCmpExchange(Pointer(FLittleEndianUnicode32), Pointer(LEncoding), nil) <> nil then
+      LEncoding.Free;
+{$IFDEF AUTOREFCOUNT}
+    FLittleEndianUnicode32.__ObjAddRef;
+{$ENDIF AUTOREFCOUNT}
+  end;
+  Result := FLittleEndianUnicode32;
 end;
 
 function TLittleEndianUTF32Encoding.GetPreamble: TBytes;

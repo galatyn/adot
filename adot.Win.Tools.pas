@@ -26,6 +26,9 @@
   TWebBrowserUtils = class
     SetWebBrowserMode
 
+  TMessagePump = record
+    Can be used by threads to process messages
+
 }
 interface
 
@@ -33,6 +36,8 @@ uses
   adot.Types,
   adot.Tools,
   adot.Collections,
+  adot.Collections.Maps,
+  adot.Collections.Vectors,
   Winapi.TlHelp32,
   Winapi.Windows,
   Winapi.Messages,
@@ -45,7 +50,7 @@ uses
   System.Math,
   System.Threading,
   System.Classes,
-  Registry;
+  Registry, System.DateUtils;
 
 type
 
@@ -272,6 +277,22 @@ type
     property OnMessage: TOnMessage read FOnMessage write FOnMessage;
     property OnMessageRef: TOnMessageRef read FOnMessageRef write FOnMessageRef;
     property Handle: HWND read FWnd;
+  end;
+
+  TMessagePump = record
+  private
+    FTerminated: boolean;
+
+    function ProcessMessage(var Msg: TMsg): Boolean;
+
+  public
+    class function Create: TMessagePump; static;
+
+    procedure CreateMessageQueue;
+    procedure ProcessMessages;
+    procedure Sleep(AInterval: integer); { will keep processing messages! }
+
+    property Terminated: boolean read FTerminated;
   end;
 
   TPostpondJobId = int64;
@@ -1630,6 +1651,64 @@ end;
 procedure TDefferedJob.ScheduleTask(Proc: TProc);
 begin
   Job.Run(Proc, True);
+end;
+
+{ TMessagePump }
+
+class function TMessagePump.Create: TMessagePump;
+begin
+  result := Default(TMessagePump);
+end;
+
+procedure TMessagePump.CreateMessageQueue;
+var msg: tagMsg;
+begin
+  PeekMessage(msg, 0, WM_USER, WM_USER, PM_NOREMOVE);
+end;
+
+function TMessagePump.ProcessMessage(var Msg: TMsg): Boolean;
+var
+  Unicode: Boolean;
+  MsgExists: Boolean;
+begin
+  Result := False;
+  if not PeekMessage(Msg, 0, 0, 0, PM_NOREMOVE) then
+    Exit;
+  Unicode := (Msg.hwnd = 0) or IsWindowUnicode(Msg.hwnd);
+  if Unicode
+    then MsgExists := PeekMessageW(Msg, 0, 0, 0, PM_REMOVE)
+    else MsgExists := PeekMessageA(Msg, 0, 0, 0, PM_REMOVE);
+  if not MsgExists then
+    Exit;
+  Result := True;
+  if Msg.Message = WM_QUIT then
+    FTerminated := True
+  else
+  begin
+    TranslateMessage(Msg);
+    if Unicode
+      then DispatchMessageW(Msg)
+      else DispatchMessageA(Msg);
+  end;
+end;
+
+procedure TMessagePump.ProcessMessages;
+var
+  Msg: TMsg;
+begin
+  while ProcessMessage(Msg) do {loop};
+end;
+
+procedure TMessagePump.Sleep(AInterval: integer);
+var
+  StartSleepTime: Extended;
+  ElapsedTime: int64;
+begin
+  StartSleepTime := Now;
+  repeat
+    ProcessMessages;
+    ElapsedTime := MillisecondsBetween(Now, StartSleepTime);
+  until (ElapsedTime >= AInterval) or (MsgWaitForMultipleObjects(0, nil^, False, AInterval-ElapsedTime, QS_ALLEVENTS) = 258);
 end;
 
 end.

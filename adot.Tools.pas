@@ -96,10 +96,11 @@ uses
   adot.Collections.Maps,
   adot.Arithmetic,
   adot.Tools.Rtti,
-{$IFDEF MSWINDOWS}
-  { Preventing from "_Inline has not been expanded" }
-  Winapi.Windows,
-{$ENDIF}
+  {$If Defined(MSWindows)}
+    { Option "$HINTS OFF" doesn't hide following hint (Delphi 10.2.1), we add Windows here to suppress it:
+      H2443 Inline function 'RenameFile' has not been expanded because unit 'Winapi.Windows' is not specified in USES list }
+    Winapi.Windows,
+  {$EndIf}
   System.DateUtils,
   System.Types,
   System.Rtti,
@@ -973,6 +974,8 @@ type
     class function GetAll<T: class>(AStart: TComponent): TArray<T>; overload; static;
     { Generates unique component name }
     class function GetUniqueName: string; static;
+    { Creates copy of the component }
+    class function Copy<T: TComponent>(Src: T): T; static;
   end;
 
   { Executes custom action (procedure/method) when last instance goes out of scope (automatic finalization etc). }
@@ -3871,6 +3874,20 @@ begin
         Exit(False);
   end;
   result := True;
+end;
+
+class function TComponentUtils.Copy<T>(Src: T): T;
+var
+  MemoryStream: TMemoryStream;
+begin
+  MemoryStream := TMemoryStream.Create;
+  try
+    MemoryStream.WriteComponent(Src);
+    MemoryStream.Seek(0, soFromBeginning);
+    Result := MemoryStream.ReadComponent(nil) as T;
+  finally
+    MemoryStream.free;
+  end;
 end;
 
 class procedure TComponentUtils.ForEach(AStart: TComponent; ACallback: TProc<TComponent>);
