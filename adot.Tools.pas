@@ -510,6 +510,7 @@ type
     class function Contains<T>(const Template,Data: TArray<T>; AComparer: IEqualityComparer<T> = nil): boolean; overload; static;
     class function Sorted<T>(const Arr: TArray<T>; AComparer: IComparer<T> = nil): boolean; overload; static;
     class function Sorted<T>(const Arr: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil): boolean; overload; static;
+    class procedure Sort<T>(var Arr: TArray<T>; AComparer: TComparison<T>); static;
   end;
 
   { Check TDateTime correctness, convert to string etc }
@@ -1980,6 +1981,14 @@ end;
 class function TArrayUtils.Sorted<T>(const Arr: TArray<T>; AComparer: IComparer<T> = nil): boolean;
 begin
   result := Sorted<T>(Arr, 0, Length(Arr), AComparer);
+end;
+
+class procedure TArrayUtils.Sort<T>(var Arr: TArray<T>; AComparer: TComparison<T>);
+var
+  C: IComparer<T>;
+begin
+  C := TDelegatedComparer<T>.Create(AComparer);
+  TArray.Sort<T>(Arr, C);
 end;
 
 class function TArrayUtils.Sorted<T>(const Arr: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil): boolean;
