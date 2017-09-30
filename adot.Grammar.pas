@@ -259,189 +259,59 @@ type
     constructor Create;
   end;
 
-{ all possible expressions for TGrammar (used in right side of rule definition) }
-function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload;
+  TCustomLanguage = class
+  protected
+    function Ex(var AGrammar: TGrammar): TGrammar.TMedia; overload; virtual;
 
-function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload;
-function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
+    function Ex(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function Ex(ACharClass: TCharClass): TGrammar.TMedia; overload; virtual;
+    function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
 
-function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload;
-function Ex(Value: array of Byte): TGrammar.TMedia; overload;
-function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
-{function Ex(const ByteSet: TByteSet): TGrammar.TMedia; overload;
-function Ex(CharSet: TSet<Char>): TGrammar.TMedia; overload;
-function ExAnsi(const Value: AnsiString; ; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function ExAnsi(CharRangeFrom,CharRangeTo: AnsiChar; CaseSensitive: boolean = False): TGrammar.TMedia; overload;
-function ExAnsi(CharSet: TSet<AnsiChar>): TGrammar.TMedia; overload;
-}
+    function Ex(Value: TArray<Byte>): TGrammar.TMedia; overload; virtual;
+    function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload; virtual;
 
-function EOF: TGrammar.TMedia; overload;
+    function EOF: TGrammar.TMedia; overload; virtual;
 
-{ all possible repeaters for TGrammar (used as multiplyer of expression in right side of rule definiton) }
-function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange; overload;
-function Rep(AExactCount: integer): TGrammar.TRange; overload;
-function Rep: TGrammar.TRange; overload;
-function Rep1: TGrammar.TRange; overload;
-function Opt: TGrammar.TRange; overload;
+    { all possible repeaters for TGrammar (used as multiplyer of expression in right side of rule definiton) }
+    function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange; overload; virtual;
+    function Rep(AExactCount: integer): TGrammar.TRange; overload; virtual;
+    function Rep: TGrammar.TRange; overload; virtual;
+    function Rep1: TGrammar.TRange; overload; virtual;
+    function Opt: TGrammar.TRange; overload; virtual;
 
-{ optional - set readable names for grammar rules }
-procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
+    { optional - set readable names for grammar rules }
+    procedure SetNames(const Rules: array of TGrammar; const Names: array of string); virtual;
 
-{ Should be called after initialization of all rules, but before main rule will be used.
-  Fixes internal links etc. }
-procedure SetMainRule(var Rule: TGrammar);
+    { Should be called after initialization of all rules, but before main rule will be used.
+      Fixes internal links etc. }
+    procedure SetMainRule(var Rule: TGrammar); virtual;
+  end;
+
+  TCustomTextLang = class abstract(TCustomLanguage)
+  protected
+    WS: TGrammar;
+
+  public
+    constructor Create;
+
+    { Short notation for text expressions with optional leading whitespaces:
+        tex(A)
+      or
+        (Ex(WS)*Rep + Ex(A))
+    }
+    function tEx(var AGrammar: TGrammar): TGrammar.TMedia; overload; virtual;
+    function tEx(Value: String; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function tEx(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function tEx(ACharClass: TCharClass): TGrammar.TMedia; overload; virtual;
+    function tEx(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function tEx(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+    function tEx(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia; overload; virtual;
+  end;
 
 implementation
-
-procedure SetMainRule(var Rule: TGrammar);
-var
-  Queue: TArr<TGrammarClass>;
-  QueuedIds: TSet<int64>;
-  Operands: TArr<IInterfacedObject<TGrammarClass>>;
-  Item: TGrammarClass;
-  I: integer;
-begin
-  Assert(Rule.Grm<>nil, 'rule is not initialized');
-  Queue.Clear;
-  Queue.Add(Rule.Grm.Data);
-  QueuedIds.Clear;
-  QueuedIds.Add(Rule.Id);
-  repeat
-
-    { process next rule }
-    Item := Queue.ExtractLast;
-    if Item is TGrammarLink then
-    begin
-      Assert(TGrammarLink(Item).FLink.Grm<>nil, 'link is not initialized');
-      if TGrammarLink(Item).Op=nil then
-        TGrammarLink(Item).FOp := TGrammarLink(Item).FLink.Grm;
-    end;
-
-    { process operands of the rule }
-    Operands.Clear;
-    Item.GetOperands(Operands);
-    for I := 0 to Operands.Count-1 do
-    begin
-      Assert(Operands[I]<>nil, 'Operand is not initialized');
-      Item := Operands[I].Data;
-      if Item.Id in QueuedIds then
-        Continue;
-      QueuedIds.Add(Item.Id);
-      Queue.Add(Item);
-    end;
-  until Queue.Count=0;
-end;
-
-function Ex(var AGrammar: TGrammar): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarLink.Create(AGrammar));
-end;
-
-function Ex(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarString.Create(Value, CaseSensitive));
-end;
-
-function Ex(CharRangeFrom,CharRangeTo: Char; CaseSensitive: boolean): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarChar.Create(CharRangeFrom,CharRangeTo, CaseSensitive));
-end;
-
-function Ex(ACharClass: TCharClass): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharClass.Create(ACharClass));
-end;
-
-function Ex(const Chars: array of Char; CaseSensitive: boolean = False): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
-end;
-
-function Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean = False): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
-end;
-
-function Ex(Chars: TSet<Char>; CaseSensitive: boolean = False): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
-end;
-
-function Ex(Value: TArray<Byte>): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
-end;
-
-function Ex(Value: array of Byte): TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
-end;
-
-function Ex(Value: TEnumerable<Byte>): TGrammar.TMedia; overload;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
-end;
-
-{function Ex(const ByteSet: TByteSet): TGrammar.TMedia;
-begin
-aa
-end;
-
-function Ex(CharSet: TSet<Char>): TGrammar.TMedia;
-begin
-
-end;}
-
-procedure SetNames(const Rules: array of TGrammar; const Names: array of string);
-var
-  I: Integer;
-begin
-  Assert(Length(Rules)=Length(Names));
-  for I := Low(Rules) to High(Rules) do
-    Rules[I].Name := Names[I];
-end;
-
-function EOF: TGrammar.TMedia;
-begin
-  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarEOF.Create);
-end;
-
-function Rep(AMinCount,AMaxCount: integer): TGrammar.TRange;
-begin
-  result.MinCount := AMinCount;
-  if AMaxCount=integer(infinite) then
-    result.MaxCount := High(AMaxCount)
-  else
-    result.MaxCount := AMaxCount;
-end;
-
-function Rep(AExactCount: integer): TGrammar.TRange;
-begin
-  result.MinCount := AExactCount;
-  result.MaxCount := AExactCount;
-end;
-
-function Rep: TGrammar.TRange;
-begin
-  result.MinCount := 0;
-  result.MaxCount := High(result.MaxCount);
-end;
-
-function Rep1: TGrammar.TRange;
-begin
-  result.MinCount := 1;
-  result.MaxCount := High(result.MaxCount);
-end;
-
-function Opt: TGrammar.TRange;
-begin
-  result.MinCount := 0;
-  result.MaxCount := 1;
-end;
 
 { TGrammar }
 
@@ -929,6 +799,181 @@ end;
 constructor TGrammarEOF.Create;
 begin
   inherited Create(gtEOF);
+end;
+
+{ TCustomLanguage }
+
+function TCustomLanguage.EOF: TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarEOF.Create);
+end;
+
+function TCustomLanguage.Ex(Chars: TEnumerable<Char>; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
+function TCustomLanguage.Ex(const Chars: array of Char; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
+function TCustomLanguage.Ex(Value: TArray<Byte>): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
+end;
+
+function TCustomLanguage.Ex(Chars: TSet<Char>; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharSetClass.Create(Chars, CaseSensitive));
+end;
+
+function TCustomLanguage.Ex(CharRangeFrom, CharRangeTo: Char; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarChar.Create(CharRangeFrom,CharRangeTo, CaseSensitive));
+end;
+
+function TCustomLanguage.Ex(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarString.Create(Value, CaseSensitive));
+end;
+
+function TCustomLanguage.Ex(var AGrammar: TGrammar): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarLink.Create(AGrammar));
+end;
+
+function TCustomLanguage.Ex(ACharClass: TCharClass): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarCharClass.Create(ACharClass));
+end;
+
+function TCustomLanguage.Ex(Value: TEnumerable<Byte>): TGrammar.TMedia;
+begin
+  result.MediaGrm := TInterfacedObject<TGrammarClass>.Create(TGrammarBytesClass.Create(Value));
+end;
+
+function TCustomLanguage.Opt: TGrammar.TRange;
+begin
+  result.MinCount := 0;
+  result.MaxCount := 1;
+end;
+
+function TCustomLanguage.Rep: TGrammar.TRange;
+begin
+  result.MinCount := 0;
+  result.MaxCount := High(result.MaxCount);
+end;
+
+function TCustomLanguage.Rep(AMinCount, AMaxCount: integer): TGrammar.TRange;
+begin
+  result.MinCount := AMinCount;
+  if AMaxCount=integer(infinite)
+    then result.MaxCount := High(AMaxCount)
+    else result.MaxCount := AMaxCount;
+end;
+
+function TCustomLanguage.Rep(AExactCount: integer): TGrammar.TRange;
+begin
+  result.MinCount := AExactCount;
+  result.MaxCount := AExactCount;
+end;
+
+function TCustomLanguage.Rep1: TGrammar.TRange;
+begin
+  result.MinCount := 1;
+  result.MaxCount := High(result.MaxCount);
+end;
+
+procedure TCustomLanguage.SetMainRule(var Rule: TGrammar);
+var
+  Queue: TArr<TGrammarClass>;
+  QueuedIds: TSet<int64>;
+  Operands: TArr<IInterfacedObject<TGrammarClass>>;
+  Item: TGrammarClass;
+  I: integer;
+begin
+  Assert(Rule.Grm<>nil, 'rule is not initialized');
+  Queue.Clear;
+  Queue.Add(Rule.Grm.Data);
+  QueuedIds.Clear;
+  QueuedIds.Add(Rule.Id);
+  repeat
+
+    { process next rule }
+    Item := Queue.ExtractLast;
+    if Item is TGrammarLink then
+    begin
+      Assert(TGrammarLink(Item).FLink.Grm<>nil, 'link is not initialized');
+      if TGrammarLink(Item).Op=nil then
+        TGrammarLink(Item).FOp := TGrammarLink(Item).FLink.Grm;
+    end;
+
+    { process operands of the rule }
+    Operands.Clear;
+    Item.GetOperands(Operands);
+    for I := 0 to Operands.Count-1 do
+    begin
+      Assert(Operands[I]<>nil, 'Operand is not initialized');
+      Item := Operands[I].Data;
+      if Item.Id in QueuedIds then
+        Continue;
+      QueuedIds.Add(Item.Id);
+      Queue.Add(Item);
+    end;
+  until Queue.Count=0;
+end;
+
+procedure TCustomLanguage.SetNames(const Rules: array of TGrammar; const Names: array of string);
+var
+  I: Integer;
+begin
+  Assert(Length(Rules)=Length(Names));
+  for I := Low(Rules) to High(Rules) do
+    Rules[I].Name := Names[I];
+end;
+
+{ TCustomTextLang }
+
+constructor TCustomTextLang.Create;
+begin
+  WS := Ex(ccWhiteSpace)*Rep;
+  WS.IncludeIntoParseTree := False;
+end;
+
+function TCustomTextLang.tEx(CharRangeFrom, CharRangeTo: Char; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(CharRangeFrom, CharRangeTo, CaseSensitive);
+end;
+
+function TCustomTextLang.tEx(ACharClass: TCharClass): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(ACharClass);
+end;
+
+function TCustomTextLang.tEx(var AGrammar: TGrammar): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(AGrammar);
+end;
+
+function TCustomTextLang.tEx(Value: String; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(Value, CaseSensitive);
+end;
+
+function TCustomTextLang.tEx(const Chars: array of Char; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(Chars, CaseSensitive);
+end;
+
+function TCustomTextLang.tEx(Chars: TEnumerable<Char>; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(Chars, CaseSensitive);
+end;
+
+function TCustomTextLang.tEx(Chars: TSet<Char>; CaseSensitive: boolean): TGrammar.TMedia;
+begin
+  result := Ex(WS)*Rep + Ex(Chars, CaseSensitive);
 end;
 
 end.

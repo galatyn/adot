@@ -12,7 +12,7 @@ uses
   System.SysUtils;
 
 type
-  THTMLParser = class
+  THTMLParser = class(TCustomLanguage)
   protected
 
     { grammar rules }
@@ -65,7 +65,7 @@ type
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
   end;
 
-  TCalc = class
+  TCalc = class(TCustomLanguage)
   protected
     Input, Expr, Sum, Product, Value, SumOp, ProdOp, MulOp: TGrammar;
     Number,FixedNum,IntNum,Digit: TGrammar;
@@ -142,7 +142,7 @@ end;
 
 function THTMLParser.Parse(const Html: string): Boolean;
 begin
-  Result := Parser.Accepted(Html);
+  Result := Parser.Accepts(Html);
 end;
 
 function THTMLParser.GetTagName(StartTagNode: integer): string;
@@ -409,10 +409,11 @@ end;
 
 function TCalc.Evaluate(const Expr: string): Double;
 begin
-  if not Parser.Accepted(Expr) then
+  if not Parser.Accepts(Expr) then
     raise Exception.Create('Input rejected');
   Parser.LogParseTree;
   result := GetResultValue(0);
 end;
+
 
 end.

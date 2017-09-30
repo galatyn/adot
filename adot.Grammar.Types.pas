@@ -136,8 +136,8 @@ type
     destructor Destroy; override;
     procedure Clear; virtual;
     function Accepted: Boolean; overload; virtual; abstract;
-    function Accepted(const AData: TBuffer): Boolean; overload;
-    function Accepted(const AData: string): Boolean; overload;
+    function Accepts(const AData: TBuffer): Boolean; overload;
+    function Accepts(const AData: string): Boolean; overload;
     procedure LogParseTree; virtual; abstract;
 
     { for any TTokenPos (position and length in bytes) returns corresponding string from Data }
@@ -845,14 +845,14 @@ begin
   Data.Read(Result, P.Len div SizeOf(Char));
 end;
 
-function TGrammarParser.Accepted(const AData: TBuffer): Boolean;
+function TGrammarParser.Accepts(const AData: TBuffer): Boolean;
 begin
   Data := AData;
   Data.Position := 0;
   Result := Accepted;
 end;
 
-function TGrammarParser.Accepted(const AData: string): Boolean;
+function TGrammarParser.Accepts(const AData: string): Boolean;
 begin
   Data.Text := AData;
   Result := Accepted;
