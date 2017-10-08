@@ -286,11 +286,10 @@ type
     function ProcessMessage(var Msg: TMsg): Boolean;
 
   public
-    class function Create: TMessagePump; static;
-
+    procedure Init(ACreateMsgQueue: boolean);
     procedure CreateMessageQueue;
     procedure ProcessMessages;
-    procedure Sleep(AInterval: integer); { will keep processing messages! }
+    procedure Run(AIntervalMs: integer); { will keep processing messages! }
 
     property Terminated: boolean read FTerminated;
   end;
@@ -1655,9 +1654,11 @@ end;
 
 { TMessagePump }
 
-class function TMessagePump.Create: TMessagePump;
+procedure TMessagePump.Init(ACreateMsgQueue: boolean);
 begin
-  result := Default(TMessagePump);
+  Self := Default(TMessagePump);
+  if ACreateMsgQueue then
+    CreateMessageQueue;
 end;
 
 procedure TMessagePump.CreateMessageQueue;
@@ -1699,16 +1700,16 @@ begin
   while ProcessMessage(Msg) do {loop};
 end;
 
-procedure TMessagePump.Sleep(AInterval: integer);
+procedure TMessagePump.Run(AIntervalMs: integer);
 var
   StartSleepTime: Extended;
-  ElapsedTime: int64;
+  ElapsedTimeMs: int64;
 begin
   StartSleepTime := Now;
   repeat
     ProcessMessages;
-    ElapsedTime := MillisecondsBetween(Now, StartSleepTime);
-  until (ElapsedTime >= AInterval) or (MsgWaitForMultipleObjects(0, nil^, False, AInterval-ElapsedTime, QS_ALLEVENTS) = 258);
+    ElapsedTimeMs := MillisecondsBetween(Now, StartSleepTime);
+  until (ElapsedTimeMs >= AIntervalMs) or (MsgWaitForMultipleObjects(0, nil^, False, AIntervalMs-ElapsedTimeMs, QS_ALLEVENTS) = 258);
 end;
 
 end.
