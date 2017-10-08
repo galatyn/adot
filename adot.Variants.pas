@@ -1247,7 +1247,7 @@ begin
   inherited;
 end;
 
-procedure TVarArrayStream.SetSize(NewSize: Integer);
+procedure TVarArrayStream.SetSize(NewSize: Longint);
 begin
   raise Exception.Create('Error');
 end;
@@ -1272,7 +1272,7 @@ begin
   SetPointer(VarArrayLock(FValue), VarArrayHighBound(FValue, 1) - VarArrayLowBound(FValue, 1) + 1);
 end;
 
-function TVarArrayStream.Write(const Buffer; Count: Integer): Longint;
+function TVarArrayStream.Write(const Buffer; Count: Longint): Longint;
 begin
   Result := Min(Count, Size-Position);
   if Result > 0 then

@@ -101,6 +101,10 @@ uses
       H2443 Inline function 'RenameFile' has not been expanded because unit 'Winapi.Windows' is not specified in USES list }
     Winapi.Windows,
   {$EndIf}
+  {$If Defined(POSIX)}
+    Posix.Unistd,
+    Posix.Stdio,
+  {$EndIf}
   System.DateUtils,
   System.Types,
   System.Rtti,
@@ -1423,16 +1427,19 @@ end;
        -1,10,11,12,13,14,15);
   var
     I: Integer;
+    C1,C2: Char;
   begin
-    for I := 0  to DecodedSizeBytes(length(HexEncodedStr)) - 1 do
+    for I := 0 to DecodedSizeBytes(length(HexEncodedStr)) - 1 do
     begin
-      if not (HexEncodedStr[Low(String) + I * 2    ] in H2BValidSet) or
-         not (HexEncodedStr[Low(String) + I * 2 + 1] in H2BValidSet)
+      C1 := HexEncodedStr[Low(String) + I * 2    ];
+      C2 := HexEncodedStr[Low(String) + I * 2 + 1];
+      if
+        (C1 >= Low(H2BConvert)) and (C1 <= High(H2BConvert)) and (H2BConvert[C1] >=0 ) and
+        (C2 >= Low(H2BConvert)) and (C2 <= High(H2BConvert)) and (H2BConvert[C2] >=0 )
       then
+        PByte(@Buf)[I] := (H2BConvert[C1] shl 4) or H2BConvert[C2]
+      else
         Break;
-      PByte(@Buf)[I] :=
-        (H2BConvert[HexEncodedStr[Low(String) + I * 2    ]] shl 4) or
-         H2BConvert[HexEncodedStr[Low(String) + I * 2 + 1]];
     end;
   end;
 {$Else}
@@ -1703,7 +1710,7 @@ begin
   Position := 0;
 end;
 
-procedure TDelegatedMemoryStream.SetSize(NewSize: Integer);
+procedure TDelegatedMemoryStream.SetSize(NewSize: Longint);
 begin
   raise Exception.Create('Error');
 end;
@@ -1713,12 +1720,12 @@ begin
   raise Exception.Create('Error');
 end;
 
-function TDelegatedMemoryStream.Write(const Buffer; Count: Integer): Longint;
+function TDelegatedMemoryStream.Write(const Buffer; Count: Longint): Longint;
 begin
   raise Exception.Create('Error');
 end;
 
-function TDelegatedMemoryStream.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
+function TDelegatedMemoryStream.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
 begin
   raise Exception.Create('Error');
 end;
@@ -1809,7 +1816,7 @@ begin
     FPos := FCapacity;
 end;
 
-function TArrayStream<T>.Read(var Buffer; Count: Integer): Longint;
+function TArrayStream<T>.Read(var Buffer; Count: Longint): Longint;
 begin
   if (FPos >= 0) and (Count >= 0) then
   begin
@@ -1825,7 +1832,7 @@ begin
   Result := 0;
 end;
 
-function TArrayStream<T>.Read(Buffer: TBytes; Offset, Count: Integer): Longint;
+function TArrayStream<T>.Read(Buffer: TBytes; Offset, Count: Longint): Longint;
 begin
   Result := Read(Buffer[Offset], Count);
 end;
@@ -1857,7 +1864,7 @@ begin
   Result := FPos;
 end;
 
-function TArrayStream<T>.Write(const Buffer; Count: Integer): Longint;
+function TArrayStream<T>.Write(const Buffer; Count: Longint): Longint;
 var
   P: integer;
 begin
@@ -1881,7 +1888,7 @@ begin
   Result := 0;
 end;
 
-function TArrayStream<T>.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
+function TArrayStream<T>.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
 begin
   Result := Write(Buffer[Offset], Count);
 end;
@@ -2855,9 +2862,12 @@ begin
 end;
 
 class function TFileUtils.AccessAllowed(const AFileName: string; ADesiredAccess: word): boolean;
+var
+  F: TFileStream;
 begin
   try
-    TFileStream.Create(AFileName, ADesiredAccess).Free;
+    F := TFileStream.Create(AFileName, ADesiredAccess);
+    F.Free;
     result := True;
   except
     result := False;
@@ -3892,7 +3902,7 @@ begin
   MemoryStream := TMemoryStream.Create;
   try
     MemoryStream.WriteComponent(Src);
-    MemoryStream.Seek(0, soFromBeginning);
+    MemoryStream.Seek(0, TSeekOrigin.soBeginning);
     Result := MemoryStream.ReadComponent(nil) as T;
   finally
     MemoryStream.free;
@@ -5450,7 +5460,7 @@ begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;
 
-function TCustomReadOnlyStream.Seek(Offset: Integer; Origin: Word): Longint;
+function TCustomReadOnlyStream.Seek(Offset: Longint; Origin: Word): Longint;
 begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;
@@ -5460,17 +5470,17 @@ begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;
 
-procedure TCustomReadOnlyStream.SetSize(NewSize: Integer);
+procedure TCustomReadOnlyStream.SetSize(NewSize: Longint);
 begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;
 
-function TCustomReadOnlyStream.Write(const Buffer; Count: Integer): Longint;
+function TCustomReadOnlyStream.Write(const Buffer; Count: Longint): Longint;
 begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;
 
-function TCustomReadOnlyStream.Write(const Buffer: TBytes; Offset, Count: Integer): Longint;
+function TCustomReadOnlyStream.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
 begin
   raise EAbstractError.CreateRes(@SAbstractError);
 end;

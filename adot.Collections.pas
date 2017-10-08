@@ -768,7 +768,7 @@ begin
   Create(DefaultSize);
 end;
 
-constructor TCacheClass<TKey, TValue>.Create(AMaxSize: Integer);
+constructor TCacheClass<TKey, TValue>.Create(AMaxSize: Longint);
 begin
   MaxSize := AMaxSize;
   Cache := TDictionary<TKey,TValue>.Create;
