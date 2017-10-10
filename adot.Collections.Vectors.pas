@@ -417,14 +417,23 @@ type
     property RW: TVectorClass<T> read GetRW;
   public
 
-    { Record type can be used without constructor, use constructor only if you
-      need some customization: set Capacity, provide custom comparer etc.
-      Delphi doesn't allow parameterless constructor, but fine with function }
+    { 1. Delphi doesn't allow parameterless constructor
+      2. Delphi creates here strange / not optimal code for Linux, but there is no problems with
+         static functions. Followin example fails with constructor, but works as expected with function:
+           A := TVector<integer>.Create(10);
+           A.Add([2,1,3]);
+           Check(A.Capacity=10); }
     class function Create(AComparer: IComparer<T> = nil): TVector<T>; overload; static;
-    constructor Create(AComparer: TComparison<T>); overload;
-    constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
+    class function Create(AComparer: TComparison<T>): TVector<T>; overload; static;
+    class function Create(ACapacity: integer; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
+    class function Create(const Values: TArray<T>; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
+    class function Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
+
+    procedure Init(AComparer: IComparer<T> = nil); overload;
+    procedure Init(AComparer: TComparison<T>); overload;
+    procedure Init(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
+    procedure Init(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Init(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
 
     function GetEnumerator: TEnumerator<T>;
 
@@ -2163,6 +2172,72 @@ end;
 
 { TVector<T> }
 
+class function TVector<T>.Create(AComparer: IComparer<T> = nil): TVector<T>;
+begin
+  Result.Init(AComparer);
+end;
+
+class function TVector<T>.Create(ACapacity: integer; AComparer: IComparer<T>): TVector<T>;
+begin
+  Result.Init(ACapacity, AComparer);
+end;
+
+class function TVector<T>.Create(AComparer: TComparison<T>): TVector<T>;
+begin
+  Result.Init(AComparer);
+end;
+
+class function TVector<T>.Create(const Values: TEnumerable<T>; ACapacity: integer; AComparer: IComparer<T>): TVector<T>;
+begin
+  Result.Init(Values, ACapacity, AComparer);
+end;
+
+class function TVector<T>.Create(const Values: TArray<T>; AComparer: IComparer<T>): TVector<T>;
+begin
+  Result.Init(Values, AComparer);
+end;
+
+procedure TVector<T>.Init(AComparer: IComparer<T>);
+begin
+  Self := Default(TVector<T>);
+  if AComparer<>nil then
+    CreateVector(0, AComparer);
+end;
+
+procedure TVector<T>.Init(ACapacity: integer; AComparer: IComparer<T>);
+begin
+  Self := Default(TVector<T>);
+  if (ACapacity > 0) or (AComparer<>nil) then
+    CreateVector(ACapacity, AComparer);
+end;
+
+procedure TVector<T>.Init(AComparer: TComparison<T>);
+begin
+  Self := Default(TVector<T>);
+  CreateVector(0, TDelegatedComparer<T>.Create(AComparer));
+end;
+
+procedure TVector<T>.Init(const Values: TEnumerable<T>; ACapacity: integer; AComparer: IComparer<T>);
+begin
+  Self := Default(TVector<T>);
+  CreateVector(ACapacity, AComparer);
+  Add(Values);
+end;
+
+procedure TVector<T>.Init(const Values: TArray<T>; AComparer: IComparer<T>);
+begin
+  Self := Default(TVector<T>);
+  CreateVector(System.Length(Values), AComparer);
+  Add(Values);
+end;
+
+procedure TVector<T>.CreateVector(ACapacity: integer; AComparer: IComparer<T>);
+begin
+  FVectorInt := TInterfacedObject<TVectorClass<T>>.Create(
+    TVectorClass<T>.Create(ACapacity, AComparer)
+  );
+end;
+
 class operator TVector<T>.Add(a: TVector<T>; const b: TEnumerable<T>): TVector<T>;
 begin
   result.Clear;
@@ -2302,43 +2377,8 @@ end;
 
 function TVector<T>.Copy: TVector<T>;
 begin
-  result := TVector<T>.Create(Comparer);
+  result.Init(Comparer);
   result.Add(Self);
-end;
-
-class function TVector<T>.Create(AComparer: IComparer<T>): TVector<T>;
-begin
-  result.Clear;
-  result.CreateVector(0, AComparer);
-end;
-
-constructor TVector<T>.Create(ACapacity: integer; AComparer: IComparer<T>);
-begin
-  CreateVector(ACapacity, AComparer);
-end;
-
-constructor TVector<T>.Create(AComparer: TComparison<T>);
-begin
-  CreateVector(0, TDelegatedComparer<T>.Create(AComparer));
-end;
-
-constructor TVector<T>.Create(const Values: TEnumerable<T>; ACapacity: integer; AComparer: IComparer<T>);
-begin
-  CreateVector(ACapacity, AComparer);
-  Add(Values);
-end;
-
-constructor TVector<T>.Create(const Values: TArray<T>; AComparer: IComparer<T>);
-begin
-  CreateVector(System.Length(Values), AComparer);
-  Add(Values);
-end;
-
-procedure TVector<T>.CreateVector(ACapacity: integer; AComparer: IComparer<T>);
-begin
-  FVectorInt := TInterfacedObject<TVectorClass<T>>.Create(
-    TVectorClass<T>.Create(ACapacity, AComparer)
-  );
 end;
 
 procedure TVector<T>.Delete(const AIndices: TArray<integer>);

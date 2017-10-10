@@ -1203,112 +1203,6 @@ type
     class function DebuggerIsAttached: boolean; static;
   end;
 
-  { Used internally by TSmartComponentPtr/TWeakComponentPtr.
-    They are simpler to use, but sometimes class type is prefered over record type. }
-  TSharedComponentPtrClass<T: TComponent> = class(TComponent)
-  protected
-    FComponent: T;
-    FWeak: boolean;
-
-    procedure SetComponent(AComponent: T);
-    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
-
-  public
-    constructor Create(AComponent: T; AWeak: boolean = False); reintroduce;
-    destructor Destroy; override;
-
-    property Component: T read FComponent write SetComponent;
-  end;
-
-  { Smart pointer features (~shared_ptr in C++):
-    - Maintains reference counting ownership of its contained component in cooperation with all copies of the TSharedComponent.
-      An component referenced by the contained pointer will be destroyed when all copies of the TSharedComponent have been destroyed.
-    - Contained component can be also destroyed explicitly, then all copies of the TSharedComponent became empty.
-    - If an new component is assigned, then the old one is destroyed and all copies of the TSharedComponent get the new component.
-    }
-  TSharedComponentPtr<T: TComponent> = record
-  private
-    FComponentPtr: IInterfacedObject<TSharedComponentPtrClass<T>>;
-
-    function GetValue: T;
-    procedure SetValue(const Value: T);
-    function GetIsEmpty: boolean;
-  public
-
-    { TSharedComponentPtr should be initialized with Create/Init/Copy, otherwise its content is undefined.
-      Create and Init does the same, but have different syntax. Next two lines are equivalent:
-        A := TSharedComponentPtr<TLabel>.Create(Lbl);
-        A.Init(Lbl);
-      TSharedComponentPtr can be initialized as empty:
-        "A := TSharedComponentPtr<TLabel>.Create(nil)" or "A.Init(nil)".  }
-    constructor Create(AValue: T);
-    procedure Init(AValue: T);
-
-    { Makes the TSharedComponentPtr empty and uninitialized. Connection with other copies of the TSharedComponentPtr
-      will be lost. If it is the last copy of TSharedComponentPtr, then the contained object will be destroyed. }
-    procedure Clear;
-
-    { TSharedComponentPtr must be initialized before "Copy" call is made.
-      Otherwise content of the created copy of the TSharedComponentPtr is undefined too.
-      It is allowed to create copies of empty container, after assigning of component to
-      any instance of TSharedComponentPtr, the all copies will get that value. }
-    function Copy: TSharedComponentPtr<T>;
-
-    { Access to the contained component. It can be destroyed explicitly and then all copies of the TSharedComponentPtr
-      became empty: "SharedComponent.Value.Free;" }
-    property Value: T read GetValue write SetValue;
-
-    { Returns True if the TSharedComponentPtr contains nil.
-      If the TSharedComponentPtr is not initialized by Create/Init/Copy and not cleared by Clear,
-      then result of IsEmpty is undefined. }
-    property IsEmpty: boolean read GetIsEmpty;
-  end;
-
-  { Smart pointer features (~weak_ptr in C++):
-    - Does not take ownership of its contained component.
-    - If contained component is destroyed, then all copies of the TWeakComponent became empty.
-    - If an new component is assigned, then all copies of the TSharedComponentPtr get the new component.
-    }
-  TWeakComponentPtr<T: TComponent> = record
-  private
-    FComponentPtr: IInterfacedObject<TSharedComponentPtrClass<T>>;
-
-    function GetValue: T;
-    procedure SetValue(const Value: T);
-    function GetIsEmpty: boolean;
-  public
-
-    { TWeakComponentPtr should be initialized with Create/Init/Copy, otherwise its content is undefined.
-      Create and Init does the same, but have different syntax. Next two lines are equivalent:
-        A := TWeakComponentPtr<TLabel>.Create(Lbl);
-        A.Init(Lbl);
-      TWeakComponentPtr can be initialized as empty:
-        "A := TWeakComponentPtr<TLabel>.Create(nil)" or "A.Init(nil)".  }
-    constructor Create(AValue: T); overload;
-    //constructor Create(ASharedValue: TSharedComponentPtr<T>); overload;
-    procedure Init(AValue: T); overload;
-    //procedure Init(ASharedValue: TSharedComponentPtr<T>); overload;
-
-    { Makes the TWeakComponentPtr empty and uninitialized. Connection with other copies
-      of the TWeakComponentPtr will be lost. }
-    procedure Clear;
-
-    { TWeakComponentPtr must be initialized before "Copy" call is made.
-      Otherwise content of the created copy of the TWeakComponentPtr is undefined too.
-      It is allowed to create copies of empty container, after assigning of component to
-      any instance of TWeakComponentPtr, the all copies will get that value. }
-    function Copy: TWeakComponentPtr<T>;
-
-    { Access to the contained component. It can be destroyed explicitly and then all copies of the TWeakComponentPtr
-      became empty: "WeakComponent.Value.Free;" }
-    property Value: T read GetValue write SetValue;
-
-    { Returns True if the TWeakComponentPtr contains nil.
-      If the TWeakComponentPtr is not initialized by Create/Init/Copy and not cleared by Clear,
-      then result of IsEmpty is undefined. }
-    property IsEmpty: boolean read GetIsEmpty;
-  end;
-
   TEventStat = class
   private
     FEvents: TMap<string, int64>;
@@ -1326,7 +1220,8 @@ type
 implementation
 
 Uses
-  adot.Strings, adot.Collections.Vectors;
+  adot.Strings,
+  adot.Collections.Vectors;
 
 { THex }
 
@@ -4724,8 +4619,7 @@ end;
 
 class procedure TFun.FreeAndNil<T>(var Obj: T);
 begin
-  Obj.Free;
-  Obj := nil;
+  System.SysUtils.FreeAndNil(Obj);
 end;
 
 class function TFun.GetPtr(const Values: TArray<byte>): pointer;
@@ -5310,142 +5204,6 @@ end;
 procedure TInterfacedType<T>.SetData(const AData: T);
 begin
   FData := AData;
-end;
-
-{ TSharedComponentPtrClass }
-
-constructor TSharedComponentPtrClass<T>.Create(AComponent: T; AWeak: boolean = False);
-begin
-  Component := AComponent;
-  FWeak := AWeak;
-end;
-
-destructor TSharedComponentPtrClass<T>.Destroy;
-begin
-  Component := nil;
-  inherited;
-end;
-
-procedure TSharedComponentPtrClass<T>.Notification(AComponent: TComponent; Operation: TOperation);
-begin
-  inherited;
-  if (Operation = opRemove) and (AComponent = pointer(FComponent)) then
-    Component := nil;
-end;
-
-procedure TSharedComponentPtrClass<T>.SetComponent(AComponent: T);
-var
-  C: TComponent;
-begin
-  if AComponent = FComponent then
-    exit;
-
-  if FComponent <> nil then
-  begin
-    C := FComponent;
-    FComponent := nil;
-    C.RemoveFreeNotification(Self);
-    if not FWeak and not (csDestroying in C.ComponentState) then
-      C.Destroy;
-  end;
-
-  if AComponent <> nil then
-    AComponent.FreeNotification(Self);
-  FComponent := AComponent;
-end;
-
-{ TSharedComponentPtr }
-
-constructor TSharedComponentPtr<T>.Create(AValue: T);
-begin
-  Init(AValue);
-end;
-
-procedure TSharedComponentPtr<T>.Init(AValue: T);
-begin
-  FComponentPtr := TInterfacedObject<TSharedComponentPtrClass<T>>.Create(
-    TSharedComponentPtrClass<T>.Create(AValue)
-  );
-end;
-
-function TSharedComponentPtr<T>.Copy: TSharedComponentPtr<T>;
-begin
-  if FComponentPtr = nil then
-    Init(nil);
-  result := Self;
-end;
-
-procedure TSharedComponentPtr<T>.Clear;
-begin
-  FComponentPtr := nil;
-end;
-
-function TSharedComponentPtr<T>.GetValue: T;
-begin
-  if FComponentPtr = nil then
-    result := nil
-  else
-    result := FComponentPtr.Data.Component;
-end;
-
-function TSharedComponentPtr<T>.GetIsEmpty: boolean;
-begin
-  result := Value = nil;
-end;
-
-procedure TSharedComponentPtr<T>.SetValue(const Value: T);
-begin
-  if FComponentPtr = nil then
-    Init(Value)
-  else
-    FComponentPtr.Data.Component := Value;
-end;
-
-{ TWeakComponentPtr<T> }
-
-constructor TWeakComponentPtr<T>.Create(AValue: T);
-begin
-  Init(AValue);
-end;
-
-procedure TWeakComponentPtr<T>.Init(AValue: T);
-begin
-  FComponentPtr := TInterfacedObject<TSharedComponentPtrClass<T>>.Create(
-    TSharedComponentPtrClass<T>.Create(AValue, True)
-  );
-end;
-
-function TWeakComponentPtr<T>.Copy: TWeakComponentPtr<T>;
-begin
-  if FComponentPtr = nil then
-    Init(nil);
-  result := Self;
-end;
-
-procedure TWeakComponentPtr<T>.Clear;
-begin
-  FComponentPtr := nil;
-end;
-
-function TWeakComponentPtr<T>.GetValue: T;
-begin
-  if FComponentPtr = nil then
-    result := nil
-  else
-    result := FComponentPtr.Data.Component;
-end;
-
-function TWeakComponentPtr<T>.GetIsEmpty: boolean;
-begin
-  result := Value = nil;
-end;
-
-procedure TWeakComponentPtr<T>.SetValue(const Value: T);
-begin
-  if FComponentPtr = nil then
-    Init(Value)
-  else
-    FComponentPtr.Data.Component := Value;
 end;
 
 { TCustomReadOnlyStream }
