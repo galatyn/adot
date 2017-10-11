@@ -92,8 +92,10 @@ type
     function Find(const Key: TKey): integer;
 
   public
-    constructor Create(ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
-    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer = 0); overload;
+    constructor Create(ACapacity: integer; AComparer: IComparer<TKey>); overload;
+    constructor Create(ACapacity: integer; AComparison: TComparison<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparison: TComparison<TKey> = nil); overload;
     destructor Destroy; override;
 
     function Add(const Key: TKey; const Value: TValue): integer; overload;
@@ -151,8 +153,10 @@ type
     function Find(const Key: TKey): integer;
 
   public
-    constructor Create(ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
-    constructor Create(const ACollection: TEnumerable<TKey>; ACapacity: integer = 0; AComparer: IComparer<TKey> = nil); overload;
+    constructor Create(ACapacity: integer = 0); overload;
+    constructor Create(ACapacity: integer; AComparer: IComparer<TKey>); overload;
+    constructor Create(ACapacity: integer; AComparison: TComparison<TKey>); overload;
+    constructor Create(const ACollection: TEnumerable<TKey>; ACapacity: integer = 0; AComparison: TComparison<TKey> = nil); overload;
     destructor Destroy; override;
 
     function Add(const Value: TKey): integer; overload;
@@ -336,20 +340,36 @@ end;
 
 { TBinaryHeapClass<TKey, TValue> }
 
+constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer);
+begin
+  inherited Create;
+  Capacity := ACapacity;
+  FComparer := TComparerUtils.DefaultComparer<TKey>;
+end;
+
 constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   inherited Create;
   Capacity := ACapacity;
-  if AComparer=nil then
-    FComparer := TComparerUtils.DefaultComparer<TKey>
-  else
-    FComparer := AComparer;
+  if AComparer=nil
+    then FComparer := TComparerUtils.DefaultComparer<TKey>
+    else FComparer := AComparer;
+end;
+
+constructor TBinaryHeapClass<TKey, TValue>.Create(ACapacity: integer; AComparison: TComparison<TKey>);
+var
+  C: IComparer<TKey>;
+begin
+  if Assigned(AComparison)
+    then C := TDelegatedComparer<TKey>.Create(AComparison)
+    else C := nil;
+  Create(ACapacity, C);
 end;
 
 constructor TBinaryHeapClass<TKey, TValue>.Create(const ACollection: TEnumerable<TPair<TKey, TValue>>;
-  ACapacity: integer; AComparer: IComparer<TKey>);
+  ACapacity: integer; AComparison: TComparison<TKey>);
 begin
-  Create(ACapacity, AComparer);
+  Create(ACapacity, AComparison);
   Add(ACollection);
 end;
 
@@ -563,16 +583,32 @@ end;
 
 { TBinaryHeapClass<TKey> }
 
-constructor TBinaryHeapClass<TKey>.Create(const ACollection: TEnumerable<TKey>; ACapacity: integer; AComparer: IComparer<TKey>);
+constructor TBinaryHeapClass<TKey>.Create(ACapacity: integer);
 begin
-  Create(ACapacity, AComparer);
-  Add(ACollection);
+  inherited Create;
+  FHeap := TBinaryHeapClass<TKey,TEmptyRec>.Create(ACapacity);
 end;
 
 constructor TBinaryHeapClass<TKey>.Create(ACapacity: integer; AComparer: IComparer<TKey>);
 begin
   inherited Create;
   FHeap := TBinaryHeapClass<TKey,TEmptyRec>.Create(ACapacity, AComparer);
+end;
+
+constructor TBinaryHeapClass<TKey>.Create(ACapacity: integer; AComparison: TComparison<TKey>);
+var
+  C: IComparer<TKey>;
+begin
+  if Assigned(AComparison)
+    then C := TDelegatedComparer<TKey>.Create(AComparison)
+    else C := nil;
+  Create(ACapacity, C);
+end;
+
+constructor TBinaryHeapClass<TKey>.Create(const ACollection: TEnumerable<TKey>; ACapacity: integer; AComparison: TComparison<TKey>);
+begin
+  Create(ACapacity, AComparison);
+  Add(ACollection);
 end;
 
 procedure TBinaryHeapClass<TKey>.Clear;

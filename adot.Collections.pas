@@ -3,29 +3,8 @@
 
 { Definition of classes/record types:
 
-  TAuto<T: class> = record
-    Class wrapper. Inner object created automaticaly "on demand" and destroyed when wrapper goes out of scope.
-
-  TAutoFree<T: class> = record
-    Class wrapper. Inner object will be destroyed automatically when wrapper goes out of scope.
-
   TAutoFreeCollection = record
     Collection of objects to be destroyed automaticaly when collection goes out of scope.
-
-  TBHeap<TKey, TValue> = record
-    Low level heap operations on array.
-
-  TBinaryHeapClass<TKey,TValue> = class
-    Binary heap of pairs [Key;Value].
-
-  TBinaryHeapClass<TKey> = class
-    Binary heap with key only.
-
-  TBinarySearchTree<TKey,TValue> = Class
-    Binary search tree.
-
-  TCacheClass<TKey,TValue> = class
-    Based on TDictionary, but automatically deletes data if it take more space than allowed.
 
   TComparerUtils = class
     Default comparer/equality comparer etc.
@@ -48,80 +27,18 @@
   TCompoundEqualityComparer<TypeA,TypeB> = class
     Equality comparer for compound of two fields.
 
-  TMap<TKey,TValue> = record
-    Class for map. Based on TDictionary and extends it with some features.
-
-  TMapClass<TKey,TValue> = class
-    Class for map. Based on TDictionary and extends it with some features.
-
-  TMultimapClass<TKey,TValue> = class
-    Multimap class. Supports multiple items sharing same key. Keeps items in efficient way.
-
-  TOrderedMapClass<TKey,TValue> = Class
-    Ordered map.
-
-  TRingClass<T> = class
-    Cyclic/circular buffer based on array. Add/delete items to head/tail.
-
-  TSet<T> = record
-    Record type for set. Support operators for all set operations and copy-on-write.
-
-  TSetClass<TValue> = class
-    Generic class for set.
-
-  TArr<T> = record
-    Wrapper for TArray<T> (array with Add/Delete functionality).
-
 }
 interface
 
 uses
   adot.Types,
-  adot.Tools.Rtti,
-  adot.Arithmetic,
-  adot.Collections.Types,
-  adot.Collections.Vectors,
-  adot.Collections.Sets,
-  adot.Collections.Maps,
-  adot.Collections.Heap,
-  adot.Collections.Rings,
-  adot.Collections.Lists,
-  adot.Collections.Trees,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.TypInfo,
-  System.StrUtils,
   System.SysUtils,
-  System.Character,
-  //System.Contnrs,
-  System.Math,
-  System.Classes, 
-  System.Hash;
+  System.Math;
 
 type
-
-  { adot.Collections.Maps.pas }
-  TMapClass<TKey,TValue>         = class(adot.Collections.Maps.TMapClass<TKey,TValue>);
-  TMultimapClass<TKey,TValue>    = class(adot.Collections.Maps.TMultimapClass<TKey,TValue>);
-  TBinarySearchTree<TKey,TValue> = class(adot.Collections.Maps.TBinarySearchTree<TKey,TValue>);
-  TOrderedMapClass<TKey,TValue>  = class(adot.Collections.Maps.TOrderedMapClass<TKey,TValue>);
-
-  { adot.Collections.Sets.pas }
-  TSetClass<T>  = class(adot.Collections.Sets.TSetClass<T>);
-
-  { adot.Collections.Heap }
-  TBHeap<TKey, TValue> = class(adot.Collections.Heap.TBHeap<TKey, TValue>);
-  TBinaryHeapClass<TKey,TValue> = class(adot.Collections.Heap.TBinaryHeapClass<TKey, TValue>);
-  TBinaryHeapClass<TKey> = class(adot.Collections.Heap.TBinaryHeapClass<TKey>);
-
-  { adot.Collections.Rings }
-  TRingClass<T> = class(adot.Collections.Rings.TRingClass<T>);
-
-  { adot.Collections.Lists }
-  TDoublyLinkedListClass<T> = class(adot.Collections.Lists.TDoublyLinkedListClass<T>);
-
-  { adot.Collections.Trees }
-  TTreeArrayClass<T> = class(adot.Collections.Trees.TTreeArrayClass<T>);
 
   { Delphi has two definitions of TCollectionNotification: System.Classes and System.Generics.Collections }
   TCollectionNotification = System.Generics.Collections.TCollectionNotification;
@@ -131,10 +48,10 @@ type
      Example:
      var
        C: TAutoFreeCollection;
-       A: TAutoFree<T1>;
-       B: TAutoFree<T2>;
+       A: T1;
+       B: T2;
      begin
-       A := C.Add( T1.Create );     // First adde, last destroyed.
+       A := C.Add( T1.Create );     // First added, last destroyed.
        B := C.Add( T2.Create );     // Last added, first destroyed.
        [do something with A and B]
      End; }
@@ -166,6 +83,7 @@ type
     procedure Clear;
     function Empty: Boolean;
   end;
+  TAC = TAutoFreeCollection;
 
   { Always use TCompoundEqualityComparer.Default for creating of compatible comparer
     It supports efficiently both - record types and managed types.
@@ -268,24 +186,6 @@ type
       ComparerC: IComparer<TypeC>
     );
     function Compare(const Left, Right: TCompound<TypeA,TypeB,TypeC>): Integer; override;
-  end;
-
-  TGuidInt = TCompound<TGUID, integer>;
-
-  { Based on TDictionary, but automatically deletes data if it take more space than allowed. }
-  TCacheClass<TKey,TValue> = class
-  protected
-    const
-      DefaultSize = 1024*1024;
-    var
-      Cache: TDictionary<TKey,TValue>;
-      Size, MaxSize: longint;
-  public
-    constructor Create; overload;
-    constructor Create(AMaxSize: longint); overload;
-    destructor Destroy; override;
-    procedure Add(K: TKey; V: TValue; ASize: longint);
-    function TryGetValue(K: TKey; var V: TValue):boolean;
   end;
 
   { Default comparer/equality comparer etc. }
@@ -488,7 +388,7 @@ type
 implementation
 
 uses
-  adot.Strings,
+  adot.Arithmetic,
   adot.Tools;
 
 { TCompound<TypeA, TypeB> }
@@ -759,40 +659,6 @@ end;
 function TAutoFreeCollection.TAutoFreeCollectionImpl.Count: integer;
 begin
   result := FList.Count;
-end;
-
-{ TCacheClass<TKey, TValue> }
-
-constructor TCacheClass<TKey, TValue>.Create;
-begin
-  Create(DefaultSize);
-end;
-
-constructor TCacheClass<TKey, TValue>.Create(AMaxSize: Longint);
-begin
-  MaxSize := AMaxSize;
-  Cache := TDictionary<TKey,TValue>.Create;
-end;
-
-destructor TCacheClass<TKey, TValue>.Destroy;
-begin
-  FreeAndNil(Cache);
-end;
-
-procedure TCacheClass<TKey, TValue>.Add(K: TKey; V: TValue; ASize: longint);
-begin
-  if Size>=MaxSize then
-  begin
-    Size := 0;
-    Cache.Clear;
-  end;
-  Cache.Add(K,V);
-  inc(Size, ASize);
-end;
-
-function TCacheClass<TKey, TValue>.TryGetValue(K: TKey; var V: TValue): boolean;
-begin
-  result := Cache.TryGetValue(K,V);
 end;
 
 { TComparerUtils }
