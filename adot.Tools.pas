@@ -4619,7 +4619,16 @@ end;
 
 class procedure TFun.FreeAndNil<T>(var Obj: T);
 begin
-  System.SysUtils.FreeAndNil(Obj);
+  {$IF Defined(AUTOREFCOUNT)}
+    Obj := nil;
+  {$ELSE}
+    { unlike SysUtils.FreeAndNil we call destructor first and only after set to nil }
+    if Obj<>nil then
+    begin
+      Obj.Destroy;
+      Obj := nil;
+    end;
+  {$ENDIF}
 end;
 
 class function TFun.GetPtr(const Values: TArray<byte>): pointer;
