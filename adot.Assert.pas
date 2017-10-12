@@ -24,8 +24,8 @@ begin
     if not Condition then
       DebugBreak;
   {$Else}
-    { For non-Windows platform break point can be set manually here
-      to skip System.Assert and continue execution }
+    { For non-Windows platform break point can be set here
+      manually to skip System.Assert and continue execution }
     if not Condition then
       System.Assert(Condition, Message);
   {$EndIf}
