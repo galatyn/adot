@@ -66,9 +66,15 @@ type
         property Current: T read GetCurrent;
       end;
 
-    constructor Create(ACapacity: integer); overload;
-    constructor Create(ADst: TArray<T>); overload;
-    procedure Init;
+    { Init is preferred over Create, it is obviously distinguished from classes.
+      Class-like Create can be useful when new instance is param of some routine }
+    procedure Init; overload;
+    procedure Init(ACapacity: integer); overload;
+    procedure Init(AItems: TArray<T>); overload;
+
+    class function Create: TArr<T>; overload; static;
+    class function Create(ACapacity: integer): TArr<T>; overload; static;
+    class function Create(AItems: TArray<T>): TArr<T>; overload; static;
 
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
@@ -94,6 +100,7 @@ type
     function FindNext(const Value: T; var Index: integer): boolean; overload;
     function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
 
+    { Trims and returns Items }
     function ToArray: TArray<T>;
 
     function GetEnumerator: TEnumerator; reintroduce;
@@ -132,7 +139,8 @@ type
     procedure SetSliceIndex(SliceIndex: integer; const Value: integer);
     procedure SetValue(SliceIndex: integer; const Value: T);
     function GetCount: integer;
-    procedure FindComparer(var AComparer: IComparer<T>);
+    procedure SetComparison(AComparison: TComparison<T>);
+    procedure SetComparer(AComparer: IComparer<T>);
 
   protected
     type
@@ -150,35 +158,37 @@ type
 
     function DoGetEnumerator: TEnumerator<T>; override;
 
+    { Create empty slice (FSlice is empty) }
+    constructor CreateEmptySlice(const AValues: TArray<T>; AComparer: IComparer<T>); overload;
+
   public
 
-    constructor Create(AComparer: IComparer<T> = nil); overload;
-
     { Slice from array }
-    constructor Create(const ASrc: TArray<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const ASrc: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
+    constructor Create(const AValues: TArray<T>; AComparison: TComparison<T> = nil); overload;
+    constructor Create(const AValues: TArray<T>; AStartIndex,ACount: integer; AComparison: TComparison<T> = nil); overload;
+    constructor Create(const AValues: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T> = nil); overload;
 
-    { Slice from another slice }
-    constructor Create(ASrc: TSliceClass<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TSliceClass<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TSliceClass<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
-
-    { Build array from TEnumerable<T> and slice it }
-    constructor Create(ASrc: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TEnumerable<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TEnumerable<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
+    { Create new slice }
+    function Copy: TSliceClass<T>; overload;
+    function Copy(AStartIndex,ACount: integer): TSliceClass<T>; overload;
+    function Copy(AFilter: TFuncFilterValueIndex<T>): TSliceClass<T>; overload;
 
     procedure Clear;
 
-    procedure Sort(AComparer: IComparer<T> = nil);
-    function BinarySearch(const Value: T; out FoundIndex: integer; AComparer: IComparer<T> = nil): boolean; overload;
-    function BinarySearch(const Value: T; AComparer: IComparer<T> = nil): boolean; overload;
+    procedure Sort; overload;
+    function BinarySearch(const Value: T; out FoundIndex: integer): boolean; overload;
+    function BinarySearch(const Value: T): boolean; overload;
 
+    { number of elements in the slice }
     property Count: integer read GetCount write SetCount;
+    { data values }
     property Values[SliceIndex: integer]: T read GetValue write SetValue; default;
+    { slice values }
     property Indices[SliceIndex: integer]: integer read GetSliceIndex write SetSliceIndex;
-    property Comparer: IComparer<T> read FComparer write FComparer;
+    { assign new comparer }
+    property Comparer: IComparer<T> read FComparer write SetComparer;
+    { assign comparison routine as comparer (overrides current comparer) }
+    property Comparison: TComparison<T> write SetComparison;
   end;
 
   TSlice<T> = record
@@ -195,38 +205,42 @@ type
     procedure SetCount(const Value: integer);
     procedure SetSliceIndex(SliceIndex: integer; const Value: integer);
     procedure SetValue(SliceIndex: integer; const Value: T);
+    procedure SetComparison(AComparison: TComparison<T>);
 
     property RO: TSliceClass<T> read GetReadonly;
     property RW: TSliceClass<T> read GetReadWrite;
 
   public
 
+    { Init is preferred over Create, it is obviously distinguished from classes.
+      Class-like Create can be useful when new instance is param of some routine }
     { Slice from array }
-    constructor Create(const ASrc: TArray<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const ASrc: TArray<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Init(const ASrc: TArray<T>; AComparison: TComparison<T> = nil); overload;
+    procedure Init(const ASrc: TArray<T>; AStartIndex,ACount: integer; AComparison: TComparison<T> = nil); overload;
+    procedure Init(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T> = nil); overload;
 
-    { Slice from another slice }
-    constructor Create(ASrc: TSlice<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TSlice<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TSlice<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
+    { Slice from array }
+    class function Create(const ASrc: TArray<T>; Acomparison: TComparison<T> = nil): TSlice<T>; overload; static;
+    class function Create(const ASrc: TArray<T>; AStartIndex,ACount: integer; Acomparison: TComparison<T> = nil): TSlice<T>; overload; static;
+    class function Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; Acomparison: TComparison<T> = nil): TSlice<T>; overload; static;
 
-    { Build array from TEnumerable<T> and slice it }
-    constructor Create(ASrc: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TEnumerable<T>; AStartIndex,ACount: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(ASrc: TEnumerable<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T> = nil); overload;
+    { Create new slice }
+    function Copy: TSlice<T>; overload;
+    function Copy(AStartIndex,ACount: integer): TSlice<T>; overload;
+    function Copy(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
 
     function GetEnumerator: TEnumerator<T>;
     procedure Clear;
 
-    procedure Sort(AComparer: IComparer<T> = nil);
-    function BinarySearch(const Value: T; out FoundIndex: integer; AComparer: IComparer<T> = nil): boolean; overload;
-    function BinarySearch(const Value: T; AComparer: IComparer<T> = nil): boolean; overload;
+    procedure Sort; overload;
+    function BinarySearch(const Value: T; out FoundIndex: integer): boolean; overload;
+    function BinarySearch(const Value: T): boolean; overload;
 
     property Count: integer read GetCount write SetCount;
     property Values[SliceIndex: integer]: T read GetValue write SetValue; default;
     property Indices[SliceIndex: integer]: integer read GetSliceIndex write SetSliceIndex;
     property Comparer: IComparer<T> read GetComparer write SetComparer;
+    property Comparison: TComparison<T> write SetComparison;
   end;
 
   TVectorClass<T> = class(TEnumerableExt<T>)
@@ -700,17 +714,37 @@ end;
 
 { TArr<T> }
 
-constructor TArr<T>.Create(ACapacity: integer);
+class function TArr<T>.Create: TArr<T>;
+begin
+  result.Init;
+end;
+
+class function TArr<T>.Create(ACapacity: integer): TArr<T>;
+begin
+  result.Init(ACapacity);
+end;
+
+class function TArr<T>.Create(AItems: TArray<T>): TArr<T>;
+begin
+  result.Init(AItems);
+end;
+
+procedure TArr<T>.Init;
+begin
+  Self := Default(TArr<T>);
+end;
+
+procedure TArr<T>.Init(ACapacity: integer);
 begin
   Self := Default(TArr<T>);
   Capacity := ACapacity;
 end;
 
-constructor TArr<T>.Create(ADst: TArray<T>);
+procedure TArr<T>.Init(AItems: TArray<T>);
 begin
   Self := Default(TArr<T>);
-  Items := ADst;
-  Count := High(Items)-Low(Items)+1;
+  Items := AItems;
+  FCount := High(AItems)-Low(AItems)+1;
 end;
 
 function TArr<T>.Add: integer;
@@ -813,11 +847,6 @@ function TArr<T>.IndexOf(const Value: T; Comparer: IComparer<T>): integer;
 begin
   if not FindFirst(Value, Result, Comparer) then
     result := -1;
-end;
-
-procedure TArr<T>.Init;
-begin
-  Self := Default(TArr<T>);
 end;
 
 function TArr<T>.IndexOf(const Value: T): integer;
@@ -1046,88 +1075,87 @@ end;
 
 { TSliceClass<T> }
 
-constructor TSliceClass<T>.Create(const ASrc: TArray<T>; AComparer: IComparer<T>);
+constructor TSliceClass<T>.CreateEmptySlice(const AValues: TArray<T>; AComparer: IComparer<T>);
 begin
-  Create(ASrc, 0, Length(ASrc), AComparer);
+  FValues := AValues;
+  if Assigned(AComparer)
+    then FComparer := AComparer
+    else FComparer := TComparerUtils.DefaultComparer<T>;
 end;
 
-constructor TSliceClass<T>.Create(const ASrc: TArray<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
+constructor TSliceClass<T>.Create(const AValues: TArray<T>; AComparison: TComparison<T>);
+begin
+  Create(AValues, 0, Length(AValues), AComparison);
+end;
+
+constructor TSliceClass<T>.Create(const AValues: TArray<T>; AStartIndex, ACount: integer; AComparison: TComparison<T>);
 var
   I: Integer;
 begin
   {$If Defined(Debug)}
-    Assert((AStartIndex>=0) and (ACount>=0) and (AStartIndex+ACount<=Length(ASrc)));
+    Assert((AStartIndex>=0) and (ACount>=0) and (AStartIndex+ACount<=Length(AValues)));
   {$EndIf}
-  FValues := ASrc;
-  FComparer := AComparer;
+  FValues := AValues;
   SetLength(FSlice, ACount);
   for I := 0 to ACount-1 do
     FSlice[I] := I + AStartIndex;
+  if Assigned(AComparison)
+    then FComparer := TDelegatedComparer<T>.Create(AComparison)
+    else FComparer := TComparerUtils.DefaultComparer<T>;
 end;
 
-constructor TSliceClass<T>.Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
+constructor TSliceClass<T>.Create(const AValues: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T>);
 var
   I,D: Integer;
 begin
-  FValues := ASrc;
-  FComparer := AComparer;
+  FValues := AValues;
   SetLength(FSlice, Length(FValues));
   D := 0;
-  for I := 0 to High(ASrc) do
-    if AFilter(ASrc[I], I) then
+  for I := 0 to High(AValues) do
+    if AFilter(AValues[I], I) then
     begin
       FSlice[D] := I;
       inc(D);
     end;
   SetLength(FSlice, D);
+  if Assigned(AComparison)
+    then FComparer := TDelegatedComparer<T>.Create(AComparison)
+    else FComparer := TComparerUtils.DefaultComparer<T>;
 end;
 
-constructor TSliceClass<T>.Create(ASrc: TSliceClass<T>; AComparer: IComparer<T>);
+function TSliceClass<T>.Copy: TSliceClass<T>;
 begin
-  Create(ASrc, 0, ASrc.Count, AComparer);
+  result := TSliceClass<T>.CreateEmptySlice(FValues, FComparer);
+  result.FSlice := TArrayUtils.Copy<integer>(FSlice);
 end;
 
-constructor TSliceClass<T>.Create(ASrc: TSliceClass<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
+function TSliceClass<T>.Copy(AStartIndex, ACount: integer): TSliceClass<T>;
 var
   I: Integer;
 begin
   {$If Defined(Debug)}
-    Assert((AStartIndex>=0) and (ACount>=0) and (AStartIndex+ACount<=Length(ASrc.FSlice)));
+    Assert((AStartIndex>=0) and (ACount>=0) and (AStartIndex+ACount<=Length(FSlice)));
   {$EndIf}
-  FValues := ASrc.FValues;
-  FComparer := AComparer;
-  SetLength(FSlice, ACount);
+  result := TSliceClass<T>.CreateEmptySlice(FValues, FComparer);
+  SetLength(result.FSlice, ACount);
   for I := 0 to ACount-1 do
-    FSlice[I] := ASrc.FSlice[I+AStartIndex];
+    result.FSlice[I] := FSlice[I+AStartIndex];
 end;
 
-constructor TSliceClass<T>.Create(ASrc: TSliceClass<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
+function TSliceClass<T>.Copy(AFilter: TFuncFilterValueIndex<T>): TSliceClass<T>;
 var
   I,D: Integer;
-  SrcSlice: TArray<integer>;
 begin
-  FValues := ASrc.FValues;
-  FComparer := AComparer;
-  SrcSlice := ASrc.FSlice;
-  SetLength(FSlice, Length(SrcSlice));
+  result := TSliceClass<T>.CreateEmptySlice(FValues, FComparer);
+  SetLength(result.FSlice, Length(FSlice));
   D := 0;
-  for I := 0 to High(SrcSlice) do
-    if AFilter(FValues[SrcSlice[I]], I) then
+  for I := 0 to High(FSlice) do
+    if AFilter(FValues[FSlice[I]], I) then
     begin
-      FSlice[D] := SrcSlice[I];
+      result.FSlice[D] := FSlice[I];
       inc(D);
     end;
-  SetLength(FSlice, D);
-end;
-
-constructor TSliceClass<T>.Create(ASrc: TEnumerable<T>; AComparer: IComparer<T>);
-begin
-  Create(ASrc.ToArray, AComparer);
-end;
-
-constructor TSliceClass<T>.Create(ASrc: TEnumerable<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
-begin
-  Create(ASrc.ToArray, AStartIndex, ACount, AComparer);
+  SetLength(result.FSlice, D);
 end;
 
 procedure TSliceClass<T>.Clear;
@@ -1135,27 +1163,9 @@ begin
   SetLength(FSlice, 0);
 end;
 
-constructor TSliceClass<T>.Create(ASrc: TEnumerable<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
-begin
-  Create(ASrc.ToArray, AFilter, AComparer);
-end;
-
-constructor TSliceClass<T>.Create(AComparer: IComparer<T>);
-begin
-  FComparer := AComparer;
-end;
-
 function TSliceClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
   result := TSliceEnumerator.Create(Self);
-end;
-
-procedure TSliceClass<T>.FindComparer(var AComparer: IComparer<T>);
-begin
-  if AComparer = nil then
-    if FComparer = nil
-      then AComparer := TComparerUtils.DefaultComparer<T>
-      else AComparer := FComparer;
 end;
 
 function TSliceClass<T>.GetCount: integer;
@@ -1173,6 +1183,20 @@ begin
   result := FValues[FSlice[SliceIndex]];
 end;
 
+procedure TSliceClass<T>.SetComparer(AComparer: IComparer<T>);
+begin
+  if AComparer = nil
+    then FComparer := TComparerUtils.DefaultComparer<T>
+    else FComparer := AComparer;
+end;
+
+procedure TSliceClass<T>.SetComparison(AComparison: TComparison<T>);
+begin
+  if Assigned(AComparison)
+    then FComparer := TDelegatedComparer<T>.Create(AComparison)
+    else FComparer := TComparerUtils.DefaultComparer<T>;
+end;
+
 procedure TSliceClass<T>.SetCount(const Value: integer);
 begin
   SetLength(FSlice, Value);
@@ -1188,33 +1212,30 @@ begin
   FValues[FSlice[SliceIndex]] := Value;
 end;
 
-procedure TSliceClass<T>.Sort(AComparer: IComparer<T>);
+procedure TSliceClass<T>.Sort;
 var
-  I: Integer;
-  C: IComparer<integer>;
+  IndexComparer: IComparer<integer>;
 begin
-  FindComparer(AComparer);
-  C := TDelegatedComparer<integer>.Create(
+  IndexComparer := TDelegatedComparer<integer>.Create(
     function(const L,R: integer): integer
     begin
-      result := AComparer.Compare(FValues[L], FValues[R]);
+      result := FComparer.Compare(FValues[L], FValues[R]);
     end);
-  TArray.Sort<integer>(FSlice, C);
+  TArray.Sort<integer>(FSlice, IndexComparer);
 end;
 
-function TSliceClass<T>.BinarySearch(const Value: T; out FoundIndex: integer; AComparer: IComparer<T>): boolean;
+function TSliceClass<T>.BinarySearch(const Value: T; out FoundIndex: integer): boolean;
 var
   L,R,M,C: Integer;
 begin
   if Length(FValues)=0 then
     Exit(False);
-  FindComparer(AComparer);
   L := 0;
   R := High(FSlice);
-  while (R-L>1) do
+  while (R-L > 1) do
   begin
     M := (L+R) shr 1;
-    C := AComparer.Compare(FValues[FSlice[M]], Value);
+    C := FComparer.Compare(FValues[FSlice[M]], Value);
     if C < 0 then L := M else
       if C > 0 then R := M else
       begin
@@ -1222,13 +1243,13 @@ begin
         Exit(True);
       end;
   end;
-  if AComparer.Compare(FValues[FSlice[L]], Value) = 0 then
+  if FComparer.Compare(FValues[FSlice[L]], Value) = 0 then
   begin
     FoundIndex := L;
     Result := True;
   end
   else
-  if AComparer.Compare(FValues[FSlice[R]], Value) = 0 then
+  if FComparer.Compare(FValues[FSlice[R]], Value) = 0 then
   begin
     FoundIndex := R;
     Result := True;
@@ -1237,11 +1258,11 @@ begin
     Result := False;
 end;
 
-function TSliceClass<T>.BinarySearch(const Value: T; AComparer: IComparer<T>): boolean;
+function TSliceClass<T>.BinarySearch(const Value: T): boolean;
 var
   FoundIndex: integer;
 begin
-  result := BinarySearch(Value, FoundIndex, AComparer);
+  result := BinarySearch(Value, FoundIndex);
 end;
 
 { TVectorClass<T>.TVectorEnumerator<T> }
@@ -1901,8 +1922,9 @@ begin
   if (Length(V)=0) or (Count=0) then
     Exit;
   FindComparer(AComparer);
-  S := TSliceClass<T>.Create(V, AComparer);
+  S := TSliceClass<T>.Create(V);
   try
+    S.Comparer := AComparer;
     S.Sort;
     D := 0;
     for I := 0 to FCount-1 do
@@ -3119,44 +3141,43 @@ end;
 
 { TSlice<T> }
 
-constructor TSlice<T>.Create(const ASrc: TArray<T>; AComparer: IComparer<T>);
+procedure TSlice<T>.Init(const ASrc: TArray<T>; AComparison: TComparison<T>);
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AComparer) );
+  {$If SizeOf(TSlice<pointer>)<>SizeOf(IInterfacedObject<TSliceClass<pointer>>)}
+    Self := Default(TSlice<T>);
+  {$EndIf}
+  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AComparison) );
 end;
 
-constructor TSlice<T>.Create(const ASrc: TArray<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
+procedure TSlice<T>.Init(const ASrc: TArray<T>; AStartIndex, ACount: integer; AComparison: TComparison<T>);
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AStartIndex, ACount, AComparer) );
+  {$If SizeOf(TSlice<pointer>)<>SizeOf(IInterfacedObject<TSliceClass<pointer>>)}
+    Self := Default(TSlice<T>);
+  {$EndIf}
+  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AStartIndex, ACount, AComparison) );
 end;
 
-constructor TSlice<T>.Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
+procedure TSlice<T>.Init(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T>);
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AFilter, AComparer) );
+  {$If SizeOf(TSlice<pointer>)<>SizeOf(IInterfacedObject<TSliceClass<pointer>>)}
+    Self := Default(TSlice<T>);
+  {$EndIf}
+  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AFilter, AComparison) );
 end;
 
-constructor TSlice<T>.Create(ASrc: TSlice<T>; AComparer: IComparer<T>);
+class function TSlice<T>.Create(const ASrc: TArray<T>; AComparison: TComparison<T>): TSlice<T>;
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc.RO, AComparer) );
+  result.Init(ASrc, AComparison);
 end;
 
-constructor TSlice<T>.Create(ASrc: TSlice<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
+class function TSlice<T>.Create(const ASrc: TArray<T>; AStartIndex, ACount: integer; AComparison: TComparison<T>): TSlice<T>;
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc.RO, AStartIndex, ACount, AComparer) );
+  result.Init(ASrc, AStartIndex, ACount, AComparison);
 end;
 
-constructor TSlice<T>.Create(ASrc: TSlice<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
+class function TSlice<T>.Create(const ASrc: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T>): TSlice<T>;
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc.RO, AFilter, AComparer) );
-end;
-
-constructor TSlice<T>.Create(ASrc: TEnumerable<T>; AComparer: IComparer<T>);
-begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AComparer) );
-end;
-
-constructor TSlice<T>.Create(ASrc: TEnumerable<T>; AStartIndex, ACount: integer; AComparer: IComparer<T>);
-begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AStartIndex, ACount, AComparer) );
+  result.Init(ASrc, AFilter, AComparison);
 end;
 
 procedure TSlice<T>.Clear;
@@ -3165,19 +3186,14 @@ begin
   RW.Clear;
 end;
 
-constructor TSlice<T>.Create(ASrc: TEnumerable<T>; AFilter: TFuncFilterValueIndex<T>; AComparer: IComparer<T>);
+function TSlice<T>.BinarySearch(const Value: T): boolean;
 begin
-  FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(ASrc, AFilter, AComparer) );
+  result := RO.BinarySearch(Value);
 end;
 
-function TSlice<T>.BinarySearch(const Value: T; AComparer: IComparer<T>): boolean;
+function TSlice<T>.BinarySearch(const Value: T; out FoundIndex: integer): boolean;
 begin
-  result := RO.BinarySearch(Value, AComparer);
-end;
-
-function TSlice<T>.BinarySearch(const Value: T; out FoundIndex: integer; AComparer: IComparer<T>): boolean;
-begin
-  result := RO.BinarySearch(Value, FoundIndex, AComparer);
+  result := RO.BinarySearch(Value, FoundIndex);
 end;
 
 function TSlice<T>.GetComparer: IComparer<T>;
@@ -3197,8 +3213,10 @@ end;
 
 function TSlice<T>.GetReadonly: TSliceClass<T>;
 begin
-  if FSliceInt=nil then
-    FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create );
+  { we can't do anything useful with a slice if it doesn't have values assigned }
+  Assert(FSliceInt<>nil);
+  {if FSliceInt=nil then
+    FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create );}
   result := FSliceInt.Data;
 end;
 
@@ -3206,15 +3224,17 @@ function TSlice<T>.GetReadWrite: TSliceClass<T>;
 var
   SrcSliceInt: IInterfacedObject<TSliceClass<T>>;
 begin
-  if FSliceInt=nil then
+  { we can't do anything useful with a slice if it doesn't have values assigned }
+  Assert(FSliceInt<>nil);
+{  if FSliceInt=nil then
     FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create )
-  else
-    if FSliceInt.GetRefCount<>1 then
-    begin
-      { Copy on write }
-      SrcSliceInt := FSliceInt;
-      FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( TSliceClass<T>.Create(SrcSliceInt.Data, SrcSliceInt.Data.Comparer) );
-    end;
+  else}
+  if FSliceInt.GetRefCount<>1 then
+  begin
+    { Copy on write }
+    SrcSliceInt := FSliceInt;
+    FSliceInt := TInterfacedObject<TSliceClass<T>>.Create( SrcSliceInt.Data.Copy );
+  end;
   result := FSliceInt.Data;
 end;
 
@@ -3233,6 +3253,11 @@ begin
   RW.Comparer := Value;
 end;
 
+procedure TSlice<T>.SetComparison(AComparison: TComparison<T>);
+begin
+  RW.Comparison := AComparison;
+end;
+
 procedure TSlice<T>.SetCount(const Value: integer);
 begin
   RW.Count := Value;
@@ -3248,9 +3273,27 @@ begin
   RW.Values[SliceIndex] := Value;
 end;
 
-procedure TSlice<T>.Sort(AComparer: IComparer<T>);
+function TSlice<T>.Copy: TSlice<T>;
 begin
-  RW.Sort(AComparer);
+  result.Init(RO.FValues);
+  result.Comparer := RO.Comparer;
+end;
+
+function TSlice<T>.Copy(AStartIndex, ACount: integer): TSlice<T>;
+begin
+  result.Init(RO.FValues, AStartIndex, ACount);
+  result.Comparer := RO.Comparer;
+end;
+
+function TSlice<T>.Copy(AFilter: TFuncFilterValueIndex<T>): TSlice<T>;
+begin
+  result.Init(RO.FValues, AFilter);
+  result.Comparer := RO.Comparer;
+end;
+
+procedure TSlice<T>.Sort;
+begin
+  RW.Sort;
 end;
 
 end.
