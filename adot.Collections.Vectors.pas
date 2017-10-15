@@ -168,7 +168,7 @@ type
     constructor Create(const AValues: TArray<T>; AStartIndex,ACount: integer; AComparison: TComparison<T> = nil); overload;
     constructor Create(const AValues: TArray<T>; AFilter: TFuncFilterValueIndex<T>; AComparison: TComparison<T> = nil); overload;
 
-    { Create new slice }
+    { Create new slice based on current one }
     function Copy: TSliceClass<T>; overload;
     function Copy(AStartIndex,ACount: integer): TSliceClass<T>; overload;
     function Copy(AFilter: TFuncFilterValueIndex<T>): TSliceClass<T>; overload;
@@ -277,6 +277,8 @@ type
     procedure SetItemsArray(const Value: TArray<T>);
     procedure FindComparer(var AComparer: IComparer<T>);
     procedure SetOwnsValues(const Value: boolean);
+    procedure SetComparison(AComparison: TComparison<T>);
+    procedure SetComparer(AComparer: IComparer<T>);
 
   protected
     FItems: TArray<T>;
@@ -287,11 +289,14 @@ type
     function DoGetEnumerator: TEnumerator<T>; override;
 
   public
-    constructor Create(AComparer: IComparer<T> = nil); overload;
-    constructor Create(AComparer: TComparison<T>); overload;
-    constructor Create(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
-    constructor Create(AItems: TArray<T>; AComparer: IComparer<T> = nil); overload;
-    constructor Create(AItems: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    constructor Create; overload;
+    constructor Create(AComparer: IComparer<T>); overload;
+    constructor Create(AComparison: TComparison<T>); overload;
+
+    constructor Create(const AItems: TArray<T>); overload;
+    constructor Create(const AItems: TArray<T>; AComparer: IComparer<T>); overload;
+    constructor Create(const AItems: TArray<T>; AComparison: TComparison<T>); overload;
+
     destructor Destroy; override;
 
     procedure Clear;
@@ -308,8 +313,8 @@ type
     function Insert(Index: integer; const Value: T): integer;
 
     function Sorted: boolean; overload;
-    function Sorted(AComparer: IComparer<T>): boolean; overload;
     function Sorted(AStartIndex,ACount: integer; AComparer: IComparer<T>): boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparison: TComparison<T>): boolean; overload;
 
     procedure Delete(ItemIndex: integer); overload;
     procedure Delete(AStartIndex,ACount: integer); overload;
@@ -394,7 +399,8 @@ type
     property Items[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
-    property Comparer: IComparer<T> read FComparer write FComparer;
+    property Comparer: IComparer<T> read FComparer write SetComparer;
+    property Comparison: TComparison<T> write SetComparison;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
     property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
   end;
@@ -1288,33 +1294,40 @@ end;
 
 { TVectorClass<T> }
 
+constructor TVectorClass<T>.Create;
+begin
+  inherited Create;
+  FComparer := TComparerUtils.DefaultComparer<T>;
+end;
+
 constructor TVectorClass<T>.Create(AComparer: IComparer<T>);
 begin
   inherited Create;
-  FComparer := AComparer;
+  Comparer := AComparer;
 end;
 
-constructor TVectorClass<T>.Create(ACapacity: integer; AComparer: IComparer<T> = nil);
+constructor TVectorClass<T>.Create(AComparison: TComparison<T>);
 begin
-  Create(AComparer);
-  Capacity := ACapacity;
+  inherited Create;
+  Comparison := AComparison;
 end;
 
-constructor TVectorClass<T>.Create(AItems: TArray<T>; AComparer: IComparer<T> = nil);
+constructor TVectorClass<T>.Create(const AItems: TArray<T>);
+begin
+  Create;
+  Add(AItems);
+end;
+
+constructor TVectorClass<T>.Create(const AItems: TArray<T>; AComparer: IComparer<T>);
 begin
   Create(AComparer);
   Add(AItems);
 end;
 
-constructor TVectorClass<T>.Create(AItems: TEnumerable<T>; AComparer: IComparer<T> = nil);
+constructor TVectorClass<T>.Create(const AItems: TArray<T>; AComparison: TComparison<T>);
 begin
-  Create(AComparer);
+  Create(AComparison);
   Add(AItems);
-end;
-
-constructor TVectorClass<T>.Create(AComparer: TComparison<T>);
-begin
-  Create(TDelegatedComparer<T>.Create(AComparer));
 end;
 
 procedure TVectorClass<T>.Add(const Value: TArray<T>);
@@ -2031,6 +2044,20 @@ begin
   SetLength(FItems, Value);
 end;
 
+procedure TVectorClass<T>.SetComparer(AComparer: IComparer<T>);
+begin
+  if AComparer=nil
+    then FComparer := TComparerUtils.DefaultComparer<T>
+    else FComparer := AComparer;
+end;
+
+procedure TVectorClass<T>.SetComparison(AComparison: TComparison<T>);
+begin
+  if not Assigned(AComparison)
+    then FComparer := TComparerUtils.DefaultComparer<T>
+    else FComparer := TDelegatedComparer<T>.Create(AComparison);
+end;
+
 procedure TVectorClass<T>.SetCount(const Value: integer);
 var
   I: Integer;
@@ -2130,9 +2157,11 @@ begin
   result := Sorted(0, Count, FComparer);
 end;
 
-function TVectorClass<T>.Sorted(AComparer: IComparer<T>): boolean;
+function TVectorClass<T>.Sorted(AStartIndex, ACount: integer; AComparison: TComparison<T>): boolean;
 begin
-  result := Sorted(0, Count, AComparer);
+  if Assigned(AComparison)
+    then result := Sorted(AStartIndex, ACount, TDelegatedComparer<T>.Create(AComparison))
+    else result := Sorted(AStartIndex, ACount, FComparer);
 end;
 
 function TVectorClass<T>.Sorted(AStartIndex, ACount: integer; AComparer: IComparer<T>): boolean;
@@ -2255,9 +2284,8 @@ end;
 
 procedure TVector<T>.CreateVector(ACapacity: integer; AComparer: IComparer<T>);
 begin
-  FVectorInt := TInterfacedObject<TVectorClass<T>>.Create(
-    TVectorClass<T>.Create(ACapacity, AComparer)
-  );
+  FVectorInt := TInterfacedObject<TVectorClass<T>>.Create( TVectorClass<T>.Create(AComparer) );
+  FVectorInt.Data.Capacity := ACapacity;
 end;
 
 class operator TVector<T>.Add(a: TVector<T>; const b: TEnumerable<T>): TVector<T>;
