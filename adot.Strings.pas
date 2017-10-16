@@ -107,7 +107,8 @@ type
   { Lightweight and managed analog of TStringStream:
     - write operations are faster on large input in comparing with regular string concatenation
     - supports stream-like read/write operations
-    - lighter/faster than TStringStream }
+    - lighter/faster than TStringStream
+    DEPRECATED: For new development it is better to use TStringBuilder class }
   TStringBuffer = record
   public
   private
@@ -126,6 +127,7 @@ type
     procedure SetText(const Value: string);
     function GetEmpty: Boolean;
   public
+    procedure Init;
 
     procedure Clear;
 
@@ -227,6 +229,7 @@ type
     procedure Sort;
 
   public
+    procedure Init;
 
     procedure Clear;
 
@@ -4119,6 +4122,11 @@ begin
   Add(r);
 end;
 
+procedure TStringEditor.Init;
+begin
+  Self := Default(TStringEditor);
+end;
+
 procedure TStringEditor.Insert(Pos: integer; const Substr: string);
 var
   r: TReplace;
@@ -4242,6 +4250,11 @@ end;
 class operator TStringBuffer.In(const Left: TStringBuffer; const Right: string): Boolean;
 begin
   result := TStr.Contains(Left.Text, Right);
+end;
+
+procedure TStringBuffer.Init;
+begin
+  Self := Default(TStringBuffer);
 end;
 
 class operator TStringBuffer.Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
