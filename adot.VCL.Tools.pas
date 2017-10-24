@@ -232,6 +232,8 @@ type
         out ErrorMessage            : string): boolean; overload;
   end;
 
+  { Debouncing of event with interval N ms means, that time between triggering of SourceEvent will at least N ms.
+    Most common use case: when user is editing a filter, data should not be updated too often }
   TDebouncedEvent = class(TComponent)
   private
     class var
@@ -257,6 +259,11 @@ type
     property DebouncedEvent: TNotifyEvent read GetDebouncedEvent;
     property SourceEvent: TNotifyEvent read FSrcEvent;
     class property InstanceCount: integer read FInstCount;
+  end;
+
+  TFormUtils = class
+  public
+    class procedure Activate(AForm: TForm); static;
   end;
 
 implementation
@@ -1153,6 +1160,31 @@ end;
 class function TDebouncedEvent.Debounce(AOwner: TComponent; AEventToDebounce: TNotifyEvent; AMinIntervalMs: integer): TNotifyEvent;
 begin
   result := TDebouncedEvent.Create(AOwner, AEventToDebounce, AMinIntervalMs).DebouncedEvent;
+end;
+
+{ TFormUtils }
+
+class procedure TFormUtils.Activate(AForm: TForm);
+begin
+  if (AForm = nil) or not (AForm.Visible) then
+    Exit;
+
+  { try to focus the form }
+  try
+    AForm.BringToFront;
+    AForm.SetFocus;
+  except
+  end;
+
+  { BringToFront/SetFocus doesn't guarantee that control of the form gets focus.
+    It is possible case when two forms have Active=True/Focused=True.
+    We may need to focus control of active form }
+  if (AForm.ActiveControl <> nil) and AForm.ActiveControl.Visible and AForm.ActiveControl.Enabled then
+    try
+      AForm.ActiveControl.SetFocus;
+    except
+    end;
+
 end;
 
 end.
