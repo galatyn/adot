@@ -297,7 +297,7 @@ type
   TPostpondJobId = int64;
 
   { Usually TPostpond should not be used directly.
-    Use higher level TDefferedJob record type when possible. }
+    Use higher level TDeferredJob record type when possible. }
   TPostpond = class
   private
     type
@@ -346,7 +346,7 @@ type
   end;
 
   {
-    var FRefreshArbeidspapirerDeffered: TDefferedJob;
+    var FRefreshArbeidspapirerDeffered: TDeferredJob;
     procedure TfmRevHandlinger.cxGridViewFocusedRecordChanged(Sender: TcxCustomGridTableView;
       APrevFocusedRecord,AFocusedRecord: TcxCustomGridRecord; ANewItemRecordFocusingChanged: Boolean);
     begin
@@ -357,11 +357,11 @@ type
           UpdateColsoptionEditing;
         end);
     end; }
-  TDefferedJob = record
+  TDeferredJob = record
   private
 
     type
-      TDefferedJobClass = class
+      TDeferredJobClass = class
       private
         FId: TPostpondJobId;
       public
@@ -372,11 +372,11 @@ type
       end;
 
     var
-      FJob: IInterfacedObject<TDefferedJobClass>;
+      FJob: IInterfacedObject<TDeferredJobClass>;
 
-    function GetJob: TDefferedJobClass;
+    function GetJob: TDeferredJobClass;
 
-    property Job: TDefferedJobClass read GetJob;
+    property Job: TDeferredJobClass read GetJob;
 
   public
 
@@ -387,7 +387,7 @@ type
     { Run(Proc, True) }
     procedure ScheduleTask(Proc: TProc); overload;
 
-    { Called automatically when variable of type TDefferedJob is destroyed.
+    { Called automatically when variable of type TDeferredJob is destroyed.
       Can be called manually to cancel a planned job (does nothing if there is no unfinished job) }
     procedure Cancel;
 
@@ -1598,56 +1598,56 @@ begin
     end;
 end;
 
-{ TDefferedJob.TDefferedJobClass }
+{ TDeferredJob.TDeferredJobClass }
 
-destructor TDefferedJob.TDefferedJobClass.Destroy;
+destructor TDeferredJob.TDeferredJobClass.Destroy;
 begin
   Cancel;
   inherited;
 end;
 
-procedure TDefferedJob.TDefferedJobClass.Cancel;
+procedure TDeferredJob.TDeferredJobClass.Cancel;
 begin
   TPostpond.Cancel(FId);
 end;
 
-function TDefferedJob.TDefferedJobClass.Queued: boolean;
+function TDeferredJob.TDeferredJobClass.Queued: boolean;
 begin
   result := TPostpond.IsInTheQueue(FId);
 end;
 
-procedure TDefferedJob.TDefferedJobClass.Run(Proc: TProc; CancelUnfinishedJob: boolean);
+procedure TDeferredJob.TDeferredJobClass.Run(Proc: TProc; CancelUnfinishedJob: boolean);
 begin
   if CancelUnfinishedJob then
     Cancel;
   FId := TPostpond.Run(Proc);
 end;
 
-{ TDefferedJob }
+{ TDeferredJob }
 
-function TDefferedJob.GetJob: TDefferedJobClass;
+function TDeferredJob.GetJob: TDeferredJobClass;
 begin
   if FJob = nil then
-    FJob := TInterfacedObject<TDefferedJobClass>.Create(TDefferedJobClass.Create);
+    FJob := TInterfacedObject<TDeferredJobClass>.Create(TDeferredJobClass.Create);
   result := FJob.Data;
 end;
 
-procedure TDefferedJob.Cancel;
+procedure TDeferredJob.Cancel;
 begin
   Job.Cancel;
 end;
 
-function TDefferedJob.Scheduled: boolean;
+function TDeferredJob.Scheduled: boolean;
 begin
   result := Job.Queued;
 end;
 
-procedure TDefferedJob.ScheduleTask(Proc: TProc; CancelUnfinishedJob: boolean);
+procedure TDeferredJob.ScheduleTask(Proc: TProc; CancelUnfinishedJob: boolean);
 begin
   Job.Run(Proc, CancelUnfinishedJob);
 end;
 
-procedure TDefferedJob.ScheduleTask(Proc: TProc);
+procedure TDeferredJob.ScheduleTask(Proc: TProc);
 begin
   Job.Run(Proc, True);
 end;
