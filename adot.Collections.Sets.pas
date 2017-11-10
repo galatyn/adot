@@ -126,13 +126,19 @@ type
 
   public
 
-    { Record type TSet<T> can be used without constructor, use constructor only if you
-      need some customization: set Capacity, provide custom comparer etc. }
-    constructor Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init; overload;
+    procedure Init(ACapacity: integer; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+
+    class function Create: TSet<T>; overload; static;
+    class function Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
 
     function GetEnumerator: TEnumerator<T>;
 
@@ -514,6 +520,75 @@ end;
 
 { TSet<T> }
 
+procedure TSet<T>.Init;
+begin
+  Self := Default(TSet<T>);
+end;
+
+procedure TSet<T>.Init(ACapacity: integer; AComparer: IEqualityComparer<T>);
+begin
+  Self := Default(TSet<T>);
+  CreateSet(ACapacity, AComparer);
+end;
+
+procedure TSet<T>.Init(const V: array of T; ACapacity: integer; AComparer: IEqualityComparer<T>);
+begin
+  Self := Default(TSet<T>);
+  CreateSet(ACapacity, AComparer);
+  Add(v);
+end;
+
+procedure TSet<T>.Init(const V: TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
+begin
+  Self := Default(TSet<T>);
+  CreateSet(ACapacity, AComparer);
+  Add(v);
+end;
+
+procedure TSet<T>.Init(const V: array of TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
+begin
+  Self := Default(TSet<T>);
+  CreateSet(ACapacity, AComparer);
+  Add(v);
+end;
+
+procedure TSet<T>.Init(V: TSet<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
+begin
+  Self := Default(TSet<T>);
+  CreateSet(ACapacity, AComparer);
+  Add(v);
+end;
+
+class function TSet<T>.Create(const V: array of T; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+begin
+  result.Init(V, ACapacity, AComparer);
+end;
+
+class function TSet<T>.Create(ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+begin
+  result.Init(ACapacity, AComparer);
+end;
+
+class function TSet<T>.Create: TSet<T>;
+begin
+  result.Init;
+end;
+
+class function TSet<T>.Create(V: TSet<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+begin
+  result.Init(V, ACapacity, AComparer);
+end;
+
+class function TSet<T>.Create(const V: array of TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+begin
+  result.Init(V, ACapacity, AComparer);
+end;
+
+class function TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+begin
+  result.Init(V, ACapacity, AComparer);
+end;
+
 procedure TSet<T>.Add(const V: T);
 begin
   RW.Include(V);
@@ -782,44 +857,15 @@ begin
   result := RO.Count;
 end;
 
-constructor TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-begin
-  CreateSet(ACapacity, AComparer);
-  Add(v);
-end;
-
-constructor TSet<T>.Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-begin
-  CreateSet(ACapacity, AComparer);
-  Add(v);
-end;
-
-constructor TSet<T>.Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil);
-begin
-  CreateSet(ACapacity, AComparer);
-end;
-
-constructor TSet<T>.Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-begin
-  CreateSet(ACapacity, AComparer);
-  Add(v);
-end;
-
 function TSet<T>.Copy: TSet<T>;
 begin
   if FSetInt=nil then
     result.FSetInt := nil
   else
   begin
-    result := TSet<T>.Create(Count, FSetInt.Data.Comparer);
+    result.Init(Count, FSetInt.Data.Comparer);
     result.Add(Self);
   end;
-end;
-
-constructor TSet<T>.Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-begin
-  CreateSet(ACapacity, AComparer);
-  Add(v);
 end;
 
 procedure TSet<T>.Remove(const V: TEnumerable<T>);

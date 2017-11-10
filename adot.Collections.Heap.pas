@@ -54,8 +54,10 @@ type
         PairEnumerator: TPairsEnumerator;
 
         function GetCurrent: TKey;
+
       public
-        constructor Create(const PairEnumerator: TPairsEnumerator);
+        procedure Init(const APairEnumerator: TPairsEnumerator);
+
         function MoveNext: Boolean;
         property Current: TKey read GetCurrent;
       end;
@@ -64,8 +66,9 @@ type
       TKeyCollection = record
       private
         PairEnumerator: TPairsEnumerator;
+
       public
-        constructor Create(const PairEnumerator: TPairsEnumerator);
+        procedure Init(const APairEnumerator: TPairsEnumerator);
         function GetEnumerator: TKeyEnumerator;
       end;
 
@@ -309,10 +312,10 @@ end;
 
 { TBinaryHeapClass<TKey, TValue>.TKeyEnumerator }
 
-constructor TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.Create(const PairEnumerator: TPairsEnumerator);
+procedure TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.Init(const APairEnumerator: TPairsEnumerator);
 begin
   Self := Default(TKeyEnumerator);
-  Self.PairEnumerator := PairEnumerator;
+  PairEnumerator := APairEnumerator;
 end;
 
 function TBinaryHeapClass<TKey, TValue>.TKeyEnumerator.GetCurrent: TKey;
@@ -327,15 +330,15 @@ end;
 
 { TBinaryHeapClass<TKey, TValue>.TKeyCollection }
 
-constructor TBinaryHeapClass<TKey, TValue>.TKeyCollection.Create(const PairEnumerator: TPairsEnumerator);
+procedure TBinaryHeapClass<TKey, TValue>.TKeyCollection.Init(const APairEnumerator: TPairsEnumerator);
 begin
   Self := Default(TKeyCollection);
-  Self.PairEnumerator := PairEnumerator;
+  PairEnumerator := APairEnumerator;
 end;
 
 function TBinaryHeapClass<TKey, TValue>.TKeyCollection.GetEnumerator: TKeyEnumerator;
 begin
-  result := TKeyEnumerator.Create(PairEnumerator);
+  result.Init(PairEnumerator);
 end;
 
 { TBinaryHeapClass<TKey, TValue> }
@@ -430,7 +433,7 @@ end;
 
 function TBinaryHeapClass<TKey, TValue>.GetKeyCollection: TKeyCollection;
 begin
-  result := TKeyCollection.Create( FItems.GetEnumerator );
+  result.Init( FItems.GetEnumerator );
 end;
 
 function TBinaryHeapClass<TKey, TValue>.GetOwnsKeys: boolean;

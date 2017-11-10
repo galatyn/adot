@@ -296,55 +296,6 @@ type
 
   TPostpondJobId = int64;
 
-  { Usually TPostpond should not be used directly.
-    Use higher level TDeferredJob record type when possible. }
-  TPostpond = class
-  private
-    type
-      TRunMessenger = class(TSingleton<TMessenger>)
-      protected
-        class function CreateInstance: TMessenger; override;
-      end;
-
-    const
-      wm_postpond = wm_user+1;
-
-    class var
-      FPostpondIdGen: TPostpondJobId;
-      FMap: TMap<TPostpondJobId, TProc>;
-
-    class procedure OnMessengerEvent(var AMessage: TMessage);
-    class destructor DestroyClass;
-
-  public
-
-    { Use PostMessage to run some code when the app exists from event handlers of active VCL components.
-      Can be used to edit values of TDataset when it is connected to components etc. Example:
-
-        procedure TFrm.GetPropertiesForEdit(Sender: TcxCustomGridTableItem; ARecord: TcxCustomGridRecord; var AProperties: TcxCustomEditProperties);
-        begin
-          TPostpond.Cancel(FDefferedJob); // cancel old job (safe if job is finished, job ids are unique)
-          FDefferedJob := TPostpond.Run(
-            procedure
-            begin
-              GridColumn.Visible := False;
-            end);
-        end;
-
-        procedure TFrm.FormDestroy(Sender: TObject);
-        begin
-          TPostpond.Cancel(FDefferedJob); // we should cancel the job when form is to be destroyed
-        end;
-      }
-    class function Run(Proc: TProc): TPostpondJobId; static;
-
-    { If form is closed before method is called, we should disable running of the method
-      and release locked params }
-    class procedure Cancel(JobId: TPostpondJobId); static;
-
-    class function IsInTheQueue(JobId: TPostpondJobId): boolean; static;
-  end;
-
   {
     var FRefreshArbeidspapirerDeffered: TDeferredJob;
     procedure TfmRevHandlinger.cxGridViewFocusedRecordChanged(Sender: TcxCustomGridTableView;
@@ -542,6 +493,55 @@ type
     function QueryFullProcessImageName(hProcess: THandle; dwFlags: DWORD; lpFilename: LPCWSTR; var nSize: DWORD): Boolean;
 
     class property Ordinal: TApiExt read GetOrdinal;
+  end;
+
+  { Usually TPostpond should not be used directly.
+    Use higher level TDeferredJob record type when possible. }
+  TPostpond = class
+  private
+    type
+      TRunMessenger = class(TSingleton<TMessenger>)
+      protected
+        class function CreateInstance: TMessenger; override;
+      end;
+
+    const
+      wm_postpond = wm_user+1;
+
+    class var
+      FPostpondIdGen: TPostpondJobId;
+      FMap: TMap<TPostpondJobId, TProc>;
+
+    class procedure OnMessengerEvent(var AMessage: TMessage);
+    class destructor DestroyClass;
+
+  public
+
+    { Use PostMessage to run some code when the app exists from event handlers of active VCL components.
+      Can be used to edit values of TDataset when it is connected to components etc. Example:
+
+        procedure TFrm.GetPropertiesForEdit(Sender: TcxCustomGridTableItem; ARecord: TcxCustomGridRecord; var AProperties: TcxCustomEditProperties);
+        begin
+          TPostpond.Cancel(FDefferedJob); // cancel old job (safe if job is finished, job ids are unique)
+          FDefferedJob := TPostpond.Run(
+            procedure
+            begin
+              GridColumn.Visible := False;
+            end);
+        end;
+
+        procedure TFrm.FormDestroy(Sender: TObject);
+        begin
+          TPostpond.Cancel(FDefferedJob); // we should cancel the job when form is to be destroyed
+        end;
+      }
+    class function Run(Proc: TProc): TPostpondJobId; static;
+
+    { If form is closed before method is called, we should disable running of the method
+      and release locked params }
+    class procedure Cancel(JobId: TPostpondJobId); static;
+
+    class function IsInTheQueue(JobId: TPostpondJobId): boolean; static;
   end;
 
 { TProcessUtils }

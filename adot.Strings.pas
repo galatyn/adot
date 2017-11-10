@@ -1297,7 +1297,7 @@ var
   I: Integer;
   S: TSet<Char>;
 begin
-  S := TSet<Char>.Create(CharsToReplace);
+  S.Init(CharsToReplace);
   Buf.Clear;
   for I := 0 to Src.Length-1 do
     if Src.Chars[I] in S
@@ -1312,7 +1312,7 @@ var
   I: Integer;
   S: TSet<Char>;
 begin
-  S := TSet<Char>.Create(CharsToDelete);
+  S.Init(CharsToDelete);
   Buf.Clear;
   for I := 0 to Src.Length-1 do
     if Src.Chars[I] in S then

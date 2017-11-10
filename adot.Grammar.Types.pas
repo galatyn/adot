@@ -31,10 +31,8 @@ type
     Rule: TGrammarClass;
     Position: TTokenPos;
 
-    procedure SetUp(ARule: TGrammarClass; AStart,ALen: integer); overload;
-    procedure SetUp(const ASrc: TParseTreeItem); overload;
-
-    constructor Create(ARule: TGrammarClass; AStart,ALen: integer);
+    procedure Init(ARule: TGrammarClass; AStart,ALen: integer); overload;
+    procedure Init(const ASrc: TParseTreeItem); overload;
   end;
 
   TEnumTreeProc = reference to procedure(TreeNode: integer; var Cancel: boolean);
@@ -55,8 +53,10 @@ type
         RuleId: TruleId;
 
         function CurrentNode: integer;
+
       public
-        constructor Create(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+        procedure Init(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+
         function MoveNext: Boolean;
         property Current: integer read CurrentNode;
       end;
@@ -67,7 +67,7 @@ type
         Root: integer;
         RuleId: TruleId;
 
-        constructor Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+        procedure Init(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
         function GetEnumerator: TRuleMatchesEnumerator;
       end;
 
@@ -279,17 +279,7 @@ implementation
 
 { TParseTreeItem }
 
-constructor TParseTreeItem.Create(ARule: TGrammarClass; AStart, ALen: integer);
-begin
-  {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
-    Self := Default(TParseTreeItem);
-  {$ENDIF}
-  Rule := ARule;
-  Position.Start := AStart;
-  Position.Len := ALen;
-end;
-
-procedure TParseTreeItem.SetUp(ARule: TGrammarClass; AStart,ALen: integer);
+procedure TParseTreeItem.Init(ARule: TGrammarClass; AStart,ALen: integer);
 begin
   {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
     Self := Default(TParseTreeItem);
@@ -298,7 +288,7 @@ begin
   Position.SetPos(AStart, ALen);
 end;
 
-procedure TParseTreeItem.SetUp(const ASrc: TParseTreeItem);
+procedure TParseTreeItem.Init(const ASrc: TParseTreeItem);
 begin
   {$IF SizeOf(TParseTreeItem)<>SizeOf(Rule)+SizeOf(Position)}
     Self := Default(TParseTreeItem);
@@ -309,7 +299,7 @@ end;
 
 { TParseTree.TRuleMatchesCollection }
 
-constructor TParseTree.TRuleMatchesCollection.Create(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+procedure TParseTree.TRuleMatchesCollection.Init(ATree: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
   {$IF SizeOf(TRuleMatchesCollection)<>SizeOf(Tree)+SizeOf(Root)+SizeOf(RuleId)}
     Self := Default(TRuleMatchesCollection);
@@ -321,17 +311,17 @@ end;
 
 function TParseTree.TRuleMatchesCollection.GetEnumerator: TRuleMatchesEnumerator;
 begin
-  result := TRuleMatchesEnumerator.Create(Tree, Root, RuleId);
+  result.Init(Tree, Root, RuleId);
 end;
 
 { TParseTree.TRuleMatchesEnumerator }
 
-constructor TParseTree.TRuleMatchesEnumerator.Create(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
+procedure TParseTree.TRuleMatchesEnumerator.Init(ANodes: TTreeArrayClass<TParseTreeItem>; ARoot: integer; const ARuleId: TruleId);
 begin
   {$IF SizeOf(TRuleMatchesEnumerator)<>SizeOf(Enum)+SizeOf(Nodes)+SizeOf(RuleId)}
     Self := Default(TRuleMatchesEnumerator);
   {$ENDIF}
-  Enum := TSubtreeEnumerator.Create(ANodes.Nodes, ARoot);
+  Enum.Init(ANodes.Nodes, ARoot);
   Nodes := ANodes;
   RuleId := ARuleId;
 end;
@@ -378,7 +368,7 @@ end;
 function TParseTree.Commit(ARule: TGrammarClass; AStart, ALen: integer): integer;
 begin
   result := Tree.Commit;
-  Tree.Nodes.Items[result].Data.SetUp(ARule, AStart, ALen);
+  Tree.Nodes.Items[result].Data.Init(ARule, AStart, ALen);
 end;
 
 function TParseTree.Commit: integer;
@@ -411,12 +401,12 @@ end;
 
 function TParseTree.GetChilds(ARoot: integer): TSubtreeCollection;
 begin
-  result := TSubtreeCollection.Create(Tree.Nodes, ARoot);
+  result.Init(Tree.Nodes, ARoot);
 end;
 
 function TParseTree.GetRuleMatches(RootNode: integer; const RuleId: TRuleId): TRuleMatchesCollection;
 begin
-  result := TRuleMatchesCollection.Create(Tree, RootNode, RuleId);
+  result.Init(Tree, RootNode, RuleId);
 end;
 
 function TParseTree.GetCount: integer;
@@ -426,7 +416,7 @@ end;
 
 function TParseTree.GetEnumerator: TSubtreeEnumerator;
 begin
-  Result := TSubtreeEnumerator.Create(Tree.Nodes, Root);
+  result.Init(Tree.Nodes, Root);
 end;
 
 function TParseTree.GetItem(n: integer): TParseTreeItem;
@@ -465,7 +455,7 @@ begin
     if Accept then
     begin
       J := Result.Tree.Add;
-      Result.Tree.Nodes[J].Data.SetUp(Tree.Nodes[I.A].Data);
+      Result.Tree.Nodes[J].Data.Init(Tree.Nodes[I.A].Data);
       DstLastChild.Add(-1);
       if I.B >= 0 then
       begin

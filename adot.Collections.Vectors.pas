@@ -60,8 +60,10 @@ type
         Pos: integer;
 
         function GetCurrent: T;
+
       public
-        constructor Create(const Items: TArray<T>; ACount: integer);
+        procedure Init(const Items: TArray<T>; ACount: integer);
+
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
       end;
@@ -437,6 +439,12 @@ type
     property RW: TVectorClass<T> read GetRW;
   public
 
+    procedure Init(AComparer: IComparer<T> = nil); overload;
+    procedure Init(AComparer: TComparison<T>); overload;
+    procedure Init(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
+    procedure Init(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Init(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
+
     { 1. Delphi doesn't allow parameterless constructor
       2. Delphi creates here strange / not optimal code for Linux, but there is no problems with
          static functions. Followin example fails with constructor, but works as expected with function:
@@ -448,12 +456,6 @@ type
     class function Create(ACapacity: integer; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     class function Create(const Values: TArray<T>; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     class function Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
-
-    procedure Init(AComparer: IComparer<T> = nil); overload;
-    procedure Init(AComparer: TComparison<T>); overload;
-    procedure Init(ACapacity: integer; AComparer: IComparer<T> = nil); overload;
-    procedure Init(const Values: TArray<T>; AComparer: IComparer<T> = nil); overload;
-    procedure Init(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil); overload;
 
     function GetEnumerator: TEnumerator<T>;
 
@@ -670,7 +672,7 @@ type
     procedure SetWidth(y: integer; const Value: integer);
 
   public
-    constructor Create(Width, Height: integer);
+    procedure Init(Width, Height: integer);
     procedure Clear;
 
     function AddRow: integer;
@@ -698,7 +700,7 @@ uses
 
 { TArr<T>.TEnumerator }
 
-constructor TArr<T>.TEnumerator.Create(const Items: TArray<T>; ACount: integer);
+procedure TArr<T>.TEnumerator.Init(const Items: TArray<T>; ACount: integer);
 begin
   Self := Default(TEnumerator);
   Self.Items := Items;
@@ -945,7 +947,7 @@ end;
 
 function TArr<T>.GetEnumerator: TEnumerator;
 begin
-  result := TEnumerator.Create(Items, Count);
+  result.Init(Items, Count);
 end;
 
 function TArr<T>.GetFirst: T;
@@ -3079,7 +3081,7 @@ end;
 
 { TVector2D<T> }
 
-constructor TVector2D<T>.Create(Width, Height: integer);
+procedure TVector2D<T>.Init(Width, Height: integer);
 var
   Y: integer;
   V: TArr<T>;

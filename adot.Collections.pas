@@ -78,7 +78,8 @@ type
       FGuard: IAutoFreeCollection;
 
   public
-    class function Create: TAutoFreeCollection; static;
+    procedure Init;
+
     function Add<T: class>(AObject: T):T;
     procedure Clear;
     function Empty: Boolean;
@@ -255,11 +256,9 @@ type
 
   public
 
-    constructor Create(AValueMin,AValueMax: integer); overload;
-    function GetEnumerator: TEnumerator;
-
-    { assign new range (Range[1,3] = Range[3,1]) }
     procedure Init(AValueMin,AValueMax: integer);
+
+    function GetEnumerator: TEnumerator;
 
     { assign empty range (with no elements) }
     procedure Clear;
@@ -324,8 +323,9 @@ type
     Cur: integer;
 
     function GetCurrent: TRange;
+
   public
-    constructor Create(Src: TArray<integer>);
+    procedure Init(Src: TArray<integer>);
     function MoveNext: boolean;
 
     property Current: TRange read GetCurrent;
@@ -334,8 +334,9 @@ type
   TRangeEnumerable = record
   private
     Src: TArray<integer>;
+
   public
-    constructor Create(Src: TArray<integer>);
+    procedure Init(Src: TArray<integer>);
     function GetEnumerator: TRangeEnumerator;
   end;
 
@@ -614,9 +615,9 @@ end;
 
 { TAutoFreeCollection }
 
-class function TAutoFreeCollection.Create: TAutoFreeCollection;
+procedure TAutoFreeCollection.Init;
 begin
-  result := Default(TAutoFreeCollection);
+  Self := Default(TAutoFreeCollection);
 end;
 
 procedure TAutoFreeCollection.Clear;
@@ -825,11 +826,6 @@ end;
 
 { TRange }
 
-constructor TRange.Create(AValueMin, AValueMax: integer);
-begin
-  Init(AValueMin, AValueMax);
-end;
-
 procedure TRange.Init(AValueMin, AValueMax: integer);
 begin
   Self := Default(TRange);
@@ -918,17 +914,17 @@ end;
 
 class operator TRange.Inc(const a: TRange): TRange;
 begin
-  result := TRange.Create(a.ValueMin+1, a.ValueMax+1);
+  result.Init(a.ValueMin+1, a.ValueMax+1);
 end;
 
 class operator TRange.Dec(const a: TRange): TRange;
 begin
-  result := TRange.Create(a.ValueMin-1, a.ValueMax-1);
+  result.Init(a.ValueMin-1, a.ValueMax-1);
 end;
 
 class operator TRange.Add(const a, b: TRange): TRange;
 begin
-  result := TRange.Create(Min(a.ValueMin, b.ValueMin), Max(a.ValueMax, b.ValueMax));
+  result.Init(Min(a.ValueMin, b.ValueMin), Max(a.ValueMax, b.ValueMax));
 end;
 
 class operator TRange.LogicalAnd(const a, b: TRange): TRange;
@@ -1031,7 +1027,7 @@ end;
 
 { TRangeEnumerator }
 
-constructor TRangeEnumerator.Create(Src: TArray<integer>);
+procedure TRangeEnumerator.Init(Src: TArray<integer>);
 begin
   Self := Default(TRangeEnumerator);
   Self.Src := Src;
@@ -1062,7 +1058,7 @@ end;
 
 { TRangeEnumerable }
 
-constructor TRangeEnumerable.Create(Src: TArray<integer>);
+procedure TRangeEnumerable.Init(Src: TArray<integer>);
 begin
   Self := Default(TRangeEnumerable);
   Self.Src := Src;
@@ -1070,7 +1066,7 @@ end;
 
 function TRangeEnumerable.GetEnumerator: TRangeEnumerator;
 begin
-  result := TRangeEnumerator.Create(Src);
+  result.Init(Src);
 end;
 
 { TRangeComparer }

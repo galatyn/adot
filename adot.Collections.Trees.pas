@@ -35,8 +35,10 @@ type
         Index: integer;
 
         function GetCurrent: integer;
+
       public
-        constructor Create(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TArr<TNode>);
+
         function MoveNext: Boolean;
         property Current: integer read GetCurrent;
       end;
@@ -47,8 +49,10 @@ type
         Enum: TEnumerator;
 
         function GetCurrent: T;
+
       public
-        constructor Create(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TArr<TNode>);
+
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
       end;
@@ -61,7 +65,8 @@ type
         CurrentNode: integer;
 
       public
-        constructor Create(const ANodes: TArr<TNode>; ARoot: integer);
+        procedure Init(const ANodes: TArr<TNode>; ARoot: integer);
+
         function MoveNext: Boolean;
         property Current: integer read CurrentNode;
       end;
@@ -70,7 +75,7 @@ type
       TValuesCollection = record
         Nodes: TArr<TNode>;
 
-        constructor Create(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TArr<TNode>);
         function GetEnumerator: TValuesEnumerator;
       end;
 
@@ -79,7 +84,7 @@ type
         Nodes: TArr<TNode>;
         Root: integer;
 
-        constructor Create(const ANodes: TArr<TNode>; ARoot: integer);
+        procedure Init(const ANodes: TArr<TNode>; ARoot: integer);
         function GetEnumerator: TSubtreeEnumerator;
       end;
 
@@ -165,7 +170,7 @@ uses
 
 { TTreeArrayClass<T>.TEnumerator }
 
-constructor TTreeArrayClass<T>.TEnumerator.Create(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TEnumerator.Init(const ANodes: TArr<TNode>);
 begin
   Self := Default(TEnumerator);
   Nodes := ANodes;
@@ -198,12 +203,12 @@ end;
 
 function TTreeArrayClass<T>.GetEnumerator: TEnumerator;
 begin
-  result := TEnumerator.Create(Nodes);
+  result.Init(Nodes);
 end;
 
 function TTreeArrayClass<T>.GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
 begin
-  result := TSubtreeCollection.Create(Nodes, StaringNode);
+  result.Init(Nodes, StaringNode);
 end;
 
 function TTreeArrayClass<T>.GetTotalSizeBytes: int64;
@@ -232,7 +237,7 @@ end;
 
 function TTreeArrayClass<T>.GetValuesCollection: TValuesCollection;
 begin
-  result := TValuesCollection.Create(Nodes);
+  result.Init(Nodes);
 end;
 
 procedure TTreeArrayClass<T>.Clear;
@@ -395,7 +400,7 @@ end;
 
 { TTreeArrayClass<T>.TSubtreeEnumerator }
 
-constructor TTreeArrayClass<T>.TSubtreeEnumerator.Create(const ANodes: TArr<TNode>; ARoot: integer);
+procedure TTreeArrayClass<T>.TSubtreeEnumerator.Init(const ANodes: TArr<TNode>; ARoot: integer);
 begin
   Self := Default(TSubtreeEnumerator);
   Nodes := ANodes;
@@ -424,7 +429,7 @@ end;
 
 { TTreeArrayClass<T>.TSubtreeCollection }
 
-constructor TTreeArrayClass<T>.TSubtreeCollection.Create(const ANodes: TArr<TNode>; ARoot: integer);
+procedure TTreeArrayClass<T>.TSubtreeCollection.Init(const ANodes: TArr<TNode>; ARoot: integer);
 begin
   Self := Default(TSubtreeCollection);
   Nodes := ANodes;
@@ -433,15 +438,15 @@ end;
 
 function TTreeArrayClass<T>.TSubtreeCollection.GetEnumerator: TSubtreeEnumerator;
 begin
-  result := TSubtreeEnumerator.Create(Nodes, Root);
+  result.Init(Nodes, Root);
 end;
 
 { TTreeArrayClass<T>.TValuesEnumerator }
 
-constructor TTreeArrayClass<T>.TValuesEnumerator.Create(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TValuesEnumerator.Init(const ANodes: TArr<TNode>);
 begin
   Self := Default(TValuesEnumerator);
-  Enum := TEnumerator.Create(ANodes);
+  Enum.Init(ANodes);
 end;
 
 function TTreeArrayClass<T>.TValuesEnumerator.GetCurrent: T;
@@ -456,7 +461,7 @@ end;
 
 { TTreeArrayClass<T>.TValuesCollection }
 
-constructor TTreeArrayClass<T>.TValuesCollection.Create(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TValuesCollection.Init(const ANodes: TArr<TNode>);
 begin
   Self := Default(TValuesCollection);
   Nodes := ANodes;
@@ -464,7 +469,7 @@ end;
 
 function TTreeArrayClass<T>.TValuesCollection.GetEnumerator: TValuesEnumerator;
 begin
-  result := TValuesEnumerator.Create(Nodes);
+  result.Init(Nodes);
 end;
 
 end.

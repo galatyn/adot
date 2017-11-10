@@ -101,13 +101,11 @@ type
     function GetAsString: string;
 
   public
-
-    { Record type TMap<TKey,TValue> can be used without constructor, use constructor only if you
-      need some customization: set Capacity, provide custom comparer etc. }
-    constructor Create(ACapacity: integer; AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const V: array of TPair<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(const V: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
-    constructor Create(V: TMap<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    procedure Init; overload;
+    procedure Init(ACapacity: integer; AComparer: IEqualityComparer<TKey> = nil); overload;
+    procedure Init(const V: array of TPair<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    procedure Init(const V: TEnumerable<TPair<TKey,TValue>>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
+    procedure Init(V: TMap<TKey,TValue>; ACapacity: integer = 0; AComparer: IEqualityComparer<TKey> = nil); overload;
 
     function Copy: TMap<TKey,TValue>;
 
@@ -167,8 +165,10 @@ type
       TMultimapKeyEqualityComparer = class(TEqualityComparer<TMultimapKey>)
       private
         FKeyComparer: IEqualityComparer<TKey>;
+
       public
         constructor Create(AKeyComparer: IEqualityComparer<TKey>);
+
         function Equals(const Left, Right: TMultimapKey): Boolean; overload; override;
         function GetHashCode(const Value: TMultimapKey): Integer; overload; override;
       end;
@@ -185,10 +185,12 @@ type
         FMultimap: TMultimapClass<TKey,TValue>;
         FMultimapKey: TMultimapKey;
 
-        constructor Create(AMultimap: TMultimapClass<TKey,TValue>; const AKey: TKey);
         function GetCurrent: TValue;
         function GetKey: TKey;
+
       public
+        procedure Init(AMultimap: TMultimapClass<TKey,TValue>; const AKey: TKey);
+
         function MoveNext: Boolean;
         property Current: TValue read GetCurrent;
         property Key: TKey read GetKey;
@@ -1020,12 +1022,12 @@ end;
 
 function TMultimapClass<TKey, TValue>.GetValuesEnumerator(const AKey: TKey): TValueEnumerator;
 begin
-  result := TValueEnumerator.Create(Self, AKey);
+  result.Init(Self, AKey);
 end;
 
 { TMultimapClass<TKey, TValue>.TValueEnumerator }
 
-constructor TMultimapClass<TKey, TValue>.TValueEnumerator.Create(AMultimap: TMultimapClass<TKey, TValue>; const AKey: TKey);
+procedure TMultimapClass<TKey, TValue>.TValueEnumerator.Init(AMultimap: TMultimapClass<TKey, TValue>; const AKey: TKey);
 begin
   Self := Default(TValueEnumerator);
   FMultimap := AMultimap;
@@ -1119,25 +1121,34 @@ end;
 
 { TMap<TKey, TValue> }
 
-constructor TMap<TKey, TValue>.Create(const V: array of TPair<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+procedure TMap<TKey, TValue>.Init;
 begin
+  Self := Default(TMap<TKey, TValue>);
+end;
+
+procedure TMap<TKey, TValue>.Init(ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+begin
+  Self := Default(TMap<TKey, TValue>);
+  CreateMap(ACapacity, AComparer);
+end;
+
+procedure TMap<TKey, TValue>.Init(const V: array of TPair<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+begin
+  Self := Default(TMap<TKey, TValue>);
   CreateMap(ACapacity, AComparer);
   Add(V);
 end;
 
-constructor TMap<TKey, TValue>.Create(ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+procedure TMap<TKey, TValue>.Init(const V: TEnumerable<TPair<TKey, TValue>>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
-  CreateMap(ACapacity, AComparer);
-end;
-
-constructor TMap<TKey, TValue>.Create(V: TMap<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
-begin
+  Self := Default(TMap<TKey, TValue>);
   CreateMap(ACapacity, AComparer);
   Add(V);
 end;
 
-constructor TMap<TKey, TValue>.Create(const V: TEnumerable<TPair<TKey, TValue>>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
+procedure TMap<TKey, TValue>.Init(V: TMap<TKey, TValue>; ACapacity: integer; AComparer: IEqualityComparer<TKey>);
 begin
+  Self := Default(TMap<TKey, TValue>);
   CreateMap(ACapacity, AComparer);
   Add(V);
 end;
@@ -1146,10 +1157,9 @@ procedure TMap<TKey, TValue>.CreateMap(ACapacity: integer; AComparer: IEqualityC
 var
   C: IEqualityComparer<TKey>;
 begin
-  if AComparer=nil then
-    C := TComparerUtils.DefaultEqualityComparer<TKey>
-  else
-    C := AComparer;
+  if AComparer=nil
+    then C := TComparerUtils.DefaultEqualityComparer<TKey>
+    else C := AComparer;
   FMapInt := TInterfacedObject<TMapClass<TKey,TValue>>.Create( TMapClass<TKey,TValue>.Create(ACapacity, C) );
 end;
 
@@ -1317,10 +1327,10 @@ end;
 function TMap<TKey, TValue>.Copy: TMap<TKey, TValue>;
 begin
   if FMapInt=nil then
-    result.FMapInt := nil
+    result.Init
   else
   begin
-    result := TMap<TKey, TValue>.Create(Count, FMapInt.Data.Comparer);
+    result.Init(Count, FMapInt.Data.Comparer);
     result.Add(Self);
   end;
 end;

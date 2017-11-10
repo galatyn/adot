@@ -594,7 +594,7 @@ type
         Bytes: TArray<Byte>;
         Count: integer;
 
-        constructor Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
+        procedure Init(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
         function ReadNext: Boolean;
       end;
 
@@ -741,8 +741,10 @@ type
   TIndexBackEnumerator = record
   private
     FCurrentIndex, FToIndex: integer;
+
   public
-    constructor Create(AIndexFrom, AIndexTo: integer);
+    procedure Init(AIndexFrom, AIndexTo: integer);
+
     function GetCurrent: Integer;
     function MoveNext:   Boolean;
 
@@ -765,8 +767,9 @@ type
       private
         Span: TTimeSpan;
         Calls: int64;
+
       public
-        constructor Create(const ASpan: TTimeSpan; const ACalls: int64);
+        procedure Init(const ASpan: TTimeSpan; const ACalls: int64);
       end;
 
     class var
@@ -806,6 +809,8 @@ type
     function GetTimedOut: Boolean;
 
   public
+    procedure Init;
+
     { If we check for timeout every iteration, usually (when iterations are short)
       it is too often and our checks may consume more time then usefull work itself.
       To check only 1 time for N iterations set ACheckPeriod=N. }
@@ -900,11 +905,10 @@ type
     procedure SetValue(const AValue: T);
     function GetEmpty: boolean;
     function GetPointer: PT;
-  public
 
-    { we use class functions because parameterless constructors are not allowed here }
-    class function Create: TBox<T>; overload; static;
-    class function Create(const AValue: T): TBox<T>; overload; static;
+  public
+    procedure Init; overload;
+    procedure Init(const AValue: T); overload;
 
     procedure Clear;
     function Extract: T;
@@ -987,8 +991,9 @@ type
   TOutOfScopeAction = record
   private
     FProc: IInterfacedObject<TObject>;
+
   public
-    constructor Create(AProc: TProc);
+    procedure Init(AProc: TProc);
   end;
 
   { Executes custom action (procedure/method) with specific parameter when last instance goes out of scope. }
@@ -1007,8 +1012,9 @@ type
 
     var
       FProc: IInterfacedObject<TRunOnDestroy>;
+
   public
-    constructor Create(AProc: TProc<T>; AValue: T);
+    procedure Init(AProc: TProc<T>; AValue: T);
   end;
 
   { Lightweight and managed analog of TBytesStream.
@@ -1032,7 +1038,9 @@ type
     procedure SetText(const Value: string);
     function GetEmpty: Boolean; {$IFDEF UseInline}inline;{$ENDIF}
     procedure SetData(AData: TArray<Byte>);
+
   public
+    procedure Init;
 
     { writes bytes from Src to current position. }
     procedure Write(const Src; ByteCount: integer); overload;
@@ -1099,8 +1107,8 @@ type
       Gb = int64(1024)*Mb;
       Tb = int64(1024)*Gb;
 
-    constructor Create(const AValue: int64);
-    constructor CreateMb(const AValue: double);
+    procedure Init(const AValue: int64);
+    procedure InitMb(const AValue: double);
 
     class function SizeToString(const AValue: int64): string; static;
 
@@ -1139,8 +1147,10 @@ type
     function GetSum(x1, y1, x2, y2: integer): int64;
     function GetAvg(x1, y1, x2, y2: integer): int64;
   public
-    Image: array of int64;
+    Image: TArray<int64>;
     Width,Height: integer;
+
+    procedure Init;
 
     procedure SetSize(AWidth,AHeight: integer);
 
@@ -2189,7 +2199,7 @@ end;
 
 class function TArrayUtils.Ranges(Src: TArray<integer>): TRangeEnumerable;
 begin
-  result := TRangeEnumerable.Create(Src);
+  result.Init(Src);
 end;
 
 class procedure TArrayUtils.SaveToFileAsBin<T>(const Arr: TArray<T>; const AFileName: string);
@@ -2507,8 +2517,9 @@ end;
 
 { TStreamUtils.TReader }
 
-constructor TStreamUtils.TReader.Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
+procedure TStreamUtils.TReader.Init(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean);
 begin
+  Self := Default(TStreamUtils.TReader);
   Stream := Src;
   if AOwnsStream then
     AutoFreeCollection.Add(Stream);
@@ -2968,8 +2979,9 @@ end;
 
 { TIndexBackEnumerator }
 
-constructor TIndexBackEnumerator.Create(AIndexFrom, AIndexTo: integer);
+procedure TIndexBackEnumerator.Init(AIndexFrom, AIndexTo: integer);
 begin
+  Self := Default(TIndexBackEnumerator);
   FCurrentIndex := AIndexFrom;
   FToIndex := AIndexTo;
 end;
@@ -2988,8 +3000,9 @@ end;
 
 { TTiming.TTotalStat }
 
-constructor TTiming.TTotalStat.Create(const ASpan: TTimeSpan; const ACalls: int64);
+procedure TTiming.TTotalStat.Init(const ASpan: TTimeSpan; const ACalls: int64);
 begin
+  Self := Default(TTiming.TTotalStat);
   Span := ASpan;
   Calls := ACalls;
 end;
@@ -3030,7 +3043,7 @@ class function TTiming.Stop(const OpId: string; out ATotalStat: TTotalStat): TTi
 begin
   result := Stop;
   if not TotalTimes.TryGetValue(OpId, ATotalStat) then
-    ATotalStat := TTotalStat.Create(TTimeSpan.Create(0), 0);
+    ATotalStat.Init(TTimeSpan.Create(0), 0);
   ATotalStat.Span := ATotalStat.Span + result;
   inc(ATotalStat.Calls);
   TotalTimes.AddOrSetValue(OpId, ATotalStat);
@@ -3057,6 +3070,11 @@ begin
 end;
 
 { TTimeOut }
+
+procedure TTimeOut.Init;
+begin
+  Self := Default(TTimeOut);
+end;
 
 procedure TTimeOut.Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
 begin
@@ -3300,15 +3318,15 @@ end;
 
 { TBox<T> }
 
-class function TBox<T>.Create: TBox<T>;
+procedure TBox<T>.Init;
 begin
-  Result.Clear;
+  Self := Default(TBox<T>);
 end;
 
-class function TBox<T>.Create(const AValue: T): TBox<T>;
+procedure TBox<T>.Init(const AValue: T);
 begin
-  Result.Clear;
-  result.Value := AValue;
+  Self := Default(TBox<T>);
+  Value := AValue;
 end;
 
 procedure TBox<T>.Clear;
@@ -3397,7 +3415,7 @@ end;
 
 class operator TBox<T>.Implicit(const AValue: T): TBox<T>;
 begin
-  result := TBox<T>.Create(AValue);
+  result.Init(AValue);
 end;
 
 class operator TBox<T>.Implicit(const AValue: TBox<T>): T;
@@ -3993,7 +4011,7 @@ var
   Reader: TStreamUtils.TReader;
   Hash: THashMD5;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
   while Reader.ReadNext do
     Hash.Update(Reader.Bytes, Reader.Count);
@@ -4036,7 +4054,7 @@ var
   Reader: TStreamUtils.TReader;
   Hash: THashSHA1;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Hash := THashSHA1.Create;
   while Reader.ReadNext do
     Hash.Update(Reader.Bytes, Reader.Count);
@@ -4079,7 +4097,7 @@ var
   Reader: TStreamUtils.TReader;
   Hash: THashSHA2;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Hash := THashSHA2.Create;
   while Reader.ReadNext do
     Hash.Update(Reader.Bytes, Reader.Count);
@@ -4122,7 +4140,7 @@ var
   Reader: TStreamUtils.TReader;
   Crc: Cardinal;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Crc := System.ZLib.crc32(0, nil, 0);
   while Reader.ReadNext do
     Crc := System.ZLib.crc32(Crc, @Reader.Bytes[0], Reader.Count);
@@ -4165,7 +4183,7 @@ var
   Reader: TStreamUtils.TReader;
   Crc: Cardinal;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Crc := System.ZLib.adler32(0, nil, 0);
   while Reader.ReadNext do
     Crc := System.ZLib.adler32(Crc, @Reader.Bytes[0], Reader.Count);
@@ -4208,7 +4226,7 @@ var
   Reader: TStreamUtils.TReader;
   Hash: THashBobJenkins;
 begin
-  Reader := TStreamUtils.TReader.Create(S, False, StreamingBufSize, True);
+  Reader.Init(S, False, StreamingBufSize, True);
   Hash := THashBobJenkins.Create;
   while Reader.ReadNext do
     Hash.Update(Reader.Bytes, Reader.Count);
@@ -4434,6 +4452,11 @@ begin
   Position := P;
 end;
 
+procedure TBuffer.Init;
+begin
+  Self := Default(TBuffer);
+end;
+
 procedure TBuffer.LoadFromFile(const FileName: string);
 begin
   TFileUtils.Load<Byte>(FileName, FData);
@@ -4559,15 +4582,17 @@ end;
 
 { TOutOfScopeAction }
 
-constructor TOutOfScopeAction.Create(AProc: TProc);
+procedure TOutOfScopeAction.Init(AProc: TProc);
 begin
+  Self := Default(TOutOfScopeAction);
   FProc := TInterfacedObject<TObject>.Create(TOnDestroyRunner.Create(AProc));
 end;
 
 { TOutOfScopeAction<T> }
 
-constructor TOutOfScopeAction<T>.Create(AProc: TProc<T>; AValue: T);
+procedure TOutOfScopeAction<T>.Init(AProc: TProc<T>; AValue: T);
 begin
+  Self := Default(TOutOfScopeAction<T>);
   FProc := TInterfacedObject<TRunOnDestroy>.Create(TRunOnDestroy.Create(AProc, AValue));
 end;
 
@@ -4848,19 +4873,21 @@ end;
 
 { TDataSize }
 
-class operator TDataSize.Add(Left, Right: TDataSize): TDataSize;
+procedure TDataSize.Init(const AValue: int64);
 begin
-  result := Left.FSize+right.FSize;
-end;
-
-constructor TDataSize.Create(const AValue: int64);
-begin
+  Self := Default(TDataSize);
   FSize := AValue;
 end;
 
-constructor TDataSize.CreateMb(const AValue: double);
+procedure TDataSize.InitMb(const AValue: double);
 begin
+  Self := Default(TDataSize);
   SizeMb := AValue;
+end;
+
+class operator TDataSize.Add(Left, Right: TDataSize): TDataSize;
+begin
+  result := Left.FSize+right.FSize;
 end;
 
 class operator TDataSize.Divide(Left, Right: TDataSize): TDataSize;
@@ -4989,8 +5016,11 @@ begin
 end;
 
 class function TDataSize.SizeToString(const AValue: int64): string;
+var
+  S: TDataSize;
 begin
-  result := TDataSize.Create(AValue).AsString;
+  S.Init(AValue);
+  result := S.AsString;
 end;
 
 class operator TDataSize.Subtract(Left, Right: TDataSize): TDataSize;
@@ -4999,6 +5029,11 @@ begin
 end;
 
 { TIntegralImageInt64 }
+
+procedure TIntegralImageInt64.Init;
+begin
+  Self := Default(TIntegralImageInt64);
+end;
 
 procedure TIntegralImageInt64.SetSize(AWidth, AHeight: integer);
 begin
