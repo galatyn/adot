@@ -420,11 +420,13 @@ type
     class function ToFloat(const Src: string): double; static;
     class function ToBoolean(const Src: string): boolean; static;
     class function ToDateTime(const Src: string): TDateTime; static;
+    class function ToGuid(const Src: string): TGUID; static;
 
     class function ToIntegerDef(const Src: string; DefValue: int64 = 0): int64; static;
     class function ToFloatDef(const Src: string; DefValue: int64 = 0): double; static;
     class function ToBooleanDef(const Src: string; DefValue: boolean = False): boolean; static;
     class function ToDateTimeDef(const Src: string; DefValue: TDateTime = 0): TDateTime; static;
+    class function ToGuidDef(const Src: string; var Value: TGUID; const DefValue: TGUID): TGUID; static;
 
     class function TryToInteger(const Src: string; var Value: int64): boolean; overload; static;
     class function TryToInteger(const Src: string; var Value: integer): boolean; overload; static;
@@ -433,6 +435,7 @@ type
     class function TryToFloat(const Src: string; var Value: extended): boolean; overload; static;
     class function TryToBoolean(const Src: string; var Value: boolean): boolean; static;
     class function TryToDateTime(const Src: string; var Value: TDateTime): boolean; static;
+    class function TryToGuid(const Src: string; var Value: TGUID): boolean; static;
 
     { Count - size of Text used to keep text (allocated storage can be larger that data)
       TextPos - where text starts in Text array
@@ -1835,6 +1838,17 @@ begin
     result := DefValue;
 end;
 
+class function TStr.ToGuid(const Src: string): TGUID;
+begin
+  result := StringToGuid(Src);
+end;
+
+class function TStr.ToGuidDef(const Src: string; var Value: TGUID; const DefValue: TGUID): TGUID;
+begin
+  if not TryToGuid(Src, result) then
+    result := DefValue;
+end;
+
 class function TStr.ToInteger(const Src: string): int64;
 begin
   result := StrToInt64(Src);
@@ -1912,6 +1926,17 @@ end;
 class function TStr.TryToFloat(const Src: string; var Value: extended): boolean;
 begin
   result := TryStrToFloat(FixDecimalSeparator(Src), Value);
+end;
+
+class function TStr.TryToGuid(const Src: string; var Value: TGUID): boolean;
+begin
+  result := TGUIDUtils.IsValid(Src);
+  if result then
+    try
+      Value := StringToGuid(Src);
+    except
+      result := False;
+    end;
 end;
 
 class function TStr.TryToInteger(const Src: string; var Value: int64): boolean;
@@ -3939,6 +3964,7 @@ begin
   List := TList<TToken>.Create;
   try
     List.Capacity := Max(1000, TextLen div 2);
+    Reset;
     while Next(Token.FPos) do
     begin
       Token.FType := LastTokenType;
