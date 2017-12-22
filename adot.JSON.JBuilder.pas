@@ -144,6 +144,8 @@ type
 
     class operator Implicit(const B: TJBuilder): string;
     class operator Explicit(const B: TJBuilder): string;
+
+    property JsonWriter: TJsonTextWriter read FJsonWriter;
   end;
 
 implementation
@@ -159,9 +161,7 @@ procedure TJBuilder.Init(const TextWriter: TTextWriter; TakeOwnership: boolean);
 begin
 
   { destroy old instance }
-  FAutoFreeCollection.Init;
-  FTextWriter := nil;
-  FJsonWriter := nil;
+  Self := Default(TJBuilder);
 
   { create new instance }
   if TakeOwnership
