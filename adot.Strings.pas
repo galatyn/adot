@@ -301,6 +301,13 @@ type
     { concatanate used values from Src (including empty strings) }
     class function Concat(const Src: array of string; const InUse: array of boolean; Delimeter: string = ' '): string; overload; static;
 
+    { TStr.AlignLeft  ('123',5) = '123  '
+      TStr.AlignRight ('123',5) = '  123'
+      TStr.AlignCenter('123',5) = ' 123 ' }
+    class function AlignLeft(const Src: string; MinLen: integer): string; static;
+    class function AlignRight(const Src: string; MinLen: integer): string; static;
+    class function AlignCenter(const Src: string; MinLen: integer): string; static;
+
     class function Reverse(const S: string): string; static;
 
     { returns new string where all specified chars replaced by string }
@@ -927,6 +934,8 @@ type
     function Next(ATokenTypes: TPasTokenTypes): String; overload;
     class function IsDelimiterChar(C: Char): Boolean; static;
 
+    class function RemoveComments(const SrcPasText: string): string; static;
+
     function GetAllTokens: TArray<TToken>;
 
     property LastTokenType: TPasTokenType read FTokenType;
@@ -996,6 +1005,22 @@ begin
       end
       else
         result := result + Delimeter + Src[i];
+end;
+
+class function TStr.AlignCenter(const Src: string; MinLen: integer): string;
+begin
+  result := StringOfChar(' ',(MinLen-Length(Src)) div 2) + Src;
+  result := result + StringOfChar(' ',MinLen-Length(result));
+end;
+
+class function TStr.AlignLeft(const Src: string; MinLen: integer): string;
+begin
+  result := Src + StringOfChar(' ',MinLen-Length(Src));
+end;
+
+class function TStr.AlignRight(const Src: string; MinLen: integer): string;
+begin
+  result := StringOfChar(' ',MinLen-Length(Src)) + Src;
 end;
 
 class function TStr.ClassNameToCaption(const AClassName: string): string;
@@ -4004,6 +4029,19 @@ begin
     if LastTokenType in ATokenTypes then
       Exit;
   result := '';
+end;
+
+class function TTokPascal.RemoveComments(const SrcPasText: string): string;
+var
+  p: TTokPascal;
+  e: TStringEditor;
+  t: TTokenPos;
+begin
+  p := TTokPascal.Create(SrcPasText);
+  e.Init;
+  while p.Next([Comment], t) do
+    e.Delete(t.Start, t.Len);
+  result := e.Apply(SrcPasText);
 end;
 
 procedure TTokPascal.SaveTokenizerPos(W: TWriter);
