@@ -1,9 +1,9 @@
 ﻿unit adot.Log;
 (*
-  Logging classes. Example:
+  Example 1:
 
   Uses
-    CrossPlatform.Log, VCL.Log;
+    adot.Log, VCL.Log;
 
   procedure TFormMain.FormCreate(Sender: TObject);
   begin
@@ -12,6 +12,16 @@
       TSyncFileLog.Create(ChangeFileExt(ParamStr(0), '.log'))
     ]);
   end;
+
+  Example 2:
+
+    uses
+      adot.Log;
+
+    begin
+      InitDefaultLogger;
+      AppLog.Add('test');
+    end;
 *)
 interface
 
@@ -39,6 +49,7 @@ type
     FHeaderSent: Boolean;
     FLinePrefix: TLogStrPrefix;
     FEnabled: Boolean;
+    FOffset: integer;
 
     function LogLinesPrefix: String; virtual;
     procedure LogSysInfo; virtual;
@@ -48,12 +59,19 @@ type
     procedure DoFlush; virtual; abstract;
     class function DataAsString(AData: pointer; ASize: integer): string; static;
 
+    procedure DoAdd(const Msg: string; InfoType: TInfoType = itInfo);
   public
 
     constructor Create;
-    procedure Log(const Msg: string; InfoType: TInfoType = itInfo); overload; virtual;
-    procedure Log(const Msg: string; const Args: array of const; InfoType: TInfoType = itInfo); overload; virtual;
-    procedure Log(const Msg: TArray<string>; InfoType: TInfoType = itInfo); overload;
+
+    procedure BeginBlock(const BlockName: string);
+    procedure EndBlock;
+    procedure Add(const Msg: string; InfoType: TInfoType = itInfo); overload; virtual;
+    procedure Add(const Msg: string; const Args: array of const; InfoType: TInfoType = itInfo); overload; virtual;
+    procedure Add(const Msg: TArray<string>; InfoType: TInfoType = itInfo); overload;
+    procedure Add(const Msg: TEnumerable<string>; InfoType: TInfoType = itInfo); overload;
+    procedure Add(const Exc: Exception); overload;
+
     procedure Flush; virtual;
 
     // temporarily disable logging (all output will be ignored)
@@ -125,7 +143,7 @@ type
     constructor Create; overload;
     constructor Create(const ALogs: array of TCustomLog); overload;
     destructor Destroy; override;
-    procedure Add(ALog: TCustomLog);
+    procedure AddLogger(ALog: TCustomLog);
     procedure Remove(ALog: TCustomLog);
 
     property OwnsObjects: boolean read GetOwnsObjects write SetOwnsObjects;
@@ -230,7 +248,7 @@ uses
 
 { TCustomLog }
 
-procedure TCustomLog.Log(const Msg: string; InfoType: TInfoType = itInfo);
+procedure TCustomLog.DoAdd(const Msg: string; InfoType: TInfoType);
 var
   S: string;
   utf8: RawByteString;
@@ -239,24 +257,34 @@ begin
     Exit;
   if not FHeaderSent then
     LogSysInfo;
-  S := LogLinesPrefix + ' ' + LogPrefix[InfoType] + ' ' + Msg + #13#10;
+  S := LogLinesPrefix + ' ' + LogPrefix[InfoType] + ' ' + StringOfChar(' ',FOffset*2) + Msg + #13#10;
   utf8 := UTF8Encode(S);
   Send(@utf8[Low(utf8)], Length(utf8));
 end;
 
-procedure TCustomLog.Log(const Msg: string; const Args: array of const;
-  InfoType: TInfoType = itInfo);
+procedure TCustomLog.Add(const Msg: string; InfoType: TInfoType = itInfo);
 begin
-  if Enabled then
-    Log(Format(Msg, Args), InfoType);
+  if not Enabled then
+    Exit;
+  DoAdd(Msg, InfoType);
 end;
 
-procedure TCustomLog.Log(const Msg: TArray<string>; InfoType: TInfoType);
+procedure TCustomLog.Add(const Msg: string; const Args: array of const;
+  InfoType: TInfoType = itInfo);
+begin
+  if not Enabled then
+    Exit;
+  DoAdd(Format(Msg, Args), InfoType);
+end;
+
+procedure TCustomLog.Add(const Msg: TArray<string>; InfoType: TInfoType);
 var
   S: string;
   P: PChar;
   I,J: Integer;
 begin
+  if not Enabled then
+    Exit;
   if Length(Msg) = 0 then
     Exit;
   J := (Length(Msg)-1)*2;
@@ -279,7 +307,35 @@ begin
     end;
   end;
   Assert(P-PChar(S)=Length(S));
-  Log(S, InfoType);
+  DoAdd(S, InfoType);
+end;
+
+procedure TCustomLog.Add(const Msg: TEnumerable<string>; InfoType: TInfoType);
+begin
+  if not Enabled then
+    Exit;
+  Add(Msg.ToArray, InfoType);
+end;
+
+procedure TCustomLog.Add(const Exc: Exception);
+begin
+  if not Enabled then
+    Exit;
+  Add('%s: %s',[Exc.ClassName, Exc.Message], itException);
+end;
+
+procedure TCustomLog.BeginBlock(const BlockName: string);
+begin
+  DoAdd(BlockName);
+  DoAdd('{');
+  inc(FOffset);
+end;
+
+procedure TCustomLog.EndBlock;
+begin
+  assert(FOffset>0);
+  dec(FOffset);
+  DoAdd('}');
 end;
 
 constructor TCustomLog.Create;
@@ -334,7 +390,7 @@ begin
   if not Enabled or FHeaderSent then
     Exit;
   FHeaderSent := True;
-  Log('Platform: %s; Architecture: %s; OS: %s', [
+  Add('Platform: %s; Architecture: %s; OS: %s', [
     TEnumeration<TOSVersion.TPlatform>.ToString(TOSVersion.Platform).Substring(2),
     TEnumeration<TOSVersion.TArchitecture>.ToString(TOSVersion.Architecture).Substring(2),
     TOSVersion.ToString
@@ -342,7 +398,7 @@ begin
   s := ParamStr(0);
   for i := 1 to ParamCount do
     s := s + ' ' + ParamToStr(ParamStr(i));
-  Log(s);
+  Add(s);
 end;
 
 class procedure TCustomLog.DeleteOldLogFiles(
@@ -633,10 +689,10 @@ var
 begin
   Create;
   for i := Low(ALogs) to High(ALogs) do
-    Add(ALogs[i]);
+    AddLogger(ALogs[i]);
 end;
 
-procedure TMixLog.Add(ALog: TCustomLog);
+procedure TMixLog.AddLogger(ALog: TCustomLog);
 begin
   FLogs.Add(ALog);
 end;
@@ -707,7 +763,7 @@ procedure AddLogger(ALogger: TCustomLog);
 begin
   InitDefaultLogger;
   if AppLog is TMixLog then
-    TMixLog(AppLog).Add(ALogger)
+    TMixLog(AppLog).AddLogger(ALogger)
   else
     AppLog := TMixLog.Create([
       AppLog,

@@ -168,8 +168,8 @@ end;
 
 procedure LogExtraSysInfo(ADst: TCustomLog);
 begin
-  ADst.Log('PID='+IntToStr(GetCurrentProcessId));
-  ADst.Log('Ingerity level: '+TProcess.GetIntegrityLevel);
+  ADst.Add('PID='+IntToStr(GetCurrentProcessId));
+  ADst.Add('Ingerity level: '+TProcess.GetIntegrityLevel);
 end;
 
 { TWinFileLog }
