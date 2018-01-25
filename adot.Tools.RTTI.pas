@@ -43,6 +43,9 @@ type
     { can be used for access to private fields }
     class function GetFieldValue<T>(Obj: TObject; const AFieldName: string): T; static;
     class procedure SetFieldValue<T>(Obj: TObject; const AFieldName: string; const Value: T); static;
+
+    { returns object details in readable JSON (for log etc) }
+    class function ObjectAsJson(Src: TObject): string; static;
   end;
 
   { Simple convertion EnumType->string->EnumType etc.
@@ -65,6 +68,9 @@ type
   end;
 
 implementation
+
+uses
+  adot.JSON.JBuilder;
 
 { TRttiUtils }
 
@@ -200,6 +206,50 @@ begin
   RttiContext := TRttiContext.Create;
   RttiType := RttiContext.GetType(TypeInfo(T));
   result := (RttiType<>nil) and RttiType.IsOrdinal;
+end;
+
+class function TRttiUtils.ObjectAsJson(Src: TObject): string;
+var
+  Dst: TJBuilder;
+  RttiType: TRttiType;
+  RttiContext: TRttiContext;
+  RttiProp: TRttiProperty;
+  Name,Value: string;
+begin
+  Dst.Init;
+  Dst.BeginObject;
+  RttiContext := TRttiContext.Create;
+  RttiType := RttiContext.GetType(Src.ClassType);
+  for RttiProp in RttiType.GetProperties do
+  begin
+    if not RttiProp.IsReadable then
+      Continue;
+    RttiType := RttiProp.PropertyType;
+    if not RttiType.IsPublicType then
+      Continue;
+    case RttiType.TypeKind of
+      tkUnknown: Continue;
+      tkInteger, tkChar, tkEnumeration, tkFloat,
+      tkInt64,
+      tkString, tkWChar, tkLString, tkWString,
+      tkSet, tkVariant, tkUString,
+
+      tkClass,
+      tkMethod,
+      tkArray, tkDynArray,
+      tkRecord,
+      tkInterface,
+      tkClassRef,
+      tkPointer,
+      tkProcedure: Continue;
+      else
+    end;
+    Name := RttiType.QualifiedName;
+    Value := RttiType.ToString;
+    Dst.Add(Name, Value);
+  end;
+  Dst.EndObject;
+  result := Dst.ToString;
 end;
 
 class function TRttiUtils.ValueAsString<T>(const Value: T): string;
