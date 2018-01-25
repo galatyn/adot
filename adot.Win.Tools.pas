@@ -513,6 +513,7 @@ type
       FMap: TMap<TPostpondJobId, TProc>;
 
     class procedure OnMessengerEvent(var AMessage: TMessage);
+    class constructor ClassCreate;
     class destructor DestroyClass;
 
   public
@@ -1543,6 +1544,12 @@ begin
 end;
 
 { TPostpond }
+
+class constructor TPostpond.ClassCreate;
+begin
+  { We need to be sure that messenger is created in main thread }
+  TRunMessenger.Ordinal;
+end;
 
 class destructor TPostpond.DestroyClass;
 begin
