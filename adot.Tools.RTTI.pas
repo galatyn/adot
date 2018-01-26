@@ -21,6 +21,7 @@ uses
 type
   { IsInstance<T>, ValueAsString<T>, CreateInstance<T: class> etc }
   TRttiUtils = class
+  private
   public
 
     { Returns True if T is class (instance can be created) }
@@ -208,6 +209,36 @@ begin
   result := (RttiType<>nil) and RttiType.IsOrdinal;
 end;
 
+procedure AddRttiValueAsJson(
+  const PropName  : string;
+  const Kind      : TTypeKind;
+    var RttiValue : TValue;
+    var Dst       : TJBuilder);
+var
+  I: Integer;
+  Value: TValue;
+begin
+  //RttiDynArrayType := TRttiDynamicArrayType(RttiType);
+  case Kind of
+    tkDynArray:
+      begin
+        if PropName = ''
+          then Dst.BeginArray
+          else Dst.BeginArray(PropName);
+        for I := 0 to RttiValue.GetArrayLength-1 do
+        begin
+          Value := RttiValue.GetArrayElement(I);
+          AddRttiValueAsJson('', Value.Kind, Value, Dst);
+        end;
+        Dst.EndArray;
+      end;
+    else
+      if PropName = ''
+        then Dst.Add(RttiValue.ToString)
+        else Dst.Add(PropName, RttiValue.ToString)
+  end;
+end;
+
 class function TRttiUtils.ObjectAsJson(Src: TObject): string;
 var
   Dst: TJBuilder;
@@ -215,8 +246,6 @@ var
   RttiContext: TRttiContext;
   RttiProp: TRttiProperty;
   RttiValue: TValue;
-  Name,Value: string;
-  RttiDynArrayType: TRttiDynamicArrayType;
 begin
   Dst.Init;
   Dst.BeginObject;
@@ -230,17 +259,7 @@ begin
     if not RttiType.IsPublicType then
       Continue;
     RttiValue := RttiProp.GetValue(Src);
-    case RttiType.TypeKind of
-      tkDynArray:
-        begin
-          RttiDynArrayType := TRttiDynamicArrayType(RttiType);
-//          RttiValue.GetArrayLength
-//          RttiValue.GetArrayElement()
-        end;
-      else
-        Value := RttiValue.ToString;
-    end;
-    Dst.Add(RttiProp.Name, Value);
+    AddRttiValueAsJson(RttiProp.Name, RttiType.TypeKind, RttiValue, Dst);
   end;
   Dst.EndObject;
   result := Dst.ToString;
