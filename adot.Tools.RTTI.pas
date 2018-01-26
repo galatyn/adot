@@ -214,7 +214,9 @@ var
   RttiType: TRttiType;
   RttiContext: TRttiContext;
   RttiProp: TRttiProperty;
+  RttiValue: TValue;
   Name,Value: string;
+  RttiDynArrayType: TRttiDynamicArrayType;
 begin
   Dst.Init;
   Dst.BeginObject;
@@ -227,26 +229,18 @@ begin
     RttiType := RttiProp.PropertyType;
     if not RttiType.IsPublicType then
       Continue;
+    RttiValue := RttiProp.GetValue(Src);
     case RttiType.TypeKind of
-      tkUnknown: Continue;
-      tkInteger, tkChar, tkEnumeration, tkFloat,
-      tkInt64,
-      tkString, tkWChar, tkLString, tkWString,
-      tkSet, tkVariant, tkUString,
-
-      tkClass,
-      tkMethod,
-      tkArray, tkDynArray,
-      tkRecord,
-      tkInterface,
-      tkClassRef,
-      tkPointer,
-      tkProcedure: Continue;
+      tkDynArray:
+        begin
+          RttiDynArrayType := TRttiDynamicArrayType(RttiType);
+//          RttiValue.GetArrayLength
+//          RttiValue.GetArrayElement()
+        end;
       else
+        Value := RttiValue.ToString;
     end;
-    Name := RttiType.QualifiedName;
-    Value := RttiType.ToString;
-    Dst.Add(Name, Value);
+    Dst.Add(RttiProp.Name, Value);
   end;
   Dst.EndObject;
   result := Dst.ToString;
