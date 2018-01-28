@@ -19,6 +19,24 @@ uses
   System.SysUtils;
 
 type
+  TConvOption = (
+    coReadable,
+    coStreamAsString
+  );
+  TConvOptions = set of TConvOption;
+
+const
+  defConvOptions = [coReadable, coStreamAsString];
+
+type
+  TConvSetings = record
+    Options: TConvOptions;
+    MaxArrayCount: integer;
+    MaxDepth: integer;
+
+    procedure Init;
+  end;
+
   { IsInstance<T>, ValueAsString<T>, CreateInstance<T: class> etc }
   TRttiUtils = class
   private
@@ -46,7 +64,8 @@ type
     class procedure SetFieldValue<T>(Obj: TObject; const AFieldName: string; const Value: T); static;
 
     { returns object details in readable JSON (for log etc) }
-    class function ObjectAsJson(Src: TObject): string; static;
+    class function ObjectAsJson(Src: TObject): string; overload; static;
+    class function ObjectAsJson(Src: TObject; const Settings: TConvSetings): string; overload; static;
   end;
 
   { Simple convertion EnumType->string->EnumType etc.
@@ -71,7 +90,193 @@ type
 implementation
 
 uses
+  adot.Tools,
+  adot.Strings,
   adot.JSON.JBuilder;
+
+type
+  TObjectToJson = class
+  private
+    Settings: TConvSetings;
+    Dst: TJBuilder;
+
+    procedure ObjectToJson(const PropName: string; Src: TObject; Depth: integer);
+    procedure ValueToJson(const PropName: string; var Value: TValue; Depth: integer);
+    procedure StreamToJson(const PropName: string; Stream: TStream);
+
+  public
+    constructor Create(const ASettings: TConvSetings); overload;
+    constructor Create; overload;
+    function Get(Src: TObject): string;
+  end;
+
+{ TObjectToJson }
+
+constructor TObjectToJson.Create(const ASettings: TConvSetings);
+begin
+  Settings := ASettings;
+end;
+
+constructor TObjectToJson.Create;
+var Settings: TConvSetings;
+begin
+  Settings.Init;
+  Create(Settings);
+end;
+
+procedure TObjectToJson.StreamToJson(const PropName: string; Stream: TStream);
+var
+  P: Int64;
+  B: TArray<byte>;
+  S: string;
+  I: Integer;
+  AsText: Boolean;
+begin
+
+  { read as bytes }
+  P := Stream.Position;
+  Stream.Position := 0;
+  SetLength(B, Stream.Size);
+  Stream.ReadBuffer(B, Stream.Size);
+  Stream.Position := P;
+
+  { convert to text }
+  AsText := (coStreamAsString in Settings.Options);
+  if AsText and TStr.IsValidUtf8(B) then
+  try
+    S := TEncoding.UTF8.GetString(B);
+  except
+    AsText := False;
+  end;
+
+  { write to dst }
+  if AsText then
+  begin
+    if PropName=''
+      then Dst.Add(S)
+      else Dst.Add(PropName, S)
+  end
+  else
+  begin
+    if PropName=''
+      then Dst.BeginArray
+      else Dst.BeginArray(PropName);
+    for I := 0 to Min(Length(B), Settings.MaxArrayCount)-1 do
+      Dst.Add(B[I]);
+    if Length(B) > Settings.MaxArrayCount then
+      Dst.Add('<...>');
+    Dst.EndArray;
+  end;
+end;
+
+procedure TObjectToJson.ValueToJson(const PropName: string; var Value: TValue; Depth: integer);
+var
+  I: Integer;
+  V: TValue;
+  Obj: TObject;
+begin
+  case Value.Kind of
+    tkClass:
+      begin
+        Obj := Value.AsObject;
+        if Obj is TStream then
+        begin
+          if PropName <> '' then
+            Dst.BeginObject(PropName);
+          StreamToJson(Value.ToString, TStream(Obj));
+          if PropName <> '' then
+            Dst.EndObject;
+          Exit;
+        end
+        else
+        if Depth > 1 then
+        begin
+          ObjectToJson(PropName, Obj, Depth-1);
+          Exit;
+        end;
+      end;
+
+    tkDynArray:
+      begin
+        if PropName = ''
+          then Dst.BeginArray
+          else Dst.BeginArray(PropName);
+        for I := 0 to Min(Value.GetArrayLength, Settings.MaxArrayCount)-1 do
+        begin
+          V := Value.GetArrayElement(I);
+          ValueToJson('', V, Depth-1);
+        end;
+        if Value.GetArrayLength > Settings.MaxArrayCount then
+          Dst.Add('<...>');
+        Dst.EndArray;
+        Exit;
+      end;
+
+  end;
+
+  if PropName = ''
+    then Dst.Add(Value.ToString)
+    else Dst.Add(PropName, Value.ToString)
+end;
+
+procedure TObjectToJson.ObjectToJson(const PropName: string; Src: TObject; Depth: integer);
+var
+  RttiType: TRttiType;
+  RttiContext: TRttiContext;
+  RttiProp: TRttiProperty;
+  RttiValue: TValue;
+  S: string;
+begin
+  if Src = nil then S := 'nil' else
+    S := format('(%s @ %s)', [Src.ClassName, THex.PointerToHex(Src)]);
+  if (Depth <= 0) or (Src = nil) then
+  begin
+    if PropName = ''
+      then Dst.Add(S)
+      else Dst.Add(PropName, S);
+    Exit;
+  end;
+
+  if PropName = '' then
+    Dst.BeginObject(S)
+  else
+  begin
+    Dst.BeginObject(PropName);
+    Dst.BeginObject(S);
+  end;
+  RttiContext := TRttiContext.Create;
+  RttiType := RttiContext.GetType(Src.ClassType);
+  for RttiProp in RttiType.GetProperties do
+  begin
+    if not RttiProp.IsReadable then
+      Continue;
+    RttiType := RttiProp.PropertyType;
+    if not RttiType.IsPublicType then
+      Continue;
+    RttiValue := RttiProp.GetValue(Src);
+    ValueToJson(RttiProp.Name, RttiValue, Depth-1);
+  end;
+  Dst.EndObject;
+  if PropName <> '' then
+    Dst.EndObject;
+end;
+
+function TObjectToJson.Get(Src: TObject): string;
+begin
+  Dst.Init;
+  ObjectToJson('', Src, Settings.MaxDepth);
+  result := Dst.ToString;
+end;
+
+{ TConvSetings }
+
+procedure TConvSetings.Init;
+begin
+  Self := Default(TConvSetings);
+  Options := defConvOptions;
+  MaxArrayCount := High(MaxArrayCount);
+  MaxDepth := 10*1024*1024;
+end;
 
 { TRttiUtils }
 
@@ -209,60 +414,24 @@ begin
   result := (RttiType<>nil) and RttiType.IsOrdinal;
 end;
 
-procedure AddRttiValueAsJson(
-  const PropName  : string;
-  const Kind      : TTypeKind;
-    var RttiValue : TValue;
-    var Dst       : TJBuilder);
+class function TRttiUtils.ObjectAsJson(Src: TObject; const Settings: TConvSetings): string;
 var
-  I: Integer;
-  Value: TValue;
+  C: TObjectToJson;
 begin
-  //RttiDynArrayType := TRttiDynamicArrayType(RttiType);
-  case Kind of
-    tkDynArray:
-      begin
-        if PropName = ''
-          then Dst.BeginArray
-          else Dst.BeginArray(PropName);
-        for I := 0 to RttiValue.GetArrayLength-1 do
-        begin
-          Value := RttiValue.GetArrayElement(I);
-          AddRttiValueAsJson('', Value.Kind, Value, Dst);
-        end;
-        Dst.EndArray;
-      end;
-    else
-      if PropName = ''
-        then Dst.Add(RttiValue.ToString)
-        else Dst.Add(PropName, RttiValue.ToString)
+  C := TObjectToJson.Create(Settings);
+  try
+    result := C.Get(Src);
+  finally
+    C.Free;
   end;
 end;
 
 class function TRttiUtils.ObjectAsJson(Src: TObject): string;
 var
-  Dst: TJBuilder;
-  RttiType: TRttiType;
-  RttiContext: TRttiContext;
-  RttiProp: TRttiProperty;
-  RttiValue: TValue;
+  Settings: TConvSetings;
 begin
-  Dst.Init;
-  Dst.BeginObject;
-  RttiContext := TRttiContext.Create;
-  RttiType := RttiContext.GetType(Src.ClassType);
-  for RttiProp in RttiType.GetProperties do
-  begin
-    if not RttiProp.IsReadable then
-      Continue;
-    RttiType := RttiProp.PropertyType;
-    if not RttiType.IsPublicType then
-      Continue;
-    RttiValue := RttiProp.GetValue(Src);
-    AddRttiValueAsJson(RttiProp.Name, RttiType.TypeKind, RttiValue, Dst);
-  end;
-  Dst.EndObject;
-  result := Dst.ToString;
+  Settings.Init;
+  result := ObjectAsJson(Src, Settings);
 end;
 
 class function TRttiUtils.ValueAsString<T>(const Value: T): string;

@@ -94,8 +94,6 @@ uses
   adot.Collections,
   adot.Collections.Sets,
   adot.Collections.Maps,
-  adot.Arithmetic,
-  adot.Tools.Rtti,
   {$If Defined(MSWindows)}
     { Option "$HINTS OFF" doesn't hide following hint (Delphi 10.2.1), we add Windows here to suppress it:
       H2443 Inline function 'RenameFile' has not been expanded because unit 'Winapi.Windows' is not specified in USES list }
@@ -1230,6 +1228,8 @@ type
 implementation
 
 Uses
+  adot.Arithmetic,
+  adot.Tools.Rtti,
   adot.Strings,
   adot.Collections.Vectors;
 
