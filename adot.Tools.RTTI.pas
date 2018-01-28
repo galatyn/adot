@@ -227,8 +227,10 @@ var
   RttiValue: TValue;
   S: string;
 begin
-  if Src = nil then S := 'nil' else
-    S := format('(%s @ %s)', [Src.ClassName, THex.PointerToHex(Src)]);
+  S := TRttiUtils.ValueAsString<TObject>(Src);
+  if Src = nil
+    then S := 'nil'
+    else S := TRttiUtils.ValueAsString<TObject>(Src);
   if (Depth <= 0) or (Src = nil) then
   begin
     if PropName = ''
