@@ -10,6 +10,7 @@ uses
   adot.Collections.Vectors,
   adot.Collections.Sets,
   adot.Tools,
+  adot.Tools.IO,
   adot.Strings,
   adot.Grammar.Types,
   adot.Tools.RTTI,

@@ -27,6 +27,9 @@
   TCompoundEqualityComparer<TypeA,TypeB> = class
     Equality comparer for compound of two fields.
 
+  TIndexBackEnumerator = record
+    Index enumerator "from last to first".
+
 }
 interface
 
@@ -386,11 +389,32 @@ type
     class procedure SetOrdinal(const Value: T); static;
   end;
 
+  {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
+
+     function TListExt.GetEnumerator: TIndexBackEnumerator;
+     begin
+       result := TIndexBackEnumerator.Create(LastIndex, StartIndex);
+     end; }
+  { Index enumerator "from last to first". }
+  TIndexBackEnumerator = record
+  private
+    FCurrentIndex, FToIndex: integer;
+
+  public
+    procedure Init(AIndexFrom, AIndexTo: integer);
+
+    function GetCurrent: Integer;
+    function MoveNext:   Boolean;
+
+    property Current:    Integer read GetCurrent;
+  end;
+
 implementation
 
 uses
   adot.Arithmetic,
-  adot.Tools;
+  adot.Tools,
+  adot.Hash;
 
 { TCompound<TypeA, TypeB> }
 
@@ -1110,8 +1134,26 @@ begin
   FOrdinal := Value;
 end;
 
+{ TIndexBackEnumerator }
+
+procedure TIndexBackEnumerator.Init(AIndexFrom, AIndexTo: integer);
+begin
+  Self := Default(TIndexBackEnumerator);
+  FCurrentIndex := AIndexFrom;
+  FToIndex := AIndexTo;
+end;
+
+function TIndexBackEnumerator.MoveNext: Boolean;
+begin
+  result := FCurrentIndex>=FToIndex;
+  if result then
+    dec(FCurrentIndex);
+end;
+
+function TIndexBackEnumerator.GetCurrent: Integer;
+begin
+  result := FCurrentIndex+1;
+end;
+
 end.
-
-
-
 

@@ -543,8 +543,9 @@ type
 implementation
 
 uses
-  adot.Tools,
+  adot.Hash,
   adot.Collections,
+  adot.Tools,
   adot.Tools.RTTI,
   adot.Collections.Sets;
 

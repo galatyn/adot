@@ -9,6 +9,7 @@ uses
   adot.Collections.Sets,
   adot.Collections.Trees,
   adot.Tools,
+  adot.Tools.IO,
   adot.Tools.Rtti,
   adot.Strings,
   {$IF Defined(LogExceptions)}

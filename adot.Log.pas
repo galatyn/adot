@@ -243,7 +243,7 @@ procedure ReplaceLogger(ALogger: TCustomLog);
 implementation
 
 uses
-  adot.Tools,
+  adot.Tools.IO,
   adot.Tools.Rtti;
 
 { TCustomLog }

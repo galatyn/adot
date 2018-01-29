@@ -271,6 +271,7 @@ implementation
 uses
   adot.Collections,
   adot.Tools,
+  adot.Tools.IO,
   adot.Win.Tools;
 
 { MDIHelper }

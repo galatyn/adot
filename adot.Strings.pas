@@ -945,6 +945,7 @@ implementation
 
 uses
   adot.Tools,
+  adot.Tools.IO,
   adot.Collections.Sets,
   adot.Collections;
 
@@ -2067,11 +2068,11 @@ begin
         else
           cost := 1;
         if flip then
-          buf[j] := TFun.min((buf[cuthalf + j] + 1),
+          buf[j] := Sys.min((buf[cuthalf + j] + 1),
             (buf[j - 1] + 1),
             (buf[cuthalf + j - 1] + cost))
         else
-          buf[cuthalf + j] := TFun.min((buf[j] + 1),
+          buf[cuthalf + j] := Sys.min((buf[j] + 1),
             (buf[cuthalf + j - 1] + 1),
             (buf[j - 1] + cost));
       end;
@@ -4330,7 +4331,7 @@ end;
 procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
 begin
   if Capacity < MinCapacity then
-    Capacity := TFun.Max(MinCapacity, Capacity shl 1, 32);
+    Capacity := Sys.Max(MinCapacity, Capacity shl 1, 32);
 end;
 
 procedure TStringBuffer.Clear;
