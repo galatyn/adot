@@ -29,7 +29,7 @@ const
   defConvOptions = [coReadable, coStreamAsString];
 
 type
-  TConvSetings = record
+  TConvSettings = record
     Options: TConvOptions;
     MaxArrayCount: integer;
     MaxDepth: integer;
@@ -65,7 +65,7 @@ type
 
     { returns object details in readable JSON (for log etc) }
     class function ObjectAsJson(Src: TObject): string; overload; static;
-    class function ObjectAsJson(Src: TObject; const Settings: TConvSetings): string; overload; static;
+    class function ObjectAsJson(Src: TObject; const Settings: TConvSettings): string; overload; static;
   end;
 
   { Simple convertion EnumType->string->EnumType etc.
@@ -97,7 +97,7 @@ uses
 type
   TObjectToJson = class
   private
-    Settings: TConvSetings;
+    Settings: TConvSettings;
     Dst: TJBuilder;
 
     procedure ObjectToJson(const PropName: string; Src: TObject; Depth: integer);
@@ -105,20 +105,20 @@ type
     procedure StreamToJson(const PropName: string; Stream: TStream);
 
   public
-    constructor Create(const ASettings: TConvSetings); overload;
+    constructor Create(const ASettings: TConvSettings); overload;
     constructor Create; overload;
     function Get(Src: TObject): string;
   end;
 
 { TObjectToJson }
 
-constructor TObjectToJson.Create(const ASettings: TConvSetings);
+constructor TObjectToJson.Create(const ASettings: TConvSettings);
 begin
   Settings := ASettings;
 end;
 
 constructor TObjectToJson.Create;
-var Settings: TConvSetings;
+var Settings: TConvSettings;
 begin
   Settings.Init;
   Create(Settings);
@@ -270,11 +270,11 @@ begin
   result := Dst.ToString;
 end;
 
-{ TConvSetings }
+{ TConvSettings }
 
-procedure TConvSetings.Init;
+procedure TConvSettings.Init;
 begin
-  Self := Default(TConvSetings);
+  Self := Default(TConvSettings);
   Options := defConvOptions;
   MaxArrayCount := High(MaxArrayCount);
   MaxDepth := 10*1024*1024;
@@ -416,7 +416,7 @@ begin
   result := (RttiType<>nil) and RttiType.IsOrdinal;
 end;
 
-class function TRttiUtils.ObjectAsJson(Src: TObject; const Settings: TConvSetings): string;
+class function TRttiUtils.ObjectAsJson(Src: TObject; const Settings: TConvSettings): string;
 var
   C: TObjectToJson;
 begin
@@ -430,7 +430,7 @@ end;
 
 class function TRttiUtils.ObjectAsJson(Src: TObject): string;
 var
-  Settings: TConvSetings;
+  Settings: TConvSettings;
 begin
   Settings.Init;
   result := ObjectAsJson(Src, Settings);
