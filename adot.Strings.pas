@@ -2095,12 +2095,9 @@ begin
   if Encoding <> nil then
     Result := Encoding.GetString(B)
   else
-    try
-      TEncoding.GetBufferEncoding(B, Encoding, Encoding.UTF8);
-      Result := Encoding.GetString(B);
-    except
-      Result := Encoding.ANSI.GetString(B);
-    end;
+    if IsValidUtf8(B)
+      then Result := Encoding.UTF8.GetString(B)
+      else Result := Encoding.ANSI.GetString(B);
 end;
 
 class function TStr.Load(const FileName: string; Encoding: TEncoding): string;

@@ -45,6 +45,7 @@ uses
     Posix.Unistd,
     Posix.Stdio,
   {$EndIf}
+  System.IniFiles,
   System.SysConst,
   System.Classes,
   System.SysUtils,
@@ -246,6 +247,15 @@ type
     class procedure ExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True); static;
     { Will use preloaded Cache when possible and FileExists function otherwise }
     class function Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
+
+    { returns True if it is time to perform }
+    class function Debounce(
+      const ActionId: TGUID;          { Will be used as filename to keep info }
+      const MinIntervalHours: double; { min/desired interval between actions }
+      const InfoHash: TArray<Byte>;   { If InfoHash is changed, then action must be performed }
+      const PathForKey: string        { if PathForKey='', then TEMP folder will be used }
+    ): boolean; overload; static;     { returns True is actions should be performed now }
+    class function Debounce(const ActionId: TGUID; const MinIntervalHours: double): boolean; overload; static;
   end;
 
   { Lightweight and managed analog of TBytesStream.
@@ -906,6 +916,51 @@ class function TFileUtils.CopyFile(const SrcFileName, DstFileName: string; out E
 begin
   { check TVCLFileUtils.CopyFile if you don''t want UI to freeze until operation is complete }
   result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
+end;
+
+class function TFileUtils.Debounce(const ActionId: TGUID; const MinIntervalHours: double; const InfoHash: TArray<Byte>; const PathForKey: string): boolean;
+const
+  cSec  = 'Debouncing';
+  cTime = 'LastActionTime';
+  cHash = 'InfoHash';
+var
+  FS: TFormatSettings;
+  Ini: TIniFile;
+  Filename,LastHash,NewHash: string;
+  CurTime, LastActionTime: TDateTime;
+begin
+  FS := TDateTimeUtils.StdEuFormatSettings;
+  if PathForKey = ''
+    then Filename := IncludeTrailingPathDelimiter(TPath.GetTempPath)
+    else Filename := IncludeTrailingPathDelimiter(PathForKey);
+  Filename := Filename + ActionId.ToString + '.ini';
+  Ini := TIniFile.Create(Filename);
+  try
+    CurTime := Now;
+    NewHash := THex.Encode(InfoHash);
+    if not FileExists(Filename) then
+      Result := True
+    else
+    begin
+      LastActionTime := TDateTimeUtils.FromStringStd( Ini.ReadString(cSec, cTime, ''), 0);
+      LastHash := Ini.ReadString(cSec, cHash, '');
+      Result := (MinutesBetween(CurTime, LastActionTime) >= MinIntervalHours*60) or (NewHash <> LastHash)
+    end;
+    if Result then
+    begin
+      Ini.WriteString(cSec, cTime, TDateTimeUtils.ToStringStd(CurTime));
+      Ini.WriteString(cSec, cHash, NewHash);
+    end;
+  finally
+    Sys.FreeAndNil(Ini);
+  end;
+end;
+
+class function TFileUtils.Debounce(const ActionId: TGUID; const MinIntervalHours: double): boolean;
+var H: TArray<Byte>;
+begin
+  SetLength(H, 0);
+  result := Debounce(ActionId, MinIntervalHours, H, '');
 end;
 
 class function TFileUtils.DeleteFile(const AFileName: string; out AErrorMessage: string): boolean;

@@ -166,8 +166,13 @@ type
     const
       NoDateStr = '';
 
+    class function StdEuFormatSettings: TFormatSettings; static;
+
     class function IsCorrectDate(const t: TDateTime): boolean; static;
     class function ToStr(const t: TDateTime; ANoDateStr: string = NoDateStr): string; static;
+
+    class function ToStringStd(const t: TDateTime): string; static;
+    class function FromStringStd(const t: string; def: TDateTime = 0): TDateTime; static;
   end;
 
   TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
@@ -1495,11 +1500,50 @@ end;
 
 { TDateTimeUtils }
 
+class function TDateTimeUtils.ToStringStd(const t: TDateTime): string;
+var
+  F: TFormatSettings;
+begin
+  F := StdEuFormatSettings;
+  result := DateTimeToStr(t, F);
+end;
+
+class function TDateTimeUtils.FromStringStd(const t: string; def: TDateTime = 0): TDateTime;
+var
+  F: TFormatSettings;
+begin
+  F := StdEuFormatSettings;
+  if not TryStrToDateTime(t, result, F) then
+    result := Def;
+end;
+
 class function TDateTimeUtils.IsCorrectDate(const t: TDateTime): boolean;
 begin
   result :=
     (Trunc(t)<>0) and  {       0 (30.12.1899) as empty value }
     (YearOf(t)>0);     { -700000 (00.00.0000) as empty value + Delphi supports only "01.01.01" and later }
+end;
+
+class function TDateTimeUtils.StdEuFormatSettings: TFormatSettings;
+begin
+  result := TFormatSettings.Create;
+  result.CurrencyString            := 'eur';
+  result.CurrencyFormat            := 2;
+  result.CurrencyDecimals          := 2;
+  result.DateSeparator             := '.';
+  result.TimeSeparator             := '.';
+  result.ListSeparator             := ';';
+  result.ShortDateFormat           := 'dd/MM/yyyy';
+  result.LongDateFormat            := 'dddd d/ MMMM yyyy';
+  result.TimeAMString              := 'a.m.';
+  result.TimePMString              := 'p.m.';
+  result.ShortTimeFormat           := 'hh:mm';
+  result.LongTimeFormat            := 'hh:mm:ss';
+  result.ThousandSeparator         := ' ';
+  result.DecimalSeparator          := '.'; { not EU, but std in math etc }
+  result.TwoDigitYearCenturyWindow := 50; {h32}
+  result.NegCurrFormat             := 9;
+  result.NormalizedLocaleName      := '';
 end;
 
 class function TDateTimeUtils.ToStr(const t: TDateTime; ANoDateStr: string): string;
