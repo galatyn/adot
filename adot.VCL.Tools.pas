@@ -264,6 +264,20 @@ type
   TFormUtils = class
   public
     class procedure Activate(AForm: TForm); static;
+
+    class procedure CreateFormWithDatamodule<TDM: TDataModule; TF: TForm>(
+      var ADMGlobalVar : TDM; { when form is creating, it is important to assign correct instance of DM to global var }
+      out ADataModule  : TDM; { new instance of a data module }
+      out AForm        : TF;  { new instance of a form }
+          ADMOwner     : TComponent;
+          AFormOwner   : TComponent
+    ); overload; static;
+
+    class procedure CreateFormWithDatamodule<TDM: TDataModule; TF: TForm>(
+      var ADMGlobalVar : TDM; { when form is creating, it is important to assign correct instance of DM to global var }
+      out ADataModule  : TDM; { new instance of a data module }
+      out AForm        : TF   { new instance of a form }
+    ); overload; static;
   end;
 
 implementation
@@ -1186,6 +1200,30 @@ begin
     except
     end;
 
+end;
+
+class procedure TFormUtils.CreateFormWithDatamodule<TDM, TF>(
+  var ADMGlobalVar : TDM;
+  out ADataModule  : TDM;
+  out AForm        : TF;
+      ADMOwner     : TComponent;
+      AFormOwner   : TComponent);
+var
+  PrevDMInst: TDM;
+begin
+  PrevDMInst := ADMGlobalVar;
+  try
+    ADataModule  := TDM.Create(ADMOwner);
+    ADMGlobalVar := ADMGlobalVar; { should be assigned when form is creating }
+    AForm        := TF.Create(AFormOwner);
+  finally
+    ADMGlobalVar := PrevDMInst;
+  end;
+end;
+
+class procedure TFormUtils.CreateFormWithDatamodule<TDM, TF>(var ADMGlobalVar: TDM; out ADataModule: TDM; out AForm: TF);
+begin
+  CreateFormWithDatamodule<TDM, TF>(ADMGlobalVar, ADataModule, AForm, nil, nil);
 end;
 
 end.

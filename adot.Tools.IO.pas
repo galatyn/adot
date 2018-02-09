@@ -45,6 +45,7 @@ uses
     Posix.Unistd,
     Posix.Stdio,
   {$EndIf}
+  System.StrUtils,
   System.IniFiles,
   System.SysConst,
   System.Classes,
@@ -250,12 +251,13 @@ type
 
     { returns True if it is time to perform }
     class function Debounce(
-      const ActionId: TGUID;          { Will be used as filename to keep info }
-      const MinIntervalHours: double; { min/desired interval between actions }
-      const InfoHash: TArray<Byte>;   { If InfoHash is changed, then action must be performed }
-      const PathForKey: string        { if PathForKey='', then TEMP folder will be used }
-    ): boolean; overload; static;     { returns True is actions should be performed now }
-    class function Debounce(const ActionId: TGUID; const MinIntervalHours: double): boolean; overload; static;
+      const FolderOrEmpty         : string;       { if empty, then AppData folder will be used }
+      const SubfolderOrEmpty      : string;       { could be "CompanyName\ProductName" for example }
+      const FileNameSuffixOrEmpty : string;       { To be used as part of filename for params (exe name will be used if empty) }
+      const MinIntervalHours      : double;       { min/desired interval between actions }
+      const InfoHash              : TArray<Byte>  { If InfoHash is changed, then action must be performed }
+    ): boolean; overload; static;            { returns True is actions should be performed now }
+    class function Debounce(const MinIntervalHours: double): boolean; overload; static;
   end;
 
   { Lightweight and managed analog of TBytesStream.
@@ -918,7 +920,13 @@ begin
   result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
 end;
 
-class function TFileUtils.Debounce(const ActionId: TGUID; const MinIntervalHours: double; const InfoHash: TArray<Byte>; const PathForKey: string): boolean;
+class function TFileUtils.Debounce(
+  const FolderOrEmpty         : string;
+  const SubfolderOrEmpty      : string;
+  const FileNameSuffixOrEmpty : string;
+  const MinIntervalHours      : double;
+  const InfoHash              : TArray<Byte>
+): boolean;
 const
   cSec  = 'Debouncing';
   cTime = 'LastActionTime';
@@ -930,10 +938,15 @@ var
   CurTime, LastActionTime: TDateTime;
 begin
   FS := TDateTimeUtils.StdEuFormatSettings;
-  if PathForKey = ''
-    then Filename := IncludeTrailingPathDelimiter(TPath.GetTempPath)
-    else Filename := IncludeTrailingPathDelimiter(PathForKey);
-  Filename := Filename + ActionId.ToString + '.ini';
+  if FolderOrEmpty = ''
+    then Filename := TPath.GetPublicPath
+    else Filename := FolderOrEmpty;
+  Filename := IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(Filename) + SubfolderOrEmpty);
+  ForceDirectories(Filename);
+  Filename := Filename +
+    'Debouncing.' +
+    IfThen(FileNameSuffixOrEmpty<>'', FileNameSuffixOrEmpty, ChangeFileExt(ExtractFileName(ParamStr(0)),'')) +
+    '.ini';
   Ini := TIniFile.Create(Filename);
   try
     CurTime := Now;
@@ -956,11 +969,11 @@ begin
   end;
 end;
 
-class function TFileUtils.Debounce(const ActionId: TGUID; const MinIntervalHours: double): boolean;
+class function TFileUtils.Debounce(const MinIntervalHours: double): boolean;
 var H: TArray<Byte>;
 begin
   SetLength(H, 0);
-  result := Debounce(ActionId, MinIntervalHours, H, '');
+  result := Debounce('', '', '', MinIntervalHours, H);
 end;
 
 class function TFileUtils.DeleteFile(const AFileName: string; out AErrorMessage: string): boolean;

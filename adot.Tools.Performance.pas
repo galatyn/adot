@@ -107,6 +107,7 @@ type
     procedure Add(const Src: TArray<TPair<string, int64>>);
     procedure Clear;
     function GetStat: TArray<TPair<string, int64>>;
+    function GetCategoryStat(const EventCategory: string): int64;
   end;
 
 implementation
@@ -275,6 +276,12 @@ var
 begin
   for I := Low(Src) to High(Src) do
     Reg(Src[I].Key, Src[I].Value);
+end;
+
+function TEventStat.GetCategoryStat(const EventCategory: string): int64;
+begin
+  if not FEvents.TryGetValue(EventCategory, result) then
+    result := 0;
 end;
 
 function TEventStat.GetStat: TArray<TPair<string, int64>>;
