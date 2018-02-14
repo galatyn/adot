@@ -396,6 +396,9 @@ type
 
     class function FixDecimalSeparator(const Src: string): string; static;
 
+    { makes uniqueue name/caption/filename }
+    class function GetUnique(const SrcName: string; UsedNames: TArray<string>; const FmtName: string = '%s(%d)'): string; static;
+
     class function ToInteger(const Src: string): int64; static;
     class function ToFloat(const Src: string): double; static;
     class function ToBoolean(const Src: string): boolean; static;
@@ -1369,6 +1372,21 @@ begin
     else { not part of number }
       if State=stNum then
         State := stSpace; { space is required before next number }
+end;
+
+class function TStr.GetUnique(const SrcName: string; UsedNames: TArray<string>; const FmtName: string): string;
+var
+  N: Integer;
+  S: TSet<string>;
+begin
+  N := 1;
+  S := UsedNames;
+  result := SrcName;
+  while result in S do
+  begin
+    inc(N);
+    result := format(FmtName, [SrcName, N]);
+  end;
 end;
 
 class procedure TStr.InitializeVars;
