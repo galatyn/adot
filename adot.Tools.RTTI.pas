@@ -142,7 +142,7 @@ begin
 
   { convert to text }
   AsText := (coStreamAsString in Settings.Options);
-  if AsText and TStr.IsValidUtf8(B) then
+  if AsText and TEnc.IsValidUtf8(B) then
   try
     S := TEncoding.UTF8.GetString(B);
   except

@@ -322,28 +322,6 @@ type
     class function TruncToWord(const Src: string; MaxCharLen: integer; AddDots: boolean = True): string; static;
     { Replaces any sequence of any space/control chars by single space. }
     class function TruncSpaces(const Src: string; TrimRes: boolean = True): string; static;
-    { xxx -> 'xxx'
-      Delphi (up to Delphi 10 Seattle at least) doesn't allow string literals to be longer than 255 chars.
-      MakeStringLiteral will add quote char and split to several lines if necessary }
-    class function MakeValidStringLiteral(const s: string): string; static;
-    { General function for escaping special characters. To be more precise it is allowed to escape
-      any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
-        Escape( 'key=value', '=' ) = 'key\3D00value' }
-    class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
-    class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
-    { Can be used to encode strings as Delphi-compatible string literals.
-      TTokPascal tokenizer can be used to extract and decode strings (or DecodeStringLiterals).
-      "abc" -> "'abc'"
-      " abc" -> "' abc'"
-      "a'bc" -> "a'''bc"
-      " a'bc " -> "' a'''bc '"}
-    class function EncodeStringLiteral(const Value: string): string; overload; static;
-    class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuffer); overload; static;
-    class function EncodeStringLiterals(const Values: TArray<string>): string; static;
-    class function DecodeStringLiterals(const Values: string): TArray<string>; static;
-
-    { TTestApp -> "Test app" }
-    class function ClassNameToCaption(const AClassName: string): string; static;
 
     { returns new string where all specified chars are deleted }
     class function Remove(const Src: string; const CharsToDelete: TArray<Char>): string; static;
@@ -407,11 +385,6 @@ type
     {$EndIf}
     class function IntToString(const N: int64; MinResLen: integer = -1; LeadingSpaceChar: char = '0'): string; static;
 
-    { make string printable (replace all unprintable/control chars):
-        GetPrintable( 'line1' + #13#10 + 'line2' + #8 + 'qqq' ) = 'line1  line2?qqq' }
-    class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static;
-    class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
-
     { randomization }
     {$IF Defined(MSWindows)}
     class function Random(ALen: integer; const AChars: TAnsiChars): string; overload;
@@ -443,6 +416,37 @@ type
     class function TryToBoolean(const Src: string; var Value: boolean): boolean; static;
     class function TryToDateTime(const Src: string; var Value: TDateTime): boolean; static;
     class function TryToGuid(const Src: string; var Value: TGUID): boolean; static;
+  end;
+
+  TEnc = class
+  public
+    { xxx -> 'xxx'
+      Delphi (up to Delphi 10 Seattle at least) doesn't allow string literals to be longer than 255 chars.
+      MakeStringLiteral will add quote char and split to several lines if necessary }
+    class function MakeValidStringLiteral(const s: string): string; static;
+
+    { General function for escaping special characters. To be more precise it is allowed to escape
+      any char except digits and latin chars in range 'A'..'F'. Escaped chars are converted to HEX:
+        Escape( 'key=value', '=' ) = 'key\3D00value' }
+    class function HexEscape(const Value,CharsToEscape: string; const EscapeChar: Char = '\'): string; static;
+    class function HexUnescape(const Value: string; const EscapeChar: Char = '\'): string; static;
+
+    { Can be used to encode strings as Delphi-compatible string literals.
+      TTokPascal tokenizer can be used to extract and decode strings (or DecodeStringLiterals).
+      "abc" -> "'abc'"
+      " abc" -> "' abc'"
+      "a'bc" -> "a'''bc"
+      " a'bc " -> "' a'''bc '"}
+    class function EncodeStringLiteral(const Value: string): string; overload; static;
+    class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuffer); overload; static;
+
+    { TTestApp -> "Test app" }
+    class function ClassNameToCaption(const AClassName: string): string; static;
+
+    { make string printable (replace all unprintable/control chars):
+        GetPrintable( 'line1' + #13#10 + 'line2' + #8 + 'qqq' ) = 'line1  line2?qqq' }
+    class function GetPrintable(const S: string; ReplChar: Char = '?'): string; overload; static;
+    class function GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string; overload; static;
 
     { Count - size of Text used to keep text (allocated storage can be larger that data)
       TextPos - where text starts in Text array
@@ -475,10 +479,10 @@ type
         12000 UTF32 little endian
         12001 UTF32 big endian
         65001 UTF8 }
-    class function IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean;
+    class function IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean; static;
 
     { Extends TEncoding.GetEncoding with some extra code pages (UTF32 is not supported by TEncoding in Delphi 10.2) }
-    class function GetEncoding(CodePage: Cardinal): TEncoding;
+    class function GetEncoding(CodePage: Cardinal): TEncoding; static;
   end;
 
   { implementation of UTF32 big endian }
@@ -1024,18 +1028,6 @@ begin
   result := StringOfChar(' ',MinLen-Length(Src)) + Src;
 end;
 
-class function TStr.ClassNameToCaption(const AClassName: string): string;
-var
-  i: Integer;
-begin
-  if result.StartsWith('T') then
-    result := result.Substring(1);
-  for i := Length(result)-1 downto 1 do
-    if result.Chars[i].IsUpper and result.Chars[i-1].IsLower then
-      result := result.Insert(i, ' ');
-  result := result.UpperCase(result.Substring(0,1)) + result.LowerCase(result.Substring(1));
-end;
-
 class function TStr.CompareAsInt(const A, B: string): integer;
 var
   AI,BI: int64;
@@ -1095,45 +1087,6 @@ end;
 class function TStr.CompareTrimText(const A, B: string): integer;
 begin
   result := CompareText(Trim(A), Trim(B));
-end;
-
-class function TStr.HexEscape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
-var
-  S: TSet<Char>;
-  I: Integer;
-begin
-  S.Clear;
-  for I := Low(CharsToEscape) to High(CharsToEscape) do
-  begin
-    Assert( not (((CharsToEscape[I]>='0') and (CharsToEscape[I]<='9')) or ((CharsToEscape[I]>='A') and (CharsToEscape[I]<='F'))) );
-    S.Add(CharsToEscape[I]);
-  end;
-  S.Add(EscapeChar);
-  result := '';
-  for I := 0 to Length(Value)-1 do
-    if not (Value.Chars[I] in S) then
-      result := result + Value.Chars[I]
-    else
-      result := result + EscapeChar + THex.Encode(Value.Chars[I]);
-end;
-
-class function TStr.HexUnescape(const Value: string; const EscapeChar: Char): string;
-var
-  I: Integer;
-begin
-  result := '';
-  I := 0;
-  while I < Length(Value) do
-  begin
-    if Value.Chars[I] <> EscapeChar then
-      result := result + Value.Chars[I]
-    else
-    begin
-      result := result + THex.DecodeString(Value.SubString(I+1, SizeOf(Char)*2));
-      Inc(I, SizeOf(Char)*2);
-    end;
-    inc(I);
-  end;
 end;
 
 class function TStr.UpperCase(const S: string; Chars: TStrCharsPos): string;
@@ -1418,27 +1371,6 @@ begin
         State := stSpace; { space is required before next number }
 end;
 
-class function TStr.GetPrintable(const S: string; ReplChar: Char = '?'): string;
-begin
-  result := GetPrintable(PChar(S), Length(S), ReplChar);
-end;
-
-class function TStr.GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string;
-var
-  I: Integer;
-begin
-  SetLength(Result, Count);
-  if Count<=0 then
-    Exit;
-  System.Move(S^, result[Low(result)], Count*SizeOf(Char));
-  for I := Low(result) to High(result) do
-    if result[I].IsWhiteSpace then
-      result[I] := ' '
-    else
-    if result[I].IsControl then
-      result[I] := ReplChar;
-end;
-
 class procedure TStr.InitializeVars;
 {$IFNDEF NoCaseMap}
 var
@@ -1456,20 +1388,6 @@ end;
 
 class procedure TStr.FinalizeVars;
 begin
-end;
-
-class function TStr.MakeValidStringLiteral(const s: string): string;
-var
-  i: Integer;
-begin
-  result := '';
-  i := Low(s);
-  while High(s)-i+1>250 do
-  begin
-    result := result + '''' + System.Copy(s,i,250) + ''' + ';
-    inc(i, 250);
-  end;
-  result := result + '''' + System.Copy(s,i,high(integer)) + '''';
 end;
 
 class function TStr.MoveDigitsToEnd(const s: string): String;
@@ -1508,19 +1426,6 @@ begin
       inc(j);
       result[j] := s[i];
     end;
-end;
-
-class function TStr.GetEncoding(CodePage: Cardinal): TEncoding;
-begin
-  case CodePage of
-     1200           : result := TUnicodeEncoding.Create;            { UTF16 little endian }
-     1201           : result := TBigEndianUnicodeEncoding.Create;   { UTF16 big endian }
-    65000 {CP_UTF7} : result := TUTF7Encoding.Create;               { UTF7 }
-    65001 {CP_UTF8} : result := TUTF8Encoding.Create;               { UTF8 }
-    12000           : result := TLittleEndianUTF32Encoding.Create;  { UTF32 little endian }
-    12001           : result := TBigEndianUTF32Encoding.Create;     { UTF32 big endian }
-    else result := TEncoding.GetEncoding(CodePage);
-  end;
 end;
 
 class function TStr.GetMaxEncodedBytes(const S: string; BufSize: integer; Encoding: TEncoding): TBytes;
@@ -2095,7 +2000,7 @@ begin
   if Encoding <> nil then
     Result := Encoding.GetString(B)
   else
-    if IsValidUtf8(B)
+    if TEnc.IsValidUtf8(B)
       then Result := Encoding.UTF8.GetString(B)
       else Result := Encoding.ANSI.GetString(B);
 end;
@@ -2211,295 +2116,6 @@ begin
   result := TextPosition(ASubStr, AText) >= 0;
 end;
 
-class function TStr.IsValidUtf8(const Text: TArray<Byte>): boolean;
-begin
-  result := IsValidUtf8(Text, Length(Text), 0, False);
-end;
-
-class function TStr.IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean;
-const
-  b2  = 128 + 64 +  0;
-  b2m = 128 + 64 + 32;
-  b3  = 128 + 64 + 32 +  0;
-  b3m = 128 + 64 + 32 + 16;
-  b4  = 128 + 64 + 32 + 16 + 0;
-  b4m = 128 + 64 + 32 + 16 + 8;
-  b5  = 128 + 64 + 32 + 16 + 8 + 0;
-  b5m = 128 + 64 + 32 + 16 + 8 + 4;
-  b6  = 128 + 64 + 32 + 16 + 8 + 4 + 0;
-  b6m = 128 + 64 + 32 + 16 + 8 + 4 + 2;
-  v   = 128 +  0;
-  vm  = 128 + 64;
-begin
-  Result := False;
-
-  { we will kep number of remain bytes in Count }
-  Dec(Count, TextPos);
-
-  { skip BOM }
-  if (Count >= 3) and (Text[TextPos]=$EF) and (Text[TextPos+1]=$BB) and (Text[TextPos+2]=$BF) then
-  begin
-    inc(TextPos, 3);
-    dec(Count, 3);
-  end;
-
-  { we can check faster when we know that all 6 bytes are here }
-  while Count >= 6 do
-    { 1 byte }
-    if Text[TextPos] < 128 then
-    begin
-      inc(TextPos);
-      dec(Count);
-    end
-    else
-    { 2 bytes }
-    if (Text[TextPos] and b2m = b2) then
-      if Text[TextPos+1] and vm <> v then
-        Exit
-      else
-      begin
-        inc(TextPos, 2);
-        dec(Count, 2);
-      end
-    else
-    { 3 bytes }
-    if (Text[TextPos] and b3m = b3) then
-      if (Text[TextPos+1] and vm <> v) or (Text[TextPos+2] and vm <> v) then
-        Exit
-      else
-      begin
-        inc(TextPos, 3);
-        dec(Count, 3);
-      end
-    else
-    { 4 bytes }
-    if (Text[TextPos] and b4m = b4) then
-      if (Text[TextPos+1] and vm <> v) or
-        (Text[TextPos+2] and vm <> v) or
-        (Text[TextPos+3] and vm <> v)
-      then
-        Exit
-      else
-      begin
-        inc(TextPos, 4);
-        dec(Count, 4);
-      end
-    else
-    { 5 bytes }
-    if (Text[TextPos] and b5m = b5) then
-      if (Text[TextPos+1] and vm <> v) or
-        (Text[TextPos+2] and vm <> v) or
-        (Text[TextPos+3] and vm <> v) or
-        (Text[TextPos+4] and vm <> v)
-      then
-        Exit
-      else
-      begin
-        inc(TextPos, 5);
-        dec(Count, 5);
-      end
-    else
-    { 6 bytes }
-    if (Text[TextPos] and b6m = b6) then
-      if (Text[TextPos+1] and vm <> v) or
-        (Text[TextPos+2] and vm <> v) or
-        (Text[TextPos+3] and vm <> v) or
-        (Text[TextPos+4] and vm <> v) or
-        (Text[TextPos+5] and vm <> v)
-      then
-        Exit
-      else
-      begin
-        inc(TextPos, 6);
-        dec(Count, 6);
-      end
-    else
-      Exit;
-
-  { we have 0..5 bytes left }
-  while Count > 0 do
-    { 1 byte }
-    if Text[TextPos] < 128 then
-    begin
-      inc(TextPos);
-      dec(Count);
-    end
-    else
-    { 2 bytes }
-    if (Text[TextPos] and b2m = b2) then
-      if Count < 2 then
-        Exit(TextIsFragment)
-      else
-        if Text[TextPos+1] and vm <> v then
-          Exit
-        else
-        begin
-          inc(TextPos, 2);
-          dec(Count, 2);
-        end
-    else
-    { 3 bytes }
-    if (Text[TextPos] and b3m = b3) then
-      if Count < 3 then
-        Exit(TextIsFragment)
-      else
-        if (Text[TextPos+1] and vm <> v) or
-          (Text[TextPos+2] and vm <> v)
-        then
-          Exit
-        else
-        begin
-          inc(TextPos, 3);
-          dec(Count, 3);
-        end
-    else
-    { 4 bytes }
-    if (Text[TextPos] and b4m = b4) then
-      if Count < 4 then
-        Exit(TextIsFragment)
-      else
-        if (Text[TextPos+1] and vm <> v) or
-          (Text[TextPos+2] and vm <> v) or
-          (Text[TextPos+3] and vm <> v)
-        then
-          Exit
-        else
-        begin
-          inc(TextPos, 4);
-          dec(Count, 4);
-        end
-    else
-    { 5 bytes }
-    if (Text[TextPos] and b5m = b5) then
-      if Count < 5 then
-        Exit(TextIsFragment)
-      else
-        if (Text[TextPos+1] and vm <> v) or
-          (Text[TextPos+2] and vm <> v) or
-          (Text[TextPos+3] and vm <> v) or
-          (Text[TextPos+4] and vm <> v)
-        then
-          Exit
-        else
-        begin
-          inc(TextPos, 5);
-          dec(Count, 5);
-        end
-    else
-    { 6 bytes }
-    if (Text[TextPos] and b6m = b6) then
-      if Count < 6 then
-        Exit(TextIsFragment)
-      else
-        if (Text[TextPos+1] and vm <> v) or
-          (Text[TextPos+2] and vm <> v) or
-          (Text[TextPos+3] and vm <> v) or
-          (Text[TextPos+4] and vm <> v) or
-          (Text[TextPos+5] and vm <> v)
-        then
-          Exit
-        else
-        begin
-          inc(TextPos, 6);
-          dec(Count, 6);
-        end
-    else
-      Exit; { wrong sequence }
-
-  { No wrong sequences detected }
-  Result := True;
-
-end;
-
-class function TStr.DetectEncoding(const Text: TArray<Byte>; Count: integer;
-  out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding;
-type
-  TRec = record
-    z: array[0..3] of byte;
-    e: TTextEncoding;
-  end;
-
-const
-  Encodings: array[0..4] of TRec = (
-    (z:(1,1,1,1); e: teUTF8),
-    (z:(1,0,1,0); e: teUTF16LE),
-    (z:(0,1,0,1); e: teUTF16BE),
-    (z:(1,0,0,0); e: teUTF32LE),
-    (z:(0,0,0,1); e: teUTF32BE)
-  );
-
-var
-  i: integer;
-begin
-
-  TextStartPos := 0;
-
-  if Count < 4 then
-    if not IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
-      Exit(teAnsi)
-    else
-    begin
-      if (Count >= 3) and (Text[TextStartPos]=$EF) and (Text[TextStartPos+1]=$BB) and (Text[TextStartPos+2]=$BF) then
-        inc(TextStartPos, 3);
-      Exit(teUTF8)
-    end;
-
-  { check byte order mark (BOM) }
-  if (Text[TextStartPos]=$EF) and (Text[TextStartPos+1]=$BB) and (Text[TextStartPos+2]=$BF) then
-  begin
-    if not IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
-      Exit(teAnsi);
-    inc(TextStartPos, 3);
-    Exit(teUTF8);
-  end;
-  if (Text[TextStartPos]=$FF) and (Text[TextStartPos+1]=$FE) and (Text[TextStartPos+2]=0) and (Text[TextStartPos+3]=0) then
-  begin
-    inc(TextStartPos, 4);
-    Exit(teUTF32LE);
-  end;
-  if (Text[TextStartPos]=0) and (Text[TextStartPos+1]=0) and (Text[TextStartPos+2]=$FE) and (Text[TextStartPos+3]=$FF) then
-  begin
-    inc(TextStartPos, 4);
-    Exit(teUTF32BE);
-  end;
-  if (Text[TextStartPos]=$FF) and (Text[TextStartPos+1]=$FE) then
-  begin
-    inc(TextStartPos, 2);
-    Exit(teUTF16LE);
-  end;
-  if (Text[TextStartPos]=$FE) and (Text[TextStartPos+1]=$FF) then
-  begin
-    inc(TextStartPos, 2);
-    Exit(teUTF16BE);
-  end;
-
-  (*
-    check first characters (according to RFC they must be ASCII)
-    00 00 00 xx  UTF-32BE
-    00 xx 00 xx  UTF-16BE
-    xx 00 00 00  UTF-32LE
-    xx 00 xx 00  UTF-16LE
-    xx xx xx xx  UTF-8
-  *)
-  for i := low(Encodings) to high(Encodings) do
-    with Encodings[i] do
-      if
-        ( (Z[0]=0) = (Text[TextStartPos]=0) ) and
-        ( (Z[1]=0) = (Text[TextStartPos+1]=0) ) and
-        ( (Z[2]=0) = (Text[TextStartPos+2]=0) ) and
-        ( (Z[3]=0) = (Text[TextStartPos+3]=0) )
-      then
-        if E <> teUTF8 then
-          Exit(E)
-        else
-          if IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
-            Exit(teUTF8)
-          else
-            Exit(teANSI);
-
-  result := teANSI;
-end;
-
 class function TStr.Random(ALen: integer; AFrom, ATo: Char): string;
 var
   i: Integer;
@@ -2512,117 +2128,9 @@ begin
     );
 end;
 
-class function TStr.IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean;
-var
-  TextEncoding : TTextEncoding;
-  TextStartPos: Integer;
-begin
-
-  { any encoding is allowed for empty src }
-  if Length(AText) = 0 then
-    Exit(True);
-
-  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
-  case TextEncoding of
-    teUnknown,teAnsi:
-      { it can't be UTF family }
-      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001,65001]);
-    teUTF8:
-      { it can't be UTF16/UTF32, but maybe it is UTF8 or single byte encoding }
-      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001]);
-    teUTF16LE:
-      result := ACodePage = 1200;
-    teUTF16BE:
-      result := ACodePage = 1201;
-    teUTF32LE:
-      result := ACodePage = 12000;
-    teUTF32BE:
-      result := ACodePage = 12001;
-    else Result := True; { we don't know }
-  end;
-end;
-
-class function TStr.DetectCodepage(const AText: TArray<byte>; out Encoding: TEncoding): boolean;
-var
-  CodePage: cardinal;
-begin
-  result := DetectCodepage(AText, CodePage);
-  if result then
-    Encoding := TStr.GetEncoding(CodePage);
-end;
-
-class function TStr.DetectEncoding(const Text: TArray<Byte>; Count: integer; out TextStartPos: integer; TextIsFragment: boolean;
-  out AEncoding: TEncoding): TTextEncoding;
-begin
-  result := DetectEncoding(Text, Count, TextStartPos, TextIsFragment);
-  case result of
-    teUnknown : AEncoding := nil;
-    teAnsi    : AEncoding := TEncoding.ANSI;
-    teUTF8    : AEncoding := TEncoding.UTF8;
-    teUTF16LE : AEncoding := TEncoding.Unicode;
-    teUTF16BE : AEncoding := TEncoding.BigEndianUnicode;
-    teUTF32LE : AEncoding := TLittleEndianUTF32Encoding.LittleEndianUnicode32;
-    teUTF32BE : AEncoding := TBigEndianUTF32Encoding.BigEndianUnicode32;
-    else AEncoding := nil;
-  end;
-end;
-
-class function TStr.DetectCodepage(const AText: TArray<byte>; Count: integer; out CodePage: Cardinal): boolean;
-var
-  TextEncoding : TTextEncoding;
-  TextStartPos: Integer;
-begin
-  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
-  result := TextEncoding <> teUnknown;
-  if result then
-    case TextEncoding of
-      teAnsi    : CodePage := TEncoding.ANSI.CodePage;
-      teUTF8    : CodePage := 65001;
-      teUTF16LE : CodePage := 1200;
-      teUTF16BE : CodePage := 1201;
-      teUTF32LE : CodePage := 12000;
-      teUTF32BE : CodePage := 12001;
-      else result := False;
-    end;
-end;
-
-class function TStr.DetectCodepage(const AText: TArray<byte>; out CodePage: Cardinal): boolean;
-begin
-  result := DetectCodepage(AText, Length(AText), CodePage);
-end;
-
 class function TStr.Random: string;
 begin
   result := TStr.Random(System.Random(20));
-end;
-
-class function TStr.EncodeStringLiteral(const Value: string): string;
-var
-  Buf: TStringBuffer;
-begin
-  Buf.Clear;
-  EncodeStringLiteral(Value, Buf);
-  Result := Buf.Text;
-end;
-
-class procedure TStr.EncodeStringLiteral(const Value: string; var Dst: TStringBuffer);
-var
-  I: integer;
-begin
-  for I := Low(Value) to High(Value) do
-    if Value[I]=''''
-      then Dst.Write('''''')
-      else Dst.Write(Value[I]);
-end;
-
-class function TStr.EncodeStringLiterals(const Values: TArray<string>): string;
-begin
-
-end;
-
-class function TStr.DecodeStringLiterals(const Values: string): TArray<string>;
-begin
-
 end;
 
 { TTokenPos }
@@ -4824,6 +4332,494 @@ end;
 function TLittleEndianUTF32Encoding.GetPreamble: TBytes;
 begin
   Result := TBytes.Create($FF, $FE, 0, 0);
+end;
+
+{ TEnc }
+
+class function TEnc.MakeValidStringLiteral(const s: string): string;
+var
+  i: Integer;
+begin
+  result := '';
+  i := Low(s);
+  while High(s)-i+1>250 do
+  begin
+    result := result + '''' + System.Copy(s,i,250) + ''' + ';
+    inc(i, 250);
+  end;
+  result := result + '''' + System.Copy(s,i,high(integer)) + '''';
+end;
+
+class function TEnc.HexEscape(const Value, CharsToEscape: string; const EscapeChar: Char): string;
+var
+  S: TSet<Char>;
+  I: Integer;
+begin
+  S.Clear;
+  for I := Low(CharsToEscape) to High(CharsToEscape) do
+  begin
+    Assert( not (((CharsToEscape[I]>='0') and (CharsToEscape[I]<='9')) or ((CharsToEscape[I]>='A') and (CharsToEscape[I]<='F'))) );
+    S.Add(CharsToEscape[I]);
+  end;
+  S.Add(EscapeChar);
+  result := '';
+  for I := 0 to Length(Value)-1 do
+    if not (Value.Chars[I] in S) then
+      result := result + Value.Chars[I]
+    else
+      result := result + EscapeChar + THex.Encode(Value.Chars[I]);
+end;
+
+class function TEnc.HexUnescape(const Value: string; const EscapeChar: Char): string;
+var
+  I: Integer;
+begin
+  result := '';
+  I := 0;
+  while I < Length(Value) do
+  begin
+    if Value.Chars[I] <> EscapeChar then
+      result := result + Value.Chars[I]
+    else
+    begin
+      result := result + THex.DecodeString(Value.SubString(I+1, SizeOf(Char)*2));
+      Inc(I, SizeOf(Char)*2);
+    end;
+    inc(I);
+  end;
+end;
+
+class function TEnc.EncodeStringLiteral(const Value: string): string;
+var
+  Buf: TStringBuffer;
+begin
+  Buf.Clear;
+  EncodeStringLiteral(Value, Buf);
+  Result := Buf.Text;
+end;
+
+class procedure TEnc.EncodeStringLiteral(const Value: string; var Dst: TStringBuffer);
+var
+  I: integer;
+begin
+  for I := Low(Value) to High(Value) do
+    if Value[I]=''''
+      then Dst.Write('''''')
+      else Dst.Write(Value[I]);
+end;
+
+class function TEnc.ClassNameToCaption(const AClassName: string): string;
+var
+  i: Integer;
+begin
+  if result.StartsWith('T') then
+    result := result.Substring(1);
+  for i := Length(result)-1 downto 1 do
+    if result.Chars[i].IsUpper and result.Chars[i-1].IsLower then
+      result := result.Insert(i, ' ');
+  result := result.UpperCase(result.Substring(0,1)) + result.LowerCase(result.Substring(1));
+end;
+
+class function TEnc.GetPrintable(const S: string; ReplChar: Char = '?'): string;
+begin
+  result := GetPrintable(PChar(S), Length(S), ReplChar);
+end;
+
+class function TEnc.GetPrintable(S: PChar; Count: integer; ReplChar: Char = '?'): string;
+var
+  I: Integer;
+begin
+  SetLength(Result, Count);
+  if Count<=0 then
+    Exit;
+  System.Move(S^, result[Low(result)], Count*SizeOf(Char));
+  for I := Low(result) to High(result) do
+    if result[I].IsWhiteSpace then
+      result[I] := ' '
+    else
+    if result[I].IsControl then
+      result[I] := ReplChar;
+end;
+
+class function TEnc.IsValidUtf8(const Text: TArray<Byte>): boolean;
+begin
+  result := IsValidUtf8(Text, Length(Text), 0, False);
+end;
+
+class function TEnc.IsValidUtf8(const Text: TArray<Byte>; Count,TextPos: integer; TextIsFragment: boolean = True): boolean;
+const
+  b2  = 128 + 64 +  0;
+  b2m = 128 + 64 + 32;
+  b3  = 128 + 64 + 32 +  0;
+  b3m = 128 + 64 + 32 + 16;
+  b4  = 128 + 64 + 32 + 16 + 0;
+  b4m = 128 + 64 + 32 + 16 + 8;
+  b5  = 128 + 64 + 32 + 16 + 8 + 0;
+  b5m = 128 + 64 + 32 + 16 + 8 + 4;
+  b6  = 128 + 64 + 32 + 16 + 8 + 4 + 0;
+  b6m = 128 + 64 + 32 + 16 + 8 + 4 + 2;
+  v   = 128 +  0;
+  vm  = 128 + 64;
+begin
+  Result := False;
+
+  { we will kep number of remain bytes in Count }
+  Dec(Count, TextPos);
+
+  { skip BOM }
+  if (Count >= 3) and (Text[TextPos]=$EF) and (Text[TextPos+1]=$BB) and (Text[TextPos+2]=$BF) then
+  begin
+    inc(TextPos, 3);
+    dec(Count, 3);
+  end;
+
+  { we can check faster when we know that all 6 bytes are here }
+  while Count >= 6 do
+    { 1 byte }
+    if Text[TextPos] < 128 then
+    begin
+      inc(TextPos);
+      dec(Count);
+    end
+    else
+    { 2 bytes }
+    if (Text[TextPos] and b2m = b2) then
+      if Text[TextPos+1] and vm <> v then
+        Exit
+      else
+      begin
+        inc(TextPos, 2);
+        dec(Count, 2);
+      end
+    else
+    { 3 bytes }
+    if (Text[TextPos] and b3m = b3) then
+      if (Text[TextPos+1] and vm <> v) or (Text[TextPos+2] and vm <> v) then
+        Exit
+      else
+      begin
+        inc(TextPos, 3);
+        dec(Count, 3);
+      end
+    else
+    { 4 bytes }
+    if (Text[TextPos] and b4m = b4) then
+      if (Text[TextPos+1] and vm <> v) or
+        (Text[TextPos+2] and vm <> v) or
+        (Text[TextPos+3] and vm <> v)
+      then
+        Exit
+      else
+      begin
+        inc(TextPos, 4);
+        dec(Count, 4);
+      end
+    else
+    { 5 bytes }
+    if (Text[TextPos] and b5m = b5) then
+      if (Text[TextPos+1] and vm <> v) or
+        (Text[TextPos+2] and vm <> v) or
+        (Text[TextPos+3] and vm <> v) or
+        (Text[TextPos+4] and vm <> v)
+      then
+        Exit
+      else
+      begin
+        inc(TextPos, 5);
+        dec(Count, 5);
+      end
+    else
+    { 6 bytes }
+    if (Text[TextPos] and b6m = b6) then
+      if (Text[TextPos+1] and vm <> v) or
+        (Text[TextPos+2] and vm <> v) or
+        (Text[TextPos+3] and vm <> v) or
+        (Text[TextPos+4] and vm <> v) or
+        (Text[TextPos+5] and vm <> v)
+      then
+        Exit
+      else
+      begin
+        inc(TextPos, 6);
+        dec(Count, 6);
+      end
+    else
+      Exit;
+
+  { we have 0..5 bytes left }
+  while Count > 0 do
+    { 1 byte }
+    if Text[TextPos] < 128 then
+    begin
+      inc(TextPos);
+      dec(Count);
+    end
+    else
+    { 2 bytes }
+    if (Text[TextPos] and b2m = b2) then
+      if Count < 2 then
+        Exit(TextIsFragment)
+      else
+        if Text[TextPos+1] and vm <> v then
+          Exit
+        else
+        begin
+          inc(TextPos, 2);
+          dec(Count, 2);
+        end
+    else
+    { 3 bytes }
+    if (Text[TextPos] and b3m = b3) then
+      if Count < 3 then
+        Exit(TextIsFragment)
+      else
+        if (Text[TextPos+1] and vm <> v) or
+          (Text[TextPos+2] and vm <> v)
+        then
+          Exit
+        else
+        begin
+          inc(TextPos, 3);
+          dec(Count, 3);
+        end
+    else
+    { 4 bytes }
+    if (Text[TextPos] and b4m = b4) then
+      if Count < 4 then
+        Exit(TextIsFragment)
+      else
+        if (Text[TextPos+1] and vm <> v) or
+          (Text[TextPos+2] and vm <> v) or
+          (Text[TextPos+3] and vm <> v)
+        then
+          Exit
+        else
+        begin
+          inc(TextPos, 4);
+          dec(Count, 4);
+        end
+    else
+    { 5 bytes }
+    if (Text[TextPos] and b5m = b5) then
+      if Count < 5 then
+        Exit(TextIsFragment)
+      else
+        if (Text[TextPos+1] and vm <> v) or
+          (Text[TextPos+2] and vm <> v) or
+          (Text[TextPos+3] and vm <> v) or
+          (Text[TextPos+4] and vm <> v)
+        then
+          Exit
+        else
+        begin
+          inc(TextPos, 5);
+          dec(Count, 5);
+        end
+    else
+    { 6 bytes }
+    if (Text[TextPos] and b6m = b6) then
+      if Count < 6 then
+        Exit(TextIsFragment)
+      else
+        if (Text[TextPos+1] and vm <> v) or
+          (Text[TextPos+2] and vm <> v) or
+          (Text[TextPos+3] and vm <> v) or
+          (Text[TextPos+4] and vm <> v) or
+          (Text[TextPos+5] and vm <> v)
+        then
+          Exit
+        else
+        begin
+          inc(TextPos, 6);
+          dec(Count, 6);
+        end
+    else
+      Exit; { wrong sequence }
+
+  { No wrong sequences detected }
+  Result := True;
+
+end;
+
+class function TEnc.DetectEncoding(const Text: TArray<Byte>; Count: integer;
+  out TextStartPos: integer; TextIsFragment: boolean): TTextEncoding;
+type
+  TRec = record
+    z: array[0..3] of byte;
+    e: TTextEncoding;
+  end;
+
+const
+  Encodings: array[0..4] of TRec = (
+    (z:(1,1,1,1); e: teUTF8),
+    (z:(1,0,1,0); e: teUTF16LE),
+    (z:(0,1,0,1); e: teUTF16BE),
+    (z:(1,0,0,0); e: teUTF32LE),
+    (z:(0,0,0,1); e: teUTF32BE)
+  );
+
+var
+  i: integer;
+begin
+
+  TextStartPos := 0;
+
+  if Count < 4 then
+    if not IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
+      Exit(teAnsi)
+    else
+    begin
+      if (Count >= 3) and (Text[TextStartPos]=$EF) and (Text[TextStartPos+1]=$BB) and (Text[TextStartPos+2]=$BF) then
+        inc(TextStartPos, 3);
+      Exit(teUTF8)
+    end;
+
+  { check byte order mark (BOM) }
+  if (Text[TextStartPos]=$EF) and (Text[TextStartPos+1]=$BB) and (Text[TextStartPos+2]=$BF) then
+  begin
+    if not IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
+      Exit(teAnsi);
+    inc(TextStartPos, 3);
+    Exit(teUTF8);
+  end;
+  if (Text[TextStartPos]=$FF) and (Text[TextStartPos+1]=$FE) and (Text[TextStartPos+2]=0) and (Text[TextStartPos+3]=0) then
+  begin
+    inc(TextStartPos, 4);
+    Exit(teUTF32LE);
+  end;
+  if (Text[TextStartPos]=0) and (Text[TextStartPos+1]=0) and (Text[TextStartPos+2]=$FE) and (Text[TextStartPos+3]=$FF) then
+  begin
+    inc(TextStartPos, 4);
+    Exit(teUTF32BE);
+  end;
+  if (Text[TextStartPos]=$FF) and (Text[TextStartPos+1]=$FE) then
+  begin
+    inc(TextStartPos, 2);
+    Exit(teUTF16LE);
+  end;
+  if (Text[TextStartPos]=$FE) and (Text[TextStartPos+1]=$FF) then
+  begin
+    inc(TextStartPos, 2);
+    Exit(teUTF16BE);
+  end;
+
+  (*
+    check first characters (according to RFC they must be ASCII)
+    00 00 00 xx  UTF-32BE
+    00 xx 00 xx  UTF-16BE
+    xx 00 00 00  UTF-32LE
+    xx 00 xx 00  UTF-16LE
+    xx xx xx xx  UTF-8
+  *)
+  for i := low(Encodings) to high(Encodings) do
+    with Encodings[i] do
+      if
+        ( (Z[0]=0) = (Text[TextStartPos]=0) ) and
+        ( (Z[1]=0) = (Text[TextStartPos+1]=0) ) and
+        ( (Z[2]=0) = (Text[TextStartPos+2]=0) ) and
+        ( (Z[3]=0) = (Text[TextStartPos+3]=0) )
+      then
+        if E <> teUTF8 then
+          Exit(E)
+        else
+          if IsValidUtf8(Text, Count, TextStartPos, TextIsFragment) then
+            Exit(teUTF8)
+          else
+            Exit(teANSI);
+
+  result := teANSI;
+end;
+
+class function TEnc.DetectEncoding(const Text: TArray<Byte>; Count: integer; out TextStartPos: integer; TextIsFragment: boolean;
+  out AEncoding: TEncoding): TTextEncoding;
+begin
+  result := DetectEncoding(Text, Count, TextStartPos, TextIsFragment);
+  case result of
+    teUnknown : AEncoding := nil;
+    teAnsi    : AEncoding := TEncoding.ANSI;
+    teUTF8    : AEncoding := TEncoding.UTF8;
+    teUTF16LE : AEncoding := TEncoding.Unicode;
+    teUTF16BE : AEncoding := TEncoding.BigEndianUnicode;
+    teUTF32LE : AEncoding := TLittleEndianUTF32Encoding.LittleEndianUnicode32;
+    teUTF32BE : AEncoding := TBigEndianUTF32Encoding.BigEndianUnicode32;
+    else AEncoding := nil;
+  end;
+end;
+
+class function TEnc.DetectCodepage(const AText: TArray<byte>; out Encoding: TEncoding): boolean;
+var
+  CodePage: cardinal;
+begin
+  result := DetectCodepage(AText, CodePage);
+  if result then
+    Encoding := TEnc.GetEncoding(CodePage);
+end;
+
+class function TEnc.DetectCodepage(const AText: TArray<byte>; Count: integer; out CodePage: Cardinal): boolean;
+var
+  TextEncoding : TTextEncoding;
+  TextStartPos: Integer;
+begin
+  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
+  result := TextEncoding <> teUnknown;
+  if result then
+    case TextEncoding of
+      teAnsi    : CodePage := TEncoding.ANSI.CodePage;
+      teUTF8    : CodePage := 65001;
+      teUTF16LE : CodePage := 1200;
+      teUTF16BE : CodePage := 1201;
+      teUTF32LE : CodePage := 12000;
+      teUTF32BE : CodePage := 12001;
+      else result := False;
+    end;
+end;
+
+class function TEnc.DetectCodepage(const AText: TArray<byte>; out CodePage: Cardinal): boolean;
+begin
+  result := DetectCodepage(AText, Length(AText), CodePage);
+end;
+
+class function TEnc.IsPossibleEncoding(const AText: TArray<byte>; ACodePage: Cardinal): boolean;
+var
+  TextEncoding : TTextEncoding;
+  TextStartPos: Integer;
+begin
+
+  { any encoding is allowed for empty src }
+  if Length(AText) = 0 then
+    Exit(True);
+
+  TextEncoding := DetectEncoding(AText, Length(AText), TextStartPos, False);
+  case TextEncoding of
+    teUnknown,teAnsi:
+      { it can't be UTF family }
+      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001,65001]);
+    teUTF8:
+      { it can't be UTF16/UTF32, but maybe it is UTF8 or single byte encoding }
+      result := not TArrayUtils.Contains<cardinal>(ACodePage, [1200,1201,12000,12001]);
+    teUTF16LE:
+      result := ACodePage = 1200;
+    teUTF16BE:
+      result := ACodePage = 1201;
+    teUTF32LE:
+      result := ACodePage = 12000;
+    teUTF32BE:
+      result := ACodePage = 12001;
+    else Result := True; { we don't know }
+  end;
+end;
+
+class function TEnc.GetEncoding(CodePage: Cardinal): TEncoding;
+begin
+  case CodePage of
+     1200           : result := TUnicodeEncoding.Create;            { UTF16 little endian }
+     1201           : result := TBigEndianUnicodeEncoding.Create;   { UTF16 big endian }
+    65000 {CP_UTF7} : result := TUTF7Encoding.Create;               { UTF7 }
+    65001 {CP_UTF8} : result := TUTF8Encoding.Create;               { UTF8 }
+    12000           : result := TLittleEndianUTF32Encoding.Create;  { UTF32 little endian }
+    12001           : result := TBigEndianUTF32Encoding.Create;     { UTF32 big endian }
+    else result := TEncoding.GetEncoding(CodePage);
+  end;
 end;
 
 initialization
