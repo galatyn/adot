@@ -442,6 +442,12 @@ type
       " a'bc " -> "' a'''bc '"}
     class function EncodeStringLiteral(const Value: string): string; overload; static;
     class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuffer); overload; static;
+    { will return hex-encoded string of utf8 presentation }
+    class function EscapeIniKeyValue(const NameOrValue: string): string; static;
+    class function UnEscapeIniKeyValue(const EscapedNameOrValue: string): string; static;
+    { sometimes it is important to keep keys & values readable in ini file }
+    class function EscapeIniKeyValueReadable(const NameOrValue: string): string; static;
+    class function UnEscapeIniKeyValueReadable(const EscapedNameOrValue: string): string; static;
 
     { TTestApp -> "Test app" }
     class function ClassNameToCaption(const AClassName: string): string; static;
@@ -4373,7 +4379,8 @@ var
   S: TSet<Char>;
   I: Integer;
 begin
-  S.Clear;
+  S.Init;
+  S.Add(EscapeChar);
   for I := Low(CharsToEscape) to High(CharsToEscape) do
   begin
     Assert( not (((CharsToEscape[I]>='0') and (CharsToEscape[I]<='9')) or ((CharsToEscape[I]>='A') and (CharsToEscape[I]<='F'))) );
@@ -4424,6 +4431,75 @@ begin
     if Value[I]=''''
       then Dst.Write('''''')
       else Dst.Write(Value[I]);
+end;
+
+class function TEnc.EscapeIniKeyValue(const NameOrValue: string): string;
+var
+  Bytes: TArray<Byte>;
+begin
+  Bytes := TEncoding.UTF8.GetBytes(NameOrValue);
+  Result := THex.Encode(Bytes);
+end;
+
+class function TEnc.UnEscapeIniKeyValue(const EscapedNameOrValue: string): string;
+var
+  Bytes: TArray<Byte>;
+begin
+  Bytes := THex.DecodeBytes(EscapedNameOrValue);
+  result := TEncoding.UTF8.GetString(Bytes);
+end;
+
+class function TEnc.EscapeIniKeyValueReadable(const NameOrValue: string): string;
+var
+  BodyStart,BodyLen: integer;
+  Prefix, Body, Suffix: string;
+  C: Char;
+begin
+  {
+    https://stackoverflow.com/questions/3702647/reading-inifile-to-stringlist-problem-spaces-problem
+    TIniFile.ReadSectionValues ultimately uses the Windows API function GetPrivateProfileString to read key values
+    from the ini file. GetPrivateProfileString will remove any leading and trailing white space as well as any
+    quotation marks surrounding the string.
+  }
+  result := NameOrValue;
+  BodyStart := 0;
+  BodyLen := Length(result);
+
+  { prefix (we escape: backslash, equality char, whitespace, quotation chars) }
+  Prefix := '';
+  if BodyLen > 0 then
+  begin
+    C := result.Chars[0];
+    if (C = '\') or (C = '=') or C.IsWhiteSpace or (C = '''') or (C = '"') then
+    begin
+      Prefix := HexEscape(C, C);
+      inc(BodyStart);
+      dec(BodyLen);
+    end;
+  end;
+
+  { suffix (we escape: backslash, equality char, whitespace, quotation chars) }
+  Suffix := '';
+  if BodyLen > 0 then
+  begin
+    C := result.Chars[BodyStart+BodyLen-1];
+    if (C = '\') or (C = '=') or C.IsWhiteSpace or (C = '''') or (C = '"') then
+    begin
+      Suffix := HexEscape(C, C);
+      dec(BodyLen);
+    end;
+  end;
+
+  { body  (we escape: backslash, equality char }
+  Body := HexEscape(result.Substring(BodyStart,BodyLen) , '=');
+
+  { result }
+  result := Prefix + Body + Suffix;
+end;
+
+class function TEnc.UnEscapeIniKeyValueReadable(const EscapedNameOrValue: string): string;
+begin
+  result := HexUnescape(EscapedNameOrValue);
 end;
 
 class function TEnc.ClassNameToCaption(const AClassName: string): string;
