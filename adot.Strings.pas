@@ -4386,7 +4386,6 @@ begin
     Assert( not (((CharsToEscape[I]>='0') and (CharsToEscape[I]<='9')) or ((CharsToEscape[I]>='A') and (CharsToEscape[I]<='F'))) );
     S.Add(CharsToEscape[I]);
   end;
-  S.Add(EscapeChar);
   result := '';
   for I := 0 to Length(Value)-1 do
     if not (Value.Chars[I] in S) then
