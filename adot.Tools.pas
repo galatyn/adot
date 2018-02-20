@@ -739,6 +739,8 @@ class function THex.IsValid(const HexEncodedStr: String; ZeroBasedStartIdx, Len:
 var
   i: Integer;
 begin
+  if Len and 1<>0 then
+    Exit(False);
   for i := ZeroBasedStartIdx to ZeroBasedStartIdx+Len-1 do
     if not IsValid(HexEncodedStr.Chars[i]) then
       Exit(False);
@@ -747,6 +749,8 @@ end;
 
 class function THex.IsValid(const HexEncodedStr: String): Boolean;
 begin
+  if Length(HexEncodedStr) and 1<>0 then
+    Exit(False);
   Result := IsValid(HexEncodedStr, 0,Length(HexEncodedStr));
 end;
 
