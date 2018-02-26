@@ -231,7 +231,7 @@ type
   public
     constructor Create; overload;
   end;
-  
+
 var
   AppLog: TCustomLog;
 
