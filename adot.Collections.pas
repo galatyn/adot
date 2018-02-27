@@ -108,6 +108,12 @@ type
 
     constructor Create(const A: TypeA; const B: TypeB);
     procedure Init(const A: TypeA; const B: TypeB);
+
+    class operator Implicit(const Src: TCompound<TypeA,TypeB>): TPair<TypeA,TypeB>;
+    class operator Implicit(const Src: TPair<TypeA,TypeB>): TCompound<TypeA,TypeB>;
+
+    class operator Explicit(const Src: TCompound<TypeA,TypeB>): TPair<TypeA,TypeB>;
+    class operator Explicit(const Src: TPair<TypeA,TypeB>): TCompound<TypeA,TypeB>;
   end;
 
   { Compound record with three fields. Provides constructor and comparers for use in collections. }
@@ -421,6 +427,26 @@ uses
 constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
 begin
   Init(A,B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Explicit(const Src: TCompound<TypeA, TypeB>): TPair<TypeA, TypeB>;
+begin
+  result := result.Create(Src.A, Src.B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Explicit(const Src: TPair<TypeA, TypeB>): TCompound<TypeA, TypeB>;
+begin
+  result.Init(Src.Key, Src.Value);
+end;
+
+class operator TCompound<TypeA, TypeB>.Implicit(const Src: TCompound<TypeA, TypeB>): TPair<TypeA, TypeB>;
+begin
+  result := result.Create(Src.A, Src.B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Implicit(const Src: TPair<TypeA, TypeB>): TCompound<TypeA, TypeB>;
+begin
+  result.Init(Src.Key, Src.Value);
 end;
 
 procedure TCompound<TypeA, TypeB>.Init(const A: TypeA; const B: TypeB);
