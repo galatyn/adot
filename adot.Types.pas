@@ -43,7 +43,7 @@ type
   TProcVar1<T1,T2,T3> = reference to procedure (Arg1: T1; Arg2: T2; var Arg3: T3);
 
   TFuncCompareValues<T> = reference to function(const Left,Right: T): integer;
-  TFuncFilterValueIndex<T> = reference to function(const Value: T; ValueIndex: integer): boolean;
+  TFuncFilterValueIndex<T> = reference to function(const Value: T; ValueIndex: integer): boolean; { True = Accepts item }
 
   EForbiddenOperation = class(Exception);
 

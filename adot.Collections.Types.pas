@@ -22,6 +22,7 @@ type
     procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
     procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
     function ToString: string; override;
+    function ToText(const ValuesDelimiter: string = #13#10): string;
   end;
 
 implementation
@@ -105,6 +106,11 @@ begin
 end;
 
 function TEnumerableExt<T>.ToString: string;
+begin
+  result := ToText(' ');
+end;
+
+function TEnumerableExt<T>.ToText(const ValuesDelimiter: string = #13#10): string;
 var
   Builder: TStringBuilder;
   V: T;
@@ -115,7 +121,10 @@ begin
     N := False;
     for V in Self do
     begin
-      if N then Builder.Append(#13#10) else N := True;
+      if N then
+        Builder.Append(ValuesDelimiter)
+      else
+        N := True;
       Builder.Append(TRttiUtils.ValueAsString<T>(V));
     end;
     result := Builder.ToString;

@@ -163,6 +163,7 @@ type
     function Copy: TSet<T>;
     function ToArray: TArray<T>;
     function ToString: string;
+    function ToText(const ValueDelimiter: string = #13#10): string;
 
     procedure Clear;
 
@@ -1011,6 +1012,11 @@ end;
 function TSet<T>.ToString: string;
 begin
   result := RO.ToString;
+end;
+
+function TSet<T>.ToText(const ValueDelimiter: string = #13#10): string;
+begin
+  result := RO.ToText(ValueDelimiter);
 end;
 
 class operator TSet<T>.GreaterThanOrEqual(a, b: TSet<T>): Boolean;
