@@ -660,7 +660,7 @@ type
     { We don't want to have both conversions: ->TArray and ->TEnumerable,
       because in many cases it will create ambiguity (many methods support both as input).
       We support TEnumerable because it is safe. If someone needs TArray, he can use
-      wither AsArray (for readobly access) or ToArray }
+      wither AsArray (for readonly access) or ToArray }
     class operator Implicit(a : TVector<T>) : TEnumerable<T>;
 
     class operator Explicit(const a : T) : TVector<T>;
@@ -3635,3 +3635,5 @@ begin
 end;
 
 end.
+
+

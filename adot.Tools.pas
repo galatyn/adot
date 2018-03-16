@@ -6,17 +6,8 @@
 
 { Definition of classes/record types:
 
-  TArrayStream<T: record> = class
-    Makes any array of ordinal type to be accessable as stream of bytes.
-
   TArrayUtils = record
     Fill/fillRandom/Randomize and other tools for arrays.
-
-  TBuffer = record
-    Simple and fast managed analog of TMemoryStream.
-
-  TCachable = class
-    Basic class for objects with data caching/other read optimizations.
 
   TComponentUtils = class
     Enumeration and other component-specific tools.
@@ -24,29 +15,14 @@
   TCurrencyUtils = class
     Currency type utils.
 
-  TCustomHash = class
-    Abstract class for hashes.
-
-  TCustomStreamExt = class
-    Extensions of TStream.
-
   TDateTimeRec = record
     Record type to define TDateTime compatible constants in readable way.
 
   TDateTimeUtils = class
     Check TDateTime correctness, convert to string etc.
 
-  TDelegatedMemoryStream = class
-    Readonly stream for specified memory block.
-
-  TFileUtils = class
-    File manipulation utils.
-
   TGUIDUtils = class
     IsValid and other utils.
-
-  THashes = class
-    Simple API for hashing functions (including CRC32/Adler32)
 
   THex = class
     Set of functions for HEX conversion.
@@ -55,9 +31,6 @@
     Generic implementation of IfThen (to accept virtually any type). Example:
      A := TIfThen.Get(Visible, fsMDIChild, fsNormal);
 
-  TIndexBackEnumerator = record
-    Index enumerator "from last to first".
-
   TInterfacedObject<T: class> = class
     Wrapper class to make any class type available through interface (that means that
     lifetime of the class will be controlled by reference counter)
@@ -65,64 +38,23 @@
   TNullable<T> = record
     Extends any type by IsNull property.
 
-  TPIReader = class
-    Platform independent stream reader.
-
-  TPIWriter = class
-    Platform independent stream writer.
-
-  TRLE = class
-    PDF-compatible RLE codec.
-
-  TReader = record
-    Stream block reader (ReadNext to get next block of data from stream as array of byte)
-
-  TStreamUtils = class
-    Block reader and other utils.
-
-  TTimeOut = record
-    Allows to avoid of some operations to be executed too often.
-
-  TTiming = class
-    Time measuring functions (recursive Start/Stop etc)
-
 }
 interface
 
 uses
   adot.Types,
   adot.Collections,
-  adot.Collections.Sets,
   adot.Collections.Maps,
-  adot.Arithmetic,
-  adot.Tools.Rtti,
-  {$If Defined(MSWindows)}
-    { Option "$HINTS OFF" doesn't hide following hint (Delphi 10.2.1), we add Windows here to suppress it:
-      H2443 Inline function 'RenameFile' has not been expanded because unit 'Winapi.Windows' is not specified in USES list }
-    Winapi.Windows,
-  {$EndIf}
-  {$If Defined(POSIX)}
-    Posix.Unistd,
-    Posix.Stdio,
-  {$EndIf}
   System.DateUtils,
   System.Types,
   System.Rtti,
   System.Math,
-  System.IOUtils,
   System.Generics.Collections,
   System.Generics.Defaults,
-  System.Hash,
   System.Classes,
   System.SysUtils,
   System.StrUtils,
-  System.Character,
-  System.TimeSpan,
-  System.Diagnostics,  { TStopwatch }
-  System.SyncObjs,     { TInterlocked.* }
-  System.Variants,
-  System.ZLib,
-  System.SysConst;
+  System.TimeSpan;
 
 type
 
@@ -206,177 +138,6 @@ type
     class function HexToWord(const HexEncodedWord: String):Word; static;
   end;
 
-  THashData = TArray<byte>;
-
-  { Abstract class for hashes }
-  TCustomHash = class abstract
-  protected
-
-    { used by CRC/Adler to transform 32bit hash to TBytes }
-    class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
-
-    { single call }
-    class function DoEncode(const Buf; ByteBufSize: integer): TBytes; overload; virtual; abstract;
-    class function DoEncode(S: TStream): TBytes; overload; virtual; abstract;
-
-    { streaming }
-    class procedure DoInit(out Hash: THashData); virtual; abstract;
-    class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); virtual; abstract;
-    class function DoDone(var Hash: THashData): TBytes; virtual; abstract;
-  public
-
-    { single call functions }
-    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload;
-    class function Encode(S: TStream): TBytes; overload;
-    class function Encode(const S: TBytes; StartIndex,Count: integer): TBytes; overload;
-    class function Encode(const S: TBytes): TBytes; overload;
-    class function Encode(const S: string): TBytes; overload;
-    {$If Defined(MSWindows)}
-      class function EncodeAnsiString(const S: AnsiString): TBytes;
-    {$EndIf}
-    class function EncodeFile(const AFileName: string): TBytes; overload;
-
-    { streaming functions }
-    class procedure Init(out Hash: THashData);
-
-    { for values with fixed length, hash will be generated from data only }
-    class procedure Update(const Value; ValueByteSize: integer; var Hash: THashData); overload;
-    class procedure Update(const Value: integer;      var Hash: THashData); overload;
-    class procedure Update(const Value: double;       var Hash: THashData); overload;
-
-    { for values with variable length, hash will be generated from length and data }
-    class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
-    class procedure Update(const Value: string;       var Hash: THashData); overload;
-
-    class function Done(var Hash: THashData): TBytes;
-
-  end;
-
-  THashClass = class of TCustomHash;
-
-  { AH: Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
-    http://qc.embarcadero.com/wc/qcmain.aspx?d=132100
-    AH (update from 05.04.2016): The issue is fixed, in Delphi 10 Seattle it works correctly.
-    Why we still keep THashes class:
-    - For now Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
-    - In object model it is much easier to introduce new functions (like hash file/stream etc)
-    - If other issues will be discovered in Delphi lib, we can fix it without changes in the code
-
-   Simple API for hashing functions (including CRC32/Adler32). Example:
-
-    function GetHash(L: TList<TRec>): string;
-    var
-      H: THashClass;
-      D: THashData;
-      I: Integer;
-    begin
-      H := THashUtils.Strong;
-      H.Init(D);
-      for I := 0 to List.Count-1 do
-        H.Update(L[I], SizeOf(L[I]), D);
-      result := THashUtils.HashToString(H.Done(D));
-    end;
-
-    Same example without THashClass:
-
-    function GetHash(L: TList<TRec>): string;
-    var
-      D: THashData;
-      I: Integer;
-    begin
-      THashUtils.Strong.Init(D);
-      for I := 0 to List.Count-1 do
-        THashUtils.Strong.Update(L[I], SizeOf(L[I]), D);
-      result := THashUtils.HashToString(THashUtils.Strong.Done(D));
-    end; }
-  THashUtils = class
-  public
-    const
-      StreamingBufSize = 64*1024;
-
-    type
-      MD5 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      SHA1 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      { we use default 256bit hash (use THashSHA2 directly for other options - 224bit,384bit,...) }
-      SHA2 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      CRC32 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      Adler32 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      BobJenkins32 = class(TCustomHash)
-      protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
-      end;
-
-      { Strong hash for critical parts (password checksum etc).
-        MD5 is outdated for use in cryptography, but for other tasks it's still good enough }
-      Strong = MD5;
-
-      { Fast hash with good avalanche effect (hash tables etc). }
-      Fast = BobJenkins32;
-
-      { Fastest hash for detection of modifications in massive data arrays (file checksum etc).
-        We use Adler32, it's two times faster than Crc32 and still quite good. }
-      Fastest = Adler32;
-
-    { general }
-    class function Mix(const HashA,HashB: integer): integer; overload; static; {$IFDEF UseInline}inline;{$ENDIF}
-    class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
-    class function Mix(const HashA,HashB: TBytes): TBytes; overload; static;
-    class function Mix(const Hashes: array of integer): integer; overload; static;
-    class function Mix(const Hashes: array of TBytes): TBytes; overload; static;
-
-    class function HashToString(const AHash: TBytes): string; static;
-
-    class function GetHash32(const Hash: TBytes): integer; static;
-    class function GetHash24(const Hash: TBytes): integer; static;
-    class function GetHash16(const Hash: TBytes): integer; static;
-  end;
-
-  THashes = THashUtils;
-
   TInvertedComparer<TValueType> = class(TInterfacedObject, IComparer<TValueType>)
   protected
     FExtComparer: IComparer<TValueType>;
@@ -399,66 +160,19 @@ type
     class operator Implicit(const ADateTime : String): TDateTimeRec;
   end;
 
-  { Extensions of TStream }
-  TCustomStreamExt = class(TStream)
+  { Check TDateTime correctness, convert to string etc }
+  TDateTimeUtils = class
   public
-    procedure Clear;
-    procedure SaveToStream(Stream: TStream);
-    procedure SaveToFile(const FileName: string);
-    procedure LoadFromStream(Stream: TStream);
-    procedure LoadFromFile(const FileName: string);
-  end;
+    const
+      NoDateStr = '';
 
-  { Readonly stream for specified memory block }
-  TDelegatedMemoryStream = class(TCustomMemoryStream)
-  public
-    constructor Create(Buf: pointer; Size: integer); overload;
-    procedure SetMemory(Buf: pointer; Size: integer);
-    procedure SetSize(const NewSize: Int64); override;
-    procedure SetSize(NewSize: Longint); override;
-    function Write(const Buffer; Count: Longint): Longint; override;
-    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
-  end;
+    class function StdEuFormatSettings: TFormatSettings; static;
 
-  { Makes any array of ordinal type to be accessable as stream of bytes }
-  TArrayStream<T: record> = class(TCustomStreamExt)
-  protected
-    FItems: TArray<T>;
-    FPos: integer;
-    FSize: integer;
-    FCapacity: integer;
+    class function IsCorrectDate(const t: TDateTime): boolean; static;
+    class function ToStr(const t: TDateTime; ANoDateStr: string = NoDateStr): string; static;
 
-    procedure SetItems(const Value: TArray<T>);
-    procedure SetCapacity(NewByteCapacity: integer);
-  public
-    constructor Create(const AItems: TArray<T>); overload;
-    function Read(var Buffer; Count: Longint): Longint; override;
-    function Read(Buffer: TBytes; Offset, Count: Longint): Longint; override;
-    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
-    procedure SetSize(const NewSize: Int64); override;
-    procedure SetSize(NewSize: Longint); override;
-    function Write(const Buffer; Count: Longint): Longint; override;
-    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
-
-    property Items: TArray<T> read FItems write SetItems;
-  end;
-
-  { Basic class for readonly streams. All Write/Seek methods will generate exception.}
-  TCustomReadOnlyStream = class(TStream)
-  protected
-    function GetSize: Int64; override;
-    procedure SetSize(NewSize: Longint); override;
-    procedure SetSize(const NewSize: Int64); override;
-  public
-    function Write(const Buffer; Count: Longint): Longint; override;
-    function Write(const Buffer: TBytes; Offset, Count: Longint): Longint; override;
-    function Seek(Offset: Longint; Origin: Word): Longint; override;
-    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
-
-    { methods to be implemented in descendants }
-
-    //function Read(var Buffer; Count: Longint): Longint; override;
-    //function Read(Buffer: TBytes; Offset, Count: Longint): Longint; override;
+    class function ToStringStd(const t: TDateTime): string; static;
+    class function FromStringStd(const t: string; def: TDateTime = 0): TDateTime; static;
   end;
 
   TFuncConst<T,TResult> = reference to function (const Arg1: T): TResult;
@@ -517,16 +231,6 @@ type
     class procedure Sort<T>(var Arr: TArray<T>; AComparer: TComparison<T>); static;
   end;
 
-  { Check TDateTime correctness, convert to string etc }
-  TDateTimeUtils = class
-  public
-    const
-      NoDateStr = '';
-
-    class function IsCorrectDate(const t: TDateTime): boolean; static;
-    class function ToStr(const t: TDateTime; ANoDateStr: string = NoDateStr): string; static;
-  end;
-
   { Wrapper class to make any class type available through interface (that means that
     lifetime of the class will be controlled by reference counter) }
   TInterfacedObject<T: class> = class(TInterfacedObject, IInterfacedObject<T>)
@@ -579,102 +283,13 @@ type
     class function GetNewAsString: string; static;
   end;
 
-  { Block reader and other utils }
-  TStreamUtils = class
-  public
-    type
-
-      { Stream block reader (ReadNext to get next block of data from stream as array of byte) }
-      TReader = record
-      private
-        AutoFreeCollection: TAutoFreeCollection;
-        Stream: TStream;
-        BytesToRead: int64;
-      public
-        Bytes: TArray<Byte>;
-        Count: integer;
-
-        procedure Init(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean = True);
-        function ReadNext: Boolean;
-      end;
-
-    class procedure StringToStream(const S: string; Dst: TStream; Encoding: TEncoding = nil); static;
-
-    { Copy stream functions (from simple to feature-rich):
-      1. TStreamUtils.Copy:
-           uses standard Delphi streams, UI will freeze until operation is complete.
-      2. TVCLStreamUtils.Copy:
-           uses standard Delphi streams, UI will not freeze. }
-    class function Copy(Src,Dst: TStream; Count,BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
-    class function Copy(Src,Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64; overload; static;
-    class function Copy(Src,Dst: TStream): int64; overload; static;
-  end;
-
-  TDelegatedOnFile = reference to procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean);
-  { File manipulation utils }
-  TFileUtils = class
-  public
-
-    { remove incorrect chars }
-    class function RemoveInvalidChars(const AFileName: string): string; static;
-
-    class function FileModeToString(AMode: Integer): string; static;
-    class function AccessAllowed(const AFileName: string; ADesiredAccess: word = fmOpenReadWrite or fmShareExclusive): boolean; static;
-    class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean): TArray<string>; overload; static;
-    class function GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean; Delim: string): string; overload; static;
-    class function GetSize(const AFileName: string): int64; static;
-
-    { enumerate files with callback function and posibility to break/stop }
-    class procedure EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile); static;
-
-    { simple API to clean up old files and keep used space in some ranges (log files, temp files etc) }
-    class procedure CleanUpOldFiles(
-      const AFileNamePattern                       : string;
-      const AMaxAllowedTotalSize, AMaxAllowedCount : int64;
-            AChanceToRun                           : Double = 1 { 1 = 100%, 0.3=30% etc }); static;
-
-    class function DeleteFile(const AFileName: string; out AErrorMessage: string): boolean; static;
-    class function RenameFile(const ASrcFileName,ADstFileName: string; out AErrorMessage: string): boolean; static;
-
-    { Copy file functions (from simple to feature-rich):
-      1. TFileUtils.CopyFile:
-           uses standard Delphi streams, UI will freeze until operation is complete.
-      2. TWinFileUtils.CopyFile:
-           uses Windows function CopyFileEx, UI will freeze until operation is complete.
-      3. TVCLFileUtils.Copyfile:
-           uses standard Delphi streams, UI will not freeze.
-      4. TCopyFileProgressDlg.CopyFile:
-           uses either Delphi streams or CopyFileEx, UI will not freeze,
-           progress bar with cancel command will be available for long operations). }
-    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean; overload;
-    class function CopyFile(const SrcFileName,DstFileName: string; out ErrorMessage: string): boolean; overload;
-
-    class procedure Load<T: record>(const FileName: string; var Dst: TArray<T>); overload;
-    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>; Index,Count: integer); overload;
-    class procedure Save<T: record>(const FileName: string; const Src: TArray<T>); overload;
-
-    { Encode disabled chars (hex), check disabled names ("COM1", "PRN", "NUL" etc). }
-    class function StringToFilename(const AStr: string): string; static;
-
-    { When we check all/lot of files for existance in some folder, it is faster to list files than call FileExists.
-      It is especially true for network drives. Example of timings for network folder with many files:
-        FileExists for every file : 31.65 sec
-        Enumerate all files       :  4.19 sec }
-    { Preload list of files into cache }
-    class procedure ExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True); static;
-    { Will use preloaded Cache when possible and FileExists function otherwise }
-    class function Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean; static;
-  end;
-
-  { Deprecated, use Sys.IfThen instead }
-  { Generic implementation of IfThen (to accept virtually any type). Example:
-     A := TIfThen.Get(Visible, fsMDIChild, fsNormal); }
-  TIfThen = class
-  public
-    class function Get<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
-  end;
-
-  TFun = class
+  {
+    Collections of system functions.
+    We call it Sys (not TSys), because
+      Sys.FreeAndNil looks more natural than
+      TSys.FreeAndNil
+  }
+  Sys = class
   public
 
     { Generic IfThen, compatible with any type.
@@ -728,165 +343,10 @@ type
     class function GetPtr(const Values: TArray<byte>): pointer; overload; static;
   end;
 
-  { Shortcut to TFun ("Sys.FreeAndNil" looks more natural than "TFun.FreeAndNil"). }
-  Sys = TFun;
-
-  {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
-
-     function TListExt.GetEnumerator: TIndexBackEnumerator;
-     begin
-       result := TIndexBackEnumerator.Create(LastIndex, StartIndex);
-     end; }
-  { Index enumerator "from last to first". }	 
-  TIndexBackEnumerator = record
-  private
-    FCurrentIndex, FToIndex: integer;
-
-  public
-    procedure Init(AIndexFrom, AIndexTo: integer);
-
-    function GetCurrent: Integer;
-    function MoveNext:   Boolean;
-
-    property Current:    Integer read GetCurrent;
-  end;
-
-  {  Simple API for time measuring (supports recursion and calculates sum time). Example:
-     TTiming.Start;
-       <do something>
-     OpTime := TTiming.Stop;
-     Caption := Format('Execution time: %.2f seconds, [OpTime.TotalSeconds]);
-       or
-     OpTime := TTiming.Stop('TMyForm.LoadData', TotalTime);
-     Caption := Format('Execution time: %.2f seconds (total: %.2f), [OpTime.TotalSeconds, TotalTime.TotalSeconds]); }
-  { Time measuring functions (recursive Start/Stop etc) }	 
-  TTiming = class
-  protected
-    type
-      TTotalStat = record
-      private
-        Span: TTimeSpan;
-        Calls: int64;
-
-      public
-        procedure Init(const ASpan: TTimeSpan; const ACalls: int64);
-      end;
-
-    class var
-      FTimeStack: TStack<TStopwatch>;
-      FTotalTimes: TDictionary<string, TTotalStat>;
-
-    class function GetTimeStack: TStack<TStopwatch>; static;
-    class function GetTotalTimes: TDictionary<string, TTotalStat>; static;
-    class destructor DestroyClass; static;
-
-    class property TimeStack: TStack<TStopwatch> read GetTimeStack;
-    class property TotalTimes: TDictionary<string, TTotalStat> read GetTotalTimes;
-  public
-    class procedure Start; static;
-    class function Stop: TTimeSpan; overload; static;
-    class function Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan; overload; static;
-    class function StopAndGetCaption(const OpId: string): string; overload; static;
-    class function StopAndGetCaption(const OpId,Msg: string): string; overload; static;
-  end;
-
-  {  Simple API to perform periodical actions. Example:
-       T.StartSec(1, 10);    Timeout is 1 sec, check for timeout every 10th iteration.
-       for i := 0 to Count-1 do
-         if T.Timedout then
-           Break
-         else
-           ProcessItem(I); }
-  { Allows to avoid of some operations to be executed too often }	 
-  TTimeOut = record
-  private
-    FOpTimedOut: Boolean;
-    FCounter: integer;
-    FCheckPeriod: integer;
-    FStartTime: TDateTime;
-    FMaxTimeForOp: TDateTime;
-
-    function GetTimedOut: Boolean;
-
-  public
-    procedure Init;
-
-    { If we check for timeout every iteration, usually (when iterations are short)
-      it is too often and our checks may consume more time then usefull work itself.
-      To check only 1 time for N iterations set ACheckPeriod=N. }
-    procedure Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
-    procedure StartSec(AMaxTimeForOpSec: double; ACheckPeriod: integer = 0);
-    procedure StartInfinite;
-    procedure Restart;
-
-    { If set True manually, then it will be constantly True until next Start* }
-    property TimedOut: Boolean read GetTimedOut write FOpTimedOut;
-    property StartTime: TDateTime read FStartTime;
-  end;
-
   { Currency type utils }
   TCurrencyUtils = class
   public
     class function ToString(const Value: Currency; FractionalPart: boolean = False): string; reintroduce; static;
-  end;
-
-  { Delphi 10 Seattle doesn't have 100% platform independent reader/writer (inherited from TFiler or any other).
-    But TWriter class has set of platform independent functions WriteVar. We write wrapper around TWriter
-    in order to expose only platform independent functionality (and extend it for other basic types). }
-  { Platform independent stream writer }	
-  TPIWriter = class
-  protected
-    Writer: TWriter;
-  public
-    constructor Create(ADst: TStream);
-    destructor Destroy; override;
-
-    { mapped to TWriter }
-    procedure Write(const Value: Char); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Int8); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: UInt8); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Int16); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: UInt16); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Int32); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: UInt32); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Int64); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: UInt64); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Single); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Double); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: Extended); overload; {$IFDEF UseInline}inline;{$ENDIF}
-
-    { extentions }
-    procedure Write(const Buf; Count: integer); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Write(const Value: TBytes); overload;
-    procedure Write(const Value: string); overload;
-  end;
-
-  { Platform independent stream reader }
-  TPIReader = class
-  protected
-    Reader: TReader;
-  public
-    constructor Create(ASrc: TStream);
-    destructor Destroy; override;
-
-    { mapped to TReader }
-    procedure Read(out Value: Char); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Int8); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: UInt8); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Int16); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: UInt16); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Int32); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: UInt32); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Int64); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: UInt64); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Single); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Double); overload; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure Read(out Value: Extended); overload; {$IFDEF UseInline}inline;{$ENDIF}
-
-    { extentions }
-    procedure Read(var Buf; Count: integer); overload;
-    procedure Read(out Value: TBytes); overload;
-    procedure Read(out Value: string); overload;
   end;
 
   { Extends any type by IsNull property. Compare operator will use case insensitive comparer for strings
@@ -953,16 +413,6 @@ type
     constructor Create(AValue: T); overload;
   end;
 
-  { PDF-compatible RLE codec }
-  TRLE = class
-  public
-    class function MaxEncodedSize(ASrcSize: cardinal): cardinal;
-    class function Encode(const ASrc; ASrcSize: cardinal; var ADest): cardinal;
-
-    class function DecodedSize(const ASrc; APackedSize: cardinal): cardinal;
-    class procedure Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
-  end;
-
   TForEachComponentBreakProc = reference to procedure(AComponent: TComponent; var ABreak: boolean);
 
   { Enumeration and other component-specific tools }
@@ -1015,68 +465,6 @@ type
 
   public
     procedure Init(AProc: TProc<T>; AValue: T);
-  end;
-
-  { Lightweight and managed analog of TBytesStream.
-    Has mixed set of methods - byte and string-compatible.
-    Check also TStringBuffer from *.Strings unit. }
-  TBuffer = record
-  private
-    FData: TArray<Byte>;
-    FSize: integer;
-    FPosition: integer;
-
-    procedure SetSize(Value: integer);
-    function GetCapacity: integer; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure SetCapacity(Value: integer); {$IFDEF UseInline}inline;{$ENDIF}
-    procedure CheckCapacity(MinCapacity: integer); {$IFDEF UseInline}inline;{$ENDIF}
-    function GetLeft: integer; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure SetLeft(Value: integer); {$IFDEF UseInline}inline;{$ENDIF}
-    function GetCurrentData: pointer; {$IFDEF UseInline}inline;{$ENDIF}
-    function GetEOF: boolean; {$IFDEF UseInline}inline;{$ENDIF}
-    function GetText: string;
-    procedure SetText(const Value: string);
-    function GetEmpty: Boolean; {$IFDEF UseInline}inline;{$ENDIF}
-    procedure SetData(AData: TArray<Byte>);
-
-  public
-    procedure Init;
-
-    { writes bytes from Src to current position. }
-    procedure Write(const Src; ByteCount: integer); overload;
-    { writes characters from Src to the buffer (usually 1 char = 2 bytes). }
-    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
-    { writes all characters from Src to the buffer (usually 1 char = 2 bytes). }
-    procedure Write(const Src: string); overload;
-
-    { Reads bytes from the buffer to Dst. }
-    procedure Read(var Dst; ByteCount: integer); overload;
-    { Reads characters from the buffer to specific position of Dst (usually 1 char = 2 bytes). }
-    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
-    { Reads characters from the buffer to Dst (usually 1 char = 2 bytes). }
-    procedure Read(var Dst: string; CharCount: integer); overload;
-
-    { Removes part of data from the buffer. }
-    procedure Cut(Start,Len: integer);
-    { Returns range of the buffer as array of bytes. }
-    function Slice(Start,Len: integer): TArray<byte>;
-
-    { Makes sure that Capacity is equal to Size. After that Data field can be used directly. }
-    procedure TrimExcess;
-    procedure Clear;
-
-    procedure LoadFromFile(const FileName: string);
-    procedure SaveToFile(const FileName: string);
-
-    property Size: integer read FSize write SetSize;
-    property Capacity: integer read GetCapacity write SetCapacity;
-    property Position: integer read FPosition write FPosition;
-    property Left: integer read GetLeft write SetLeft;
-    property CurrentData: pointer read GetCurrentData;
-    property EOF: boolean read GetEOF;
-    property Empty: boolean read GetEmpty;
-    property Text: string read GetText write SetText;
-    property Data: TArray<Byte> read FData write SetData;
   end;
 
   TEventUtils = class
@@ -1138,74 +526,6 @@ type
     property AsString: string read GetAsString;
   end;
 
-  { Summed area table. Precalculates sums for very fast calculation of SUM of any area [x1,y1,x2,y2].
-    https://en.wikipedia.org/wiki/Summed_area_table}
-  TIntegralImageInt64 = record
-  private
-    procedure BuildLine(ADst: PInt64Array);
-    function GetLine(y: integer): PInt64Array;
-    function GetSum(x1, y1, x2, y2: integer): int64;
-    function GetAvg(x1, y1, x2, y2: integer): int64;
-  public
-    Image: TArray<int64>;
-    Width,Height: integer;
-
-    procedure Init;
-
-    procedure SetSize(AWidth,AHeight: integer);
-
-    procedure Build;
-
-    { release memory etc }
-    procedure Clear;
-
-    { usefull to fill with initial values }
-    property Lines[y: integer]: PInt64Array read GetLine;
-
-    { Fastest, no range checks etc }
-    property Sum[x1,y1,x2,y2: integer]:int64 read GetSum;
-
-    { positions are adjusted to be inside of the image }
-    property Avg[x1,y1,x2,y2: integer]:int64 read GetAvg; default;
-  end;
-
-  TInterpolation_Int64Custom = class
-  public
-    type
-      TPt = record
-        X,Y: int64;
-      end;
-
-  protected
-    FPoints: TArray<TPt>;
-    FUpdateCnt: integer;
-    FComparer: IComparer<TPt>;
-
-    procedure DoBeginUpdate; virtual;
-    procedure DoEndUpdate; virtual;
-    function DoGetValue(const X: int64):int64; virtual; abstract;
-
-    function GetPointCount: integer;
-    function GetPoint(i: integer): TPt;
-    procedure SetPoint(i: integer; const Value: TPt);
-
-  public
-    constructor Create(PointCount: integer); virtual;
-
-    procedure BeginUpdate;
-    procedure EndUpdate;
-
-    property PointCount: integer read GetPointCount;
-    property Points[i: integer]: TPt read GetPoint write SetPoint;
-
-    property Values[const x: int64]: int64 read DoGetValue; default;
-  end;
-
-  TLinearInterpolation_Int64 = class(TInterpolation_Int64Custom)
-  protected
-    function DoGetValue(const X: int64):int64; override;
-  end;
-
   TDebugUtils = class
   public
 
@@ -1213,23 +533,12 @@ type
     class function DebuggerIsAttached: boolean; static;
   end;
 
-  TEventStat = class
-  private
-    FEvents: TMap<string, int64>;
-
-  public
-    procedure Reg(const EventCategory: string); overload;
-    procedure Reg(const EventCategory: string; Count: int64); overload;
-    procedure UnReg(const EventCategory: string); overload;
-    procedure UnReg(const EventCategory: string; Count: int64); overload;
-    procedure Add(const Src: TArray<TPair<string, int64>>);
-    procedure Clear;
-    function GetStat: TArray<TPair<string, int64>>;
-  end;
-
 implementation
 
 Uses
+  adot.Arithmetic,
+  adot.Tools.Rtti,
+  adot.Tools.IO,
   adot.Strings,
   adot.Collections.Vectors;
 
@@ -1430,6 +739,8 @@ class function THex.IsValid(const HexEncodedStr: String; ZeroBasedStartIdx, Len:
 var
   i: Integer;
 begin
+  if Len and 1<>0 then
+    Exit(False);
   for i := ZeroBasedStartIdx to ZeroBasedStartIdx+Len-1 do
     if not IsValid(HexEncodedStr.Chars[i]) then
       Exit(False);
@@ -1438,6 +749,8 @@ end;
 
 class function THex.IsValid(const HexEncodedStr: String): Boolean;
 begin
+  if Length(HexEncodedStr) and 1<>0 then
+    Exit(False);
   Result := IsValid(HexEncodedStr, 0,Length(HexEncodedStr));
 end;
 
@@ -1599,203 +912,6 @@ end;
 class operator TDateTimeRec.Implicit(const ADateTime: TDateTimeRec): String;
 begin
   Result := DateTimeToStr(ADateTime);
-end;
-
-{ TDelegatedMemoryStream }
-
-constructor TDelegatedMemoryStream.Create(Buf: pointer; Size: integer);
-begin
-  inherited Create;
-  SetPointer(Buf, Size);
-end;
-
-procedure TDelegatedMemoryStream.SetMemory(Buf: pointer; Size: integer);
-begin
-  SetPointer(Buf, Size);
-  Position := 0;
-end;
-
-procedure TDelegatedMemoryStream.SetSize(NewSize: Longint);
-begin
-  raise Exception.Create('Error');
-end;
-
-procedure TDelegatedMemoryStream.SetSize(const NewSize: Int64);
-begin
-  raise Exception.Create('Error');
-end;
-
-function TDelegatedMemoryStream.Write(const Buffer; Count: Longint): Longint;
-begin
-  raise Exception.Create('Error');
-end;
-
-function TDelegatedMemoryStream.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
-begin
-  raise Exception.Create('Error');
-end;
-
-{ TCustomStreamExt }
-
-procedure TCustomStreamExt.Clear;
-begin
-  Size := 0;
-end;
-
-procedure TCustomStreamExt.LoadFromFile(const FileName: string);
-var
-  Stream: TStream;
-begin
-  Stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
-  try
-    LoadFromStream(Stream);
-  finally
-    Stream.Free;
-  end;
-end;
-
-procedure TCustomStreamExt.SaveToFile(const FileName: string);
-var
-  Stream: TStream;
-begin
-  Stream := TFileStream.Create(FileName, fmCreate);
-  try
-    SaveToStream(Stream);
-  finally
-    Stream.Free;
-  end;
-end;
-
-procedure TCustomStreamExt.LoadFromStream(Stream: TStream);
-var
-  P: Int64;
-begin
-  Size := Stream.Size;
-  P := Stream.Position;
-  try
-    Stream.Position := 0;
-    CopyFrom(Stream, Stream.Size);
-  finally
-    Stream.Position := P;
-  end;
-end;
-
-procedure TCustomStreamExt.SaveToStream(Stream: TStream);
-var
-  P: Int64;
-begin
-  P := Position;
-  try
-    Position := 0;
-    Stream.CopyFrom(Self, Size);
-  finally
-    Position := P;
-  end;
-end;
-
-{ TArrayStream<T> }
-
-constructor TArrayStream<T>.Create(const AItems: TArray<T>);
-begin
-  inherited Create;
-  Items := AItems;
-end;
-
-procedure TArrayStream<T>.SetItems(const Value: TArray<T>);
-begin
-  FItems := Value;
-  FPos := 0;
-  FCapacity := Length(FItems)*SizeOf(T);
-  FSize := FCapacity;
-end;
-
-procedure TArrayStream<T>.SetCapacity(NewByteCapacity: integer);
-begin
-  if NewByteCapacity mod SizeOf(T)<>0 then
-    raise Exception.Create('Error');
-  SetLength(FItems, NewByteCapacity div SizeOf(T));
-  FCapacity := NewByteCapacity;
-  if FSize>FCapacity then
-    FSize := FCapacity;
-  if FPos>FCapacity then
-    FPos := FCapacity;
-end;
-
-function TArrayStream<T>.Read(var Buffer; Count: Longint): Longint;
-begin
-  if (FPos >= 0) and (Count >= 0) then
-  begin
-    Result := FSize - FPos;
-    if Result > 0 then
-    begin
-      if Result > Count then Result := Count;
-      Move((PByte(FItems) + FPos)^, Buffer, Result);
-      Inc(FPos, Result);
-      Exit;
-    end;
-  end;
-  Result := 0;
-end;
-
-function TArrayStream<T>.Read(Buffer: TBytes; Offset, Count: Longint): Longint;
-begin
-  Result := Read(Buffer[Offset], Count);
-end;
-
-procedure TArrayStream<T>.SetSize(const NewSize: Int64);
-var
-  OldPosition: Longint;
-begin
-  OldPosition := FPos;
-  SetCapacity(NewSize); { Will check that NewSize mod SizeOf(T)=0 }
-  FSize := NewSize;
-  if OldPosition > NewSize then Seek(0, soEnd);
-end;
-
-procedure TArrayStream<T>.SetSize(NewSize: Longint);
-begin
-  SetSize(Int64(NewSize));
-end;
-
-function TArrayStream<T>.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
-begin
-  case Origin of
-    soBeginning : FPos := Offset;
-    soCurrent   : Inc(FPos, Offset);
-    soEnd       : FPos := FSize + Offset;
-  end;
-  if FPos<0 then
-    FPos := 0;
-  Result := FPos;
-end;
-
-function TArrayStream<T>.Write(const Buffer; Count: Longint): Longint;
-var
-  P: integer;
-begin
-  if (FPos >= 0) and (Count >= 0) then
-  begin
-    P := FPos + Count;
-    if P > 0 then
-    begin
-      if P > FSize then
-      begin
-        if P > FCapacity then
-          SetCapacity(P);
-        FSize := P;
-      end;
-      System.Move(Buffer, (PByte(FItems) + FPos)^, Count);
-      FPos := P;
-      Result := Count;
-      Exit;
-    end;
-  end;
-  Result := 0;
-end;
-
-function TArrayStream<T>.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
-begin
-  Result := Write(Buffer[Offset], Count);
 end;
 
 { TArrayUtils }
@@ -2388,11 +1504,50 @@ end;
 
 { TDateTimeUtils }
 
+class function TDateTimeUtils.ToStringStd(const t: TDateTime): string;
+var
+  F: TFormatSettings;
+begin
+  F := StdEuFormatSettings;
+  result := DateTimeToStr(t, F);
+end;
+
+class function TDateTimeUtils.FromStringStd(const t: string; def: TDateTime = 0): TDateTime;
+var
+  F: TFormatSettings;
+begin
+  F := StdEuFormatSettings;
+  if not TryStrToDateTime(t, result, F) then
+    result := Def;
+end;
+
 class function TDateTimeUtils.IsCorrectDate(const t: TDateTime): boolean;
 begin
   result :=
     (Trunc(t)<>0) and  {       0 (30.12.1899) as empty value }
     (YearOf(t)>0);     { -700000 (00.00.0000) as empty value + Delphi supports only "01.01.01" and later }
+end;
+
+class function TDateTimeUtils.StdEuFormatSettings: TFormatSettings;
+begin
+  result := TFormatSettings.Create;
+  result.CurrencyString            := 'eur';
+  result.CurrencyFormat            := 2;
+  result.CurrencyDecimals          := 2;
+  result.DateSeparator             := '.';
+  result.TimeSeparator             := '.';
+  result.ListSeparator             := ';';
+  result.ShortDateFormat           := 'dd/MM/yyyy';
+  result.LongDateFormat            := 'dddd d/ MMMM yyyy';
+  result.TimeAMString              := 'a.m.';
+  result.TimePMString              := 'p.m.';
+  result.ShortTimeFormat           := 'hh:mm';
+  result.LongTimeFormat            := 'hh:mm:ss';
+  result.ThousandSeparator         := ' ';
+  result.DecimalSeparator          := '.'; { not EU, but std in math etc }
+  result.TwoDigitYearCenturyWindow := 50; {h32}
+  result.NegCurrFormat             := 9;
+  result.NormalizedLocaleName      := '';
 end;
 
 class function TDateTimeUtils.ToStr(const t: TDateTime; ANoDateStr: string): string;
@@ -2515,805 +1670,11 @@ begin
     else result := Def;
 end;
 
-{ TStreamUtils.TReader }
-
-procedure TStreamUtils.TReader.Init(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean);
-begin
-  Self := Default(TStreamUtils.TReader);
-  Stream := Src;
-  if AOwnsStream then
-    AutoFreeCollection.Add(Stream);
-  SetLength(Bytes, BufSize);
-  if not FromBeginning then
-    BytesToRead := Stream.Size - Stream.Position
-  else
-  begin
-    Stream.Position := 0;
-    BytesToRead := Stream.Size;
-  end;
-end;
-
-function TStreamUtils.TReader.ReadNext: Boolean;
-begin
-  Result := BytesToRead > 0;
-  if Result then
-  begin
-    Count := Min(BytesToRead, Length(Bytes));
-    Stream.ReadBuffer(Bytes,  Count);
-    Dec(BytesToRead, Count);
-  end
-  else
-  begin
-    SetLength(Bytes, 0);
-    Count := 0;
-  end;
-end;
-
-{ TStreamUtils }
-
-class function TStreamUtils.Copy(Src, Dst: TStream; Count,BufSize: integer; ProgressProc: TCopyStreamProgressProc): int64;
-var
-  N: Integer;
-  Buffer: TBytes;
-  LastOnProgressTime: TDateTime;
-  Cancel: Boolean;
-begin
-  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
-  { based on TStream.CopyFrom, but provides time-based callback ProgressProc }
-  Result := 0;
-  LastOnProgressTime := 0;
-  if Count <= 0 then
-  begin
-    Src.Position := 0;
-    Count := Src.Size;
-  end;
-  if BufSize=0 then
-    BufSize := 65536
-  else
-    BufSize := Max(BufSize, 4096);
-  SetLength(Buffer, BufSize);
-  Cancel := False;
-  if Assigned(ProgressProc) then
-  begin
-    ProgressProc(0, Cancel);
-    LastOnProgressTime := Now;
-  end;
-  while (Count <> 0) and not Cancel do
-  begin
-    N := Min(Count, BufSize);
-    Src.ReadBuffer(Buffer, N);
-    Dst.WriteBuffer(Buffer, N);
-    Dec(Count, N);
-    Inc(Result, N);
-    if Assigned(ProgressProc) and (MilliSecondsBetween(Now, LastOnProgressTime)>=50) then
-    begin
-      ProgressProc(Result, Cancel);
-      LastOnProgressTime := Now;
-    end;
-  end;
-  if Assigned(ProgressProc) then
-    ProgressProc(Result, Cancel);
-end;
-
-class function TStreamUtils.Copy(Src, Dst: TStream; ProgressProc: TCopyStreamProgressProc): int64;
-begin
-  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
-  result := Copy(Src, Dst, 0,0,ProgressProc);
-end;
-
-class function TStreamUtils.Copy(Src, Dst: TStream): int64;
-begin
-  { check TVCLStreamUtils.Copy if you don't want UI to freeze until operation is complete }
-  result := Copy(Src, Dst, 0,0,nil);
-end;
-
-class procedure TStreamUtils.StringToStream(const S: string; Dst: TStream; Encoding: TEncoding);
-var
-  B: TArray<Byte>;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  B := Encoding.GetBytes(S);
-  if Length(B) > 0 then
-    Dst.WriteBuffer(B[0], Length(B));
-end;
-
-{ TFileUtils }
-
-class procedure TFileUtils.CleanUpOldFiles(const AFileNamePattern: string; const AMaxAllowedTotalSize, AMaxAllowedCount: int64;
-  AChanceToRun: Double);
-type
-  TFileInfo = record
-    Name: string;
-    Size: int64;
-    Age: TDateTime;
-  end;
-var
-  List: TList<TFileInfo>;
-  Comparer: IComparer<TFileInfo>;
-  TotalSize: Int64;
-  TotalCount: Integer;
-  FilePath: string;
-  i: Integer;
-begin
-  if (Random>AChanceToRun) or (AMaxAllowedTotalSize<0) and (AMaxAllowedCount<0) then
-    Exit;
-  List := TList<TFileInfo>.Create;
-  try
-    FilePath := ExtractFilePath(AFileNamePattern);
-    EnumFiles(AFileNamePattern,
-      procedure(const APath: string; const AFile: TSearchRec; var ABreak: Boolean)
-      var R: TFileInfo;
-      begin
-        R.Name := AFile.Name;
-        R.Size := AFile.Size;
-        R.Age  := AFile.TimeStamp;
-        List.Add(R);
-      end);
-    Comparer := TDelegatedComparer<TFileInfo>.Create(
-      function(const A,B: TFileInfo): Integer
-      begin
-        result := Sign(A.Age-B.Age);
-      end);
-    List.Sort(Comparer);
-    TotalCount := List.Count;
-    TotalSize := 0;
-    for i := 0 to List.Count-1 do
-      inc(TotalSize, List[i].Size);
-    for i := 0 to List.Count-1 do
-      if not (
-        (AMaxAllowedTotalSize>=0) and (TotalSize>AMaxAllowedTotalSize) or
-        (AMaxAllowedCount>=0) and (TotalCount>AMaxAllowedCount)
-      ) then
-        Break
-      else
-        if System.SysUtils.DeleteFile(FilePath+List[i].Name) then
-        begin
-          Dec(TotalSize, List[i].Size);
-          Dec(TotalCount);
-        end;
-  finally
-    Sys.FreeAndNil(List);
-  end;
-end;
-
-class function TFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string; ProgressProc: TCopyFileProgressProc): boolean;
-var
-  AutoFreeCollection: TAutoFreeCollection;
-  CI: TCopyFileInfo;
-  Src,Dst: TStream;
-begin
-  { check TVCLFileUtils.CopyFile if you don''t want UI to freeze until operation is complete }
-  try
-    Result := True;
-    Src := AutoFreeCollection.Add(TFileStream.Create(SrcFileName, fmOpenRead or fmShareDenyWrite));
-    Dst := AutoFreeCollection.Add(TFileStream.Create(DstFileName, fmCreate));
-    if not Assigned(ProgressProc) then
-      TStreamUtils.Copy(Src, Dst)
-    else
-    begin
-      CI.FileSize    := Src.Size;
-      CI.SrcFileName := SrcFileName;
-      CI.DstFileName := DstFileName;
-      TStreamUtils.Copy(Src, Dst,
-        procedure(const Transferred: int64; var Cancel: boolean)
-        begin
-          CI.Copied := Transferred;
-          ProgressProc(CI, Cancel);
-        end);
-    end;
-  except
-    on e: exception do
-    begin
-      Result := True;
-      ErrorMessage := Format('Can''t copy file "%s" to "%s": %s', [SrcFileName, DstFileName, SysErrorMessage(GetLastError)]);
-    end;
-  end;
-end;
-
-class function TFileUtils.CopyFile(const SrcFileName, DstFileName: string; out ErrorMessage: string): boolean;
-begin
-  { check TVCLFileUtils.CopyFile if you don''t want UI to freeze until operation is complete }
-  result := CopyFile(SrcFileName, DstFileName, ErrorMessage, nil);
-end;
-
-class function TFileUtils.DeleteFile(const AFileName: string; out AErrorMessage: string): boolean;
-begin
-  result := System.SysUtils.DeleteFile(AFileName);
-  if not result then
-    AErrorMessage := Format('Can''t delete file "%s" (%s)', [AFileName, SysErrorMessage(GetLastError)]);
-end;
-
-class function TFileUtils.RenameFile(const ASrcFileName, ADstFileName: string; out AErrorMessage: string): boolean;
-begin
-  result := System.SysUtils.RenameFile(ASrcFileName, ADstFileName);
-  if not result then
-    AErrorMessage := Format('Can''t rename file "%s" to "%s" (%s)', [ASrcFileName, ADstFileName, SysErrorMessage(GetLastError)]);
-end;
-
-class procedure TFileUtils.EnumFiles(const AFileNamePattern: string; AOnfile: TDelegatedOnFile);
-var
-  F: System.SysUtils.TSearchRec;
-  B: Boolean;
-  P: string;
-begin
-  if System.SysUtils.FindFirst(AFileNamePattern, faAnyfile, F)=0 then
-    try
-      P := ExtractFilePath(AFileNamePattern);
-      B := False;
-      repeat
-        if (F.Attr and faDirectory<>0) then
-          Continue;
-        AOnFile(P, F, B);
-      until B or (System.SysUtils.FindNext(F)<>0);
-    finally
-      System.SysUtils.FindClose(F);
-    end;
-end;
-
-class function TFileUtils.FileModeToString(AMode: Integer): string;
-const
-  OpenMode : array[0..3] of string = ('fmOpenRead', 'fmOpenWrite', 'fmOpenReadWrite', 'unknown_open_mode');
-begin
-  {$WARN SYMBOL_PLATFORM OFF}
-  result := '{' + OpenMode[AMode and 3];
-  if AMode and fmShareExclusive = fmShareExclusive then result := result + ', fmShareExclusive';
-  if AMode and fmShareDenyWrite = fmShareDenyWrite then result := result + ', fmShareDenyWrite';
-  {$IFDEF MSWINDOWS}
-  if AMode and fmShareDenyRead  = fmShareDenyRead  then result := result + ', fmShareDenyRead';
-  {$EndIf}
-  if AMode and fmShareDenyNone  = fmShareDenyNone  then result := result + ', fmShareDenyNone';
-  result := result + '}';
-  {$WARN SYMBOL_PLATFORM ON}
-end;
-
-class function TFileUtils.AccessAllowed(const AFileName: string; ADesiredAccess: word): boolean;
-var
-  F: TFileStream;
-begin
-  try
-    F := TFileStream.Create(AFileName, ADesiredAccess);
-    F.Free;
-    result := True;
-  except
-    result := False;
-  end;
-end;
-
-class procedure TFileUtils.Load<T>(const FileName: string; var Dst: TArray<T>);
-var
-  Stream: TFileStream;
-begin
-  Stream := TFileStream.Create(FileName, fmOpenRead);
-  try
-    SetLength(Dst, Stream.Size div SizeOf(T));
-    if Length(Dst)>0 then
-      Stream.ReadBuffer(Dst[0], Length(Dst)*SizeOf(T));
-  finally
-    Stream.Free;
-  end;
-end;
-
-class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>; Index,Count: integer);
-var
-  Stream: TFileStream;
-begin
-  Stream := TFileStream.Create(FileName, fmCreate);
-  try
-    Stream.WriteBuffer(Src[Index], Count*SizeOf(T));
-  finally
-    Stream.Free;
-  end;
-end;
-
-class procedure TFileUtils.Save<T>(const FileName: string; const Src: TArray<T>);
-begin
-  Save<T>(FileName, Src, 0, Length(Src));
-end;
-
-class function TFileUtils.StringToFilename(const AStr: string): string;
-const
-  DisabledNames: array[0..21] of string = (
-    'CON', 'PRN', 'AUX', 'NUL',
-    'COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9',
-    'LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9'
-  );
-  DisabledChars = [0..31, Byte('<'), Byte('>'), Byte(':'), Byte('"'), Byte('/'), Byte('\'), Byte('|'), Byte('?'), Byte('*')];
-var
-  i: Integer;
-  c: Char;
-  Path,Name: string;
-begin
-
-  { Trailing spaces.
-    Windows allows filenames with spaces: " 1.txt", " 1 .txt", " 1 . txt" and even " .txt"
-    but does not allow "1.txt ", so only trailing spaces are not allowed
-    http://msdn.microsoft.com/en-us/library/windows/desktop/aa365247%28v=vs.85%29.aspx
-    "Do not end a file or directory name with a space or a period." }
-  Path := ExtractFilePath(AStr);
-  Name := TrimRight(ExtractFileName(AStr));
-
-  { Disabled chars: http://stackoverflow.com/questions/960772/how-can-i-sanitize-a-string-for-use-as-a-filename }
-  result := '';
-  for i := Low(Name) to High(Name) do
-  begin
-    c := Name[i];
-    if (c<#127) and (Byte(c) in DisabledChars) then
-      result := result + '%' + THex.Encode(c, SizeOf(c))
-    else
-      result := result + c;
-  end;
-
-  { Disabled names }
-  for i := Low(DisabledNames) to High(DisabledNames) do
-    if AnsiSameText(result, DisabledNames[i]) then
-    begin
-      result := result + '_';
-      Break;
-    end;
-
-  result := Path + Name;
-end;
-
-procedure FindOpenFiles(
-  const AFilesMask  : string;
-        AExceptions : TSet<string>;
-        ARecursive  : boolean;
-        ADst        : TList<string>);
-var
-  Files,Subdirs: TStringDynArray;
-  Dir,FileName,Subdir: string;
-begin
-  try
-    Dir := ExtractFilePath(AFilesMask);
-    if not TDirectory.Exists(Dir) then
-      Exit;
-    Files := TDirectory.GetFiles(Dir, ExtractFileName(AFilesMask));
-    for FileName in Files do
-      if not (FileName in AExceptions) and not TFileUtils.AccessAllowed(FileName) then
-        ADst.Add(FileName);
-    if ARecursive then
-    begin
-      Subdirs := TDirectory.GetDirectories(Dir);
-      for Subdir in Subdirs do
-        FindOpenFiles(Subdir + '\' + ExtractFileName(AFilesMask), AExceptions, True, ADst);
-    end;
-  except
-  end;
-end;
-
-class function TFileUtils.GetOpenFiles(const AMasks,Exceptions: array of string; Recursive: boolean): TArray<string>;
-var
-  FilesMask: string;
-  Exc: TSet<string>;
-  FoundFiles: TList<string>;
-begin
-  FoundFiles := TList<string>.Create;
-  try
-    Exc.Add(Exceptions);
-    for FilesMask in AMasks do
-      FindOpenFiles(FilesMask, Exc, Recursive, FoundFiles);
-    result := FoundFiles.ToArray;
-  finally
-    Sys.FreeAndNil(FoundFiles);
-  end;
-end;
-
-class function TFileUtils.GetOpenFiles(const AMasks, Exceptions: array of string; Recursive: boolean; Delim: string): string;
-var
-  FoundFiles: TArray<string>;
-  i: Integer;
-begin
-  FoundFiles := GetOpenFiles(AMasks, Exceptions, Recursive);
-  if Length(FoundFiles)=0 then result := '' else result := FoundFiles[0];
-  for i := 1 to High(FoundFiles) do
-    result := result + Delim + FoundFiles[i];
-end;
-
-class function TFileUtils.GetSize(const AFileName: string): int64;
-var
-  F: TSearchRec;
-begin
-  if FindFirst(AFileName, faAnyfile, F)<>0 then
-    result := 0
-  else
-  begin
-    result := F.Size;
-    FindClose(F);
-  end;
-end;
-
-class function TFileUtils.RemoveInvalidChars(const AFileName: string): string;
-var
-  I: Integer;
-  vPath, vFile: string;
-begin
-  Result := '';
-  vPath := ExtractFilePath(AFileName);
-  vFile := ExtractFileName(AFileName);
-
-  for I := Low(vPath) to High(vPath) do
-    if TPath.IsValidPathChar(vPath[I]) then
-      Result := Result + vPath[I];
-  Result := IncludeTrailingPathDelimiter(Result);
-
-  for I := Low(vFile) to High(vFile) do
-    if TPath.IsValidFileNameChar(vFile[I]) then
-      Result := Result + vFile[I];
-end;
-
-class procedure TFileUtils.ExistsBuildCache(const CacheFolder: string; var Cache: TSet<string>; Recursive: boolean = True);
-var
-  SearchOption: TSearchOption;
-begin
-  Cache.Clear;
-  if Recursive then SearchOption := TSearchOption.soAllDirectories
-    else SearchOption := TSearchOption.soTopDirectoryOnly;
-  if TDirectory.Exists(CacheFolder) then
-    Cache.Add(TDirectory.GetFiles(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)), '*.*', SearchOption));
-end;
-
-class function TFileUtils.Exists(const FullFileName,CacheFolder: string; var Cache: TSet<string>): boolean;
-begin
-  if not AnsiLowerCase(FullFileName).StartsWith(AnsiLowerCase(IncludeTrailingPathDelimiter(TrimRight(CacheFolder)))) then
-    result := FileExists(FullFileName)
-  else
-  begin
-    { We check files when they should exist, non existing file is very rare case.
-      To make check robust/reliable we use two different aproaches in different time:
-      - We check file in preloaded list of files. It is very fast, if file is here, then check is done.
-      - If file is not in the list, then we check with FixeExists function.
-      We report non existing file after double check only. }
-    result := FullFileName in Cache;
-    if not result then
-      result := FileExists(FullFileName);
-  end;
-end;
-
-{ TIfThen }
-
-class function TIfThen.Get<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
-begin
-  if ACondition then result := AValueTrue else result := AValueFalse;
-end;
-
-{ TIndexBackEnumerator }
-
-procedure TIndexBackEnumerator.Init(AIndexFrom, AIndexTo: integer);
-begin
-  Self := Default(TIndexBackEnumerator);
-  FCurrentIndex := AIndexFrom;
-  FToIndex := AIndexTo;
-end;
-
-function TIndexBackEnumerator.MoveNext: Boolean;
-begin
-  result := FCurrentIndex>=FToIndex;
-  if result then
-    dec(FCurrentIndex);
-end;
-
-function TIndexBackEnumerator.GetCurrent: Integer;
-begin
-  result := FCurrentIndex+1;
-end;
-
-{ TTiming.TTotalStat }
-
-procedure TTiming.TTotalStat.Init(const ASpan: TTimeSpan; const ACalls: int64);
-begin
-  Self := Default(TTiming.TTotalStat);
-  Span := ASpan;
-  Calls := ACalls;
-end;
-
-{ TTiming }
-
-class destructor TTiming.DestroyClass;
-begin
-  Sys.FreeAndNil(FTimeStack);
-  Sys.FreeAndNil(FTotalTimes);
-end;
-
-class function TTiming.GetTimeStack: TStack<TStopwatch>;
-begin
-  if FTimeStack=nil then
-    FTimeStack := TStack<TStopwatch>.Create;
-  result := FTimeStack;
-end;
-
-class function TTiming.GetTotalTimes: TDictionary<string, TTotalStat>;
-begin
-  if FTotalTimes=nil then
-    FTotalTimes := TDictionary<string, TTotalStat>.Create(TOrdinalIStringComparer.Ordinal);
-  result := FTotalTimes;
-end;
-
-class procedure TTiming.Start;
-begin
-  TimeStack.Push(TStopwatch.StartNew);
-end;
-
-class function TTiming.Stop: TTimeSpan;
-begin
-  Result := TimeStack.Pop.Elapsed;
-end;
-
-class function TTiming.Stop(const OpId: string; out ATotalStat: TTotalStat): TTimeSpan;
-begin
-  result := Stop;
-  if not TotalTimes.TryGetValue(OpId, ATotalStat) then
-    ATotalStat.Init(TTimeSpan.Create(0), 0);
-  ATotalStat.Span := ATotalStat.Span + result;
-  inc(ATotalStat.Calls);
-  TotalTimes.AddOrSetValue(OpId, ATotalStat);
-end;
-
-class function TTiming.StopAndGetCaption(const OpId, Msg: string): string;
-var
-  OpTime: TTimeSpan;
-  TotalStat: TTotalStat;
-begin
-  OpTime := Stop(OpId, TotalStat);
-  result := Format('%s (%s): %.2f sec (total: %.2f sec; calls: %d)', [
-    OpId, Msg, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
-end;
-
-class function TTiming.StopAndGetCaption(const OpId: string): string;
-var
-  OpTime: TTimeSpan;
-  TotalStat: TTotalStat;
-begin
-  OpTime := Stop(OpId, TotalStat);
-  result := Format('%s: %.2f sec (total: %.2f sec; calls: %d)', [
-    OpId, OpTime.TotalSeconds, TotalStat.Span.TotalSeconds, TotalStat.Calls]);
-end;
-
-{ TTimeOut }
-
-procedure TTimeOut.Init;
-begin
-  Self := Default(TTimeOut);
-end;
-
-procedure TTimeOut.Start(AMaxTimeForOp: TDateTime; ACheckPeriod: integer = 0);
-begin
-  FMaxTimeForOp:= AMaxTimeForOp;
-  FCheckPeriod := ACheckPeriod;
-  Restart;
-end;
-
-procedure TTimeOut.StartSec(AMaxTimeForOpSec: double; ACheckPeriod: integer = 0);
-begin
-  Start(AMaxTimeForOpSec/SecsPerDay, ACheckPeriod);
-end;
-
-procedure TTimeOut.StartInfinite;
-begin
-  Start(-1); { negative MaxTimeForOp means that .TimedOut is constantly False }
-end;
-
-procedure TTimeOut.Restart;
-begin
-  FStartTime   := Now;
-  FCounter     := FCheckPeriod;
-  FOpTimedOut  := FMaxTimeForOp = 0;
-end;
-
-function TTimeOut.GetTimedOut: Boolean;
-begin
-  { negative value = infinite (never timed out) }
-  if FMaxTimeForOp < 0 then Result := False else
-  { already timed out }
-  if FOpTimedOut then Result := True else
-  { check for timeout }
-  begin
-    Dec(FCounter);
-    if FCounter > 0 then Result := False else
-    begin
-      FCounter := FCheckPeriod;
-      Result := Now-FStartTime>FMaxTimeForOp;
-      FOpTimedOut := Result;
-    end;
-  end;
-end;
-
 { TCurrencyUtils }
 
 class function TCurrencyUtils.ToString(const Value: currency; FractionalPart: boolean): string;
 begin
   result := FormatCurr( IfThen(FractionalPart, '#,##', '#,'), Value);
-end;
-
-{ TPIWriter }
-
-constructor TPIWriter.Create(ADst: TStream);
-begin
-  inherited Create;
-  Writer := TWriter.Create(ADst, 4096);
-end;
-
-destructor TPIWriter.Destroy;
-begin
-  Sys.FreeAndNil(Writer);
-  inherited;
-end;
-
-procedure TPIWriter.Write(const Value: Int16);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: UInt16);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Int32);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Char);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Int8);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: UInt8);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Extended);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Double);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Int64);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: UInt32);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: Single);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Value: UInt64);
-begin
-  Writer.WriteVar(Value, SizeOf(Value));
-end;
-
-procedure TPIWriter.Write(const Buf; Count: integer);
-begin
-  Writer.Write(Buf, Count);
-end;
-
-procedure TPIWriter.Write(const Value: TBytes);
-var
-  i: Integer;
-begin
-  i := Length(Value);
-  Write(i);
-  if i>0 then
-    Write(Value[0], i);
-end;
-
-procedure TPIWriter.Write(const Value: string);
-begin
-  Write(TEncoding.UTF8.GetBytes(Value));
-end;
-
-{ TPIReader }
-
-constructor TPIReader.Create(ASrc: TStream);
-begin
-  inherited Create;
-  Reader := TReader.Create(ASrc, 4096);
-end;
-
-destructor TPIReader.Destroy;
-begin
-  Sys.FreeAndNil(Reader);
-  inherited;
-end;
-
-procedure TPIReader.Read(out Value: Int16);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: UInt16);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Int32);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Char);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Int8);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: UInt8);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Single);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Double);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Extended);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: UInt32);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: Int64);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(out Value: UInt64);
-begin
-  Reader.ReadVar(Value, SizeOf(Value));
-end;
-
-procedure TPIReader.Read(var Buf; Count: integer);
-begin
-  Reader.Read(Buf, Count);
-end;
-
-procedure TPIReader.Read(out Value: TBytes);
-var
-  i: integer;
-begin
-  Read(i);
-  SetLength(Value, i);
-  if i>0 then
-    Read(Value[0], i);
-end;
-
-procedure TPIReader.Read(out Value: string);
-var
-  Bytes: TBytes;
-begin
-  Read(Bytes);
-  Value := TEncoding.UTF8.GetString(Bytes);
 end;
 
 { TBox<T> }
@@ -3497,294 +1858,6 @@ begin
   result := TArithmeticUtils<T>.DefaultArithmetic.Negative(Value);
 end;
 
-{ TRLE }
-
-class function TRLE.MaxEncodedSize(ASrcSize: cardinal): cardinal;
-begin
-  result := ASrcSize + ASrcSize div 64 + 16;
-end;
-
-(*
-  RunLengthEncoding according to PDF specification. Stream of bytes encoded
-  as stream of packets. The packet contains ocntrol byte (length) and
-  optional string of bytes. Allowed values for control byte:
-    0..127: next N+1 bytes (1..128) should be writtens as is
-       128: EOF (decoding finished)
-  129..255: next byte should be repeated 257-N times (2..128)
-
-  At every step we have current state described in following variables:
-  S[1.2...N][1.2..M]
-  N-number of uncompressable bytes
-  M-number of items in sequance of equal (potentially compressable)
-*)
-class function TRLE.Encode(const ASrc; ASrcSize: cardinal; var ADest): cardinal;
-var
-  Src, Dst: PByte;
-  M,N: cardinal;
-  PrevChar: byte;
-
-  { 0 1 [2 3 4] [5 6] (7)
-           N=3    M=2 CurPos }
-  procedure COPY_N;
-  begin
-    assert((N>=1) and (N<=128));
-    inc(result,N+1);
-    Dst^ := N-1; { copy N (1..128) bytes as is }
-    inc(Dst);
-    system.move((Src-M-N)^, Dst^, N);
-    inc(Dst, N);
-  end;
-
-  { M=0! }
-  procedure COPY_128;
-  begin
-    assert(N>=128);
-    inc(result,129);
-    Dst^ := 127; { copy N (1..128) bytes as is }
-    inc(Dst);
-    system.move((Src-N)^, Dst^, 128);
-    inc(Dst, 128);
-    dec(N, 128);
-  end;
-
-  { 257-x=M -> x=257-M }
-  procedure PACK_M;
-  begin
-    assert((M>=2) and (M<=128));
-    inc(result,2);
-    dst^ := 257-M; { copy folowing byte 257-x times }
-    inc(dst);
-    dst^ := PrevChar;
-    inc(dst);
-  end;
-
-  function Init:longword;
-  begin
-    //ADest := AllocMem(ASrcSize + ASrcSize div 64 + 16);
-    Src := @ASrc;
-    Dst := @ADest;
-    result := 0;
-
-    // too short chain
-    if ASrcSize<3 then
-    begin
-      result := ASrcSize;
-      if result>0 then
-      begin
-        inc(result);              // + 1 byte command
-        dst^ := ASrcSize-1;   // command (copy ASourceCount bytes)
-        inc(dst);
-        system.move(Src^, Dst^, ASrcSize);
-        inc(dst, ASrcSize);
-      end;
-
-      // end of data
-      inc(result);
-      dst^ := 128;
-      inc(dst);
-      exit;
-    end;
-  end;
-
-  procedure Finish;
-  begin
-
-    // short repeated chain we join to "as is" chain (M must be greater than 1)
-    if M<2 then
-    begin
-      inc(N, M);
-      if N>128 then
-        COPY_128;
-      M := 0;
-    end;
-
-    // out "as is" chain
-    if N>0 then
-    begin
-      COPY_N;
-      N := 0;
-    end;
-
-    // out "repeated" chain
-    if M>0 then
-    begin
-      PACK_M;
-      M := 0;
-    end;
-
-    // out "end of data" marker
-    inc(result);
-    dst^ := 128;
-    inc(dst);
-  end;
-
-begin
-
-  // initialize
-  result := Init;
-  if result>0 then
-    exit;
-
-  // read src
-  N := 0;
-  M := 0;
-  repeat
-    if M=0 then
-    begin
-      PrevChar := Src^;
-      inc(M);
-    end
-    else
-    begin
-      if Src^=PrevChar then
-        inc(M);
-
-      // two folowing conditions never met at same time
-      if (Src^<>PrevChar) or (M=128) then
-        if N>0 then
-          if M>=4 then
-            if M=128 then
-            begin // N>0, M=128, Src^=PrevChar
-              inc(Src);
-              COPY_N;
-              PACK_M;
-              dec(Src);
-              N := 0;
-              M := 0;
-            end
-            else
-            begin // N>0, M=[4..127], Src^<>PrevChar
-              COPY_N;
-              PACK_M;
-              N := 0;
-              M := 1;
-              PrevChar := Src^;
-            end
-          else
-          begin // N>0, M<4, Src^<>PrevChar
-            inc(N,M);
-            if N>128 then
-              COPY_128;
-            M := 1;
-            PrevChar := Src^;
-          end
-        else
-          if M>=3 then
-          begin
-            if M=128 then
-            begin // N=0, M=128, Src^=PrevChar
-              inc(Src);
-              PACK_M;
-              dec(Src);
-              M := 0;
-            end
-            else
-            begin // N=0, M=[3..127], Src^<>PrevChar
-              PACK_M;
-              M := 1;
-              PrevChar := Src^;
-            end
-          end
-          else
-          begin // N=0, M=[1..2], Src^<>PrevChar
-            N := M;
-            M := 1;
-            PrevChar := Src^;
-          end
-    end;
-    dec(ASrcSize);
-    inc(Src);
-  until ASrcSize=0;
-
-  // finish uncompleted chain
-  finish;
-//  assert(result<(ASrcSize + ASrcSize div 64 + 16));
-end;
-
-class function TRLE.DecodedSize(const ASrc; APackedSize: cardinal): cardinal;
-var
-  src: PByte;
-  n: byte;
-begin
-  Src := @ASrc;
-  result := 0;
-  while APackedSize>0 do
-  begin
-    n := Src^;
-    inc(Src);
-    dec(APackedSize);
-
-    // copy
-    if n<128 then
-    begin
-      inc(n);
-      if APackedSize<n then
-        raise exception.create('RLDecode error');
-      inc(result, n);
-      inc(Src, n);
-      dec(APackedSize, n);
-      continue;
-    end;
-
-    // stop
-    if n=128 then
-      break;
-
-    // repeat
-    n := 257-n;
-    if APackedSize<1 then
-      raise exception.create('RLDecode error');
-    inc(result, n);
-    inc(Src);
-    dec(APackedSize);
-  end;
-end;
-
-class procedure TRLE.Decode(const ASrc; APackedSize: cardinal; var ADest; AUnpackedSize: cardinal);
-var
-  src,dst: PByte;
-  n: byte;
-begin
-  Src := @ASrc;
-  Dst := @ADest;
-  while APackedSize>0 do
-  begin
-    n := Src^;
-    inc(Src);
-    dec(APackedSize);
-
-    // copy
-    if n<128 then
-    begin
-      inc(n);
-      if (APackedSize<n) or (AUnpackedSize<n) then
-        raise exception.create('RLDecode error');
-      system.move(Src^, dst^, n);
-      dec(AUnpackedSize, n);
-      inc(Src, n);
-      dec(APackedSize, n);
-      inc(dst, n);
-      continue;
-    end;
-
-    // stop
-    if n=128 then
-      break;
-
-    // repeat
-    n := 257-n;
-    if (APackedSize<1) or (AUnpackedSize<1) then
-      raise exception.create('RLDecode error');
-    FillChar(dst^, n, Src^);
-    dec(AUnpackedSize, n);
-    inc(Src);
-    dec(APackedSize);
-    inc(dst, n);
-  end;
-  if (AUnpackedSize<>0) then
-    raise exception.create('RLDecode error');
-end;
-
 { TComponentUtils }
 
 class function TComponentUtils.ForEach(AStart: TComponent; ACallback: TProcVar1<TComponent, Boolean>): Boolean;
@@ -3890,673 +1963,6 @@ begin
   result := 'G' + result.Substring(1, Length(result)-2);
 end;
 
-{ TCustomHash }
-
-class function TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
-begin
-  result := DoEncode(Buf, ByteBufSize);
-end;
-
-class function TCustomHash.Encode(S: TStream): TBytes;
-begin
-  result := DoEncode(S);
-end;
-
-class function TCustomHash.Encode(const S: TBytes; StartIndex,Count: integer): TBytes;
-begin
-  Assert((StartIndex >= 0) and (StartIndex + Count <= Length(S)));
-  if Count <= 0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[StartIndex], Count);
-end;
-
-class function TCustomHash.Encode(const S: TBytes): TBytes;
-begin
-  result := Encode(S, 0, Length(S));
-end;
-
-class function TCustomHash.Encode(const S: string): TBytes;
-begin
-  if Length(S)=0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
-end;
-
-{$If Defined(MSWindows)}
-class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
-begin
-  if Length(S)=0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
-end;
-{$EndIf}
-
-class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
-var
-  S: TFileStream;
-begin
-  S := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
-  try
-    Result := DoEncode(S);
-  finally
-    S.Free;
-  end;
-end;
-
-class function TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
-begin
-  SetLength(Result, 4);
-  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
-end;
-
-class procedure TCustomHash.Init(out Hash: TArray<byte>);
-begin
-  DoInit(Hash);
-end;
-
-class procedure TCustomHash.Update(const Value; ValueByteSize: integer; var Hash: THashData);
-begin
-  DoUpdate(Value, ValueByteSize, Hash);
-end;
-
-class procedure TCustomHash.Update(const Value: integer; var Hash: THashData);
-begin
-  DoUpdate(Value, SizeOf(Value), Hash);
-end;
-
-class procedure TCustomHash.Update(const Value: double; var Hash: THashData);
-begin
-  DoUpdate(Value, SizeOf(Value), Hash);
-end;
-
-class procedure TCustomHash.Update(const Value: TArray<byte>; var Hash: THashData);
-begin
-  { Length must be included in hash, otherwise arrays
-    [a, ab] and [aa, b] will produce same hash }
-  Update(Length(Value), Hash);
-  if Length(Value) > 0 then
-    DoUpdate(Value[0], Length(Value), Hash);
-end;
-
-class procedure TCustomHash.Update(const Value: string; var Hash: THashData);
-begin
-  { Length must be included in hash, otherwise arrays
-    ["a", "ab"] and ["aa", "b"] will produce same hash }
-  Update(Length(Value), Hash);
-  if Value <> '' then
-    DoUpdate(Value[Low(Value)], Length(Value)*SizeOf(Char), Hash);
-end;
-
-class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;
-begin
-  result := DoDone(Hash);
-end;
-
-{ TMD5 }
-
-class function THashUtils.MD5.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Hash: THashMD5;
-begin
-  Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
-end;
-
-class function THashUtils.MD5.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Hash: THashMD5;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
-  while Reader.ReadNext do
-    Hash.Update(Reader.Bytes, Reader.Count);
-  Result := Hash.HashAsBytes;
-end;
-
-class procedure THashUtils.MD5.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashMD5));
-  THashMD5((@Hash[0])^) := THashMD5.Create;
-end;
-
-class procedure THashUtils.MD5.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashMD5));
-  THashMD5((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.MD5.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashMD5));
-  result := THashMD5((@Hash[0])^).HashAsBytes;
-  THashMD5((@Hash[0])^) := Default(THashMD5);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.SHA1 }
-
-class function THashUtils.SHA1.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Hash: THashSHA1;
-begin
-  Hash := THashSHA1.Create;
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
-end;
-
-class function THashUtils.SHA1.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Hash: THashSHA1;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Hash := THashSHA1.Create;
-  while Reader.ReadNext do
-    Hash.Update(Reader.Bytes, Reader.Count);
-  Result := Hash.HashAsBytes;
-end;
-
-class procedure THashUtils.SHA1.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashSHA1));
-  THashSHA1((@Hash[0])^) := THashSHA1.Create;
-end;
-
-class procedure THashUtils.SHA1.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA1));
-  THashSHA1((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.SHA1.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA1));
-  result := THashSHA1((@Hash[0])^).HashAsBytes;
-  THashSHA1((@Hash[0])^) := Default(THashSHA1);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.SHA2 }
-
-class function THashUtils.SHA2.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Hash: THashSHA2;
-begin
-  Hash := THashSHA2.Create;
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
-end;
-
-class function THashUtils.SHA2.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Hash: THashSHA2;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Hash := THashSHA2.Create;
-  while Reader.ReadNext do
-    Hash.Update(Reader.Bytes, Reader.Count);
-  Result := Hash.HashAsBytes;
-end;
-
-class procedure THashUtils.SHA2.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashSHA2));
-  THashSHA2((@Hash[0])^) := THashSHA2.Create;
-end;
-
-class procedure THashUtils.SHA2.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA2));
-  THashSHA2((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.SHA2.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA2));
-  result := THashSHA2((@Hash[0])^).HashAsBytes;
-  THashSHA2((@Hash[0])^) := Default(THashSHA2);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.CRC32 }
-
-class function THashUtils.CRC32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Crc: Cardinal;
-begin
-  Crc := System.ZLib.crc32(0, nil, 0);
-  Crc := System.ZLib.crc32(Crc, @Buf, ByteBufSize);
-  Result := Hash32ToBytes(Crc);
-end;
-
-class function THashUtils.CRC32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Crc: Cardinal;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Crc := System.ZLib.crc32(0, nil, 0);
-  while Reader.ReadNext do
-    Crc := System.ZLib.crc32(Crc, @Reader.Bytes[0], Reader.Count);
-  Result := Hash32ToBytes(Crc);
-end;
-
-class procedure THashUtils.CRC32.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.crc32(0, nil, 0);
-end;
-
-class procedure THashUtils.CRC32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.crc32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
-end;
-
-class function THashUtils.CRC32.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  Result := Hash32ToBytes(cardinal((@Hash[0])^));
-  cardinal((@Hash[0])^) := Default(cardinal);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.Adler32 }
-
-class function THashUtils.Adler32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Crc: Cardinal;
-begin
-  Crc := System.ZLib.adler32(0, nil, 0);
-  Crc := System.ZLib.adler32(Crc, @Buf, ByteBufSize);
-  Result := Hash32ToBytes(Crc);
-end;
-
-class function THashUtils.Adler32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Crc: Cardinal;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Crc := System.ZLib.adler32(0, nil, 0);
-  while Reader.ReadNext do
-    Crc := System.ZLib.adler32(Crc, @Reader.Bytes[0], Reader.Count);
-  Result := Hash32ToBytes(Crc);
-end;
-
-class procedure THashUtils.Adler32.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.adler32(0, nil, 0);
-end;
-
-class procedure THashUtils.Adler32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.adler32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
-end;
-
-class function THashUtils.Adler32.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  Result := Hash32ToBytes(cardinal((@Hash[0])^));
-  cardinal((@Hash[0])^) := Default(cardinal);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.BobJenkins32 }
-
-class function THashUtils.BobJenkins32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  h: THashBobJenkins;
-begin
-  h := THashBobJenkins.Create;
-  h.Update(Buf, ByteBufSize);
-  Result := h.HashAsBytes;
-end;
-
-class function THashUtils.BobJenkins32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TStreamUtils.TReader;
-  Hash: THashBobJenkins;
-begin
-  Reader.Init(S, False, StreamingBufSize, True);
-  Hash := THashBobJenkins.Create;
-  while Reader.ReadNext do
-    Hash.Update(Reader.Bytes, Reader.Count);
-  Result := Hash.HashAsBytes;
-end;
-
-class procedure THashUtils.BobJenkins32.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashBobJenkins));
-  THashBobJenkins((@Hash[0])^) := THashBobJenkins.Create;
-end;
-
-class procedure THashUtils.BobJenkins32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashBobJenkins));
-  THashBobJenkins((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.BobJenkins32.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashBobJenkins));
-  Result := THashBobJenkins((@Hash[0])^).HashAsBytes;
-  THashBobJenkins((@Hash[0])^) := Default(THashBobJenkins);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils }
-
-class function THashUtils.Mix(const HashA, HashB, HashC: integer): integer;
-begin
-  result := Mix(Mix(HashA, HashB), HashC);
-end;
-
-class function THashUtils.Mix(const HashA, HashB: integer): integer;
-begin
-  result := (HashA*1103515245 + 12345) xor HashB;
-end;
-
-class function THashUtils.Mix(const HashA, HashB: TBytes): TBytes;
-var
-  V,L1,L2,LR: Integer;
-  Src1,Src2,Dst: pointer;
-begin
-  L1 := Length(HashA);
-  L2 := Length(HashB);
-  LR := Max(L1, L2);
-  SetLength(result, LR);
-  if LR = 0 then
-    Exit;
-  Dst := @result[0];
-  if L1>0 then Src1 := @HashA[0] else Src1 := nil;
-  if L2>0 then Src2 := @HashB[0] else Src2 := nil;
-  V := 0;
-
-  while LR >= SizeOf(integer) do
-  begin
-
-    { read from HashA }
-    if L1 >= SizeOf(integer) then
-    begin
-      V := (V*1103515245 + 12345) xor integer(Src1^);
-      inc(PByte(Src1), SizeOf(integer));
-      dec(L1, SizeOf(integer));
-    end
-    else
-      while L1 > 0 do
-      begin
-        V := (V*1103515245 + 12345) xor PByte(Src1)^;
-        inc(PByte(Src1));
-        dec(L1);
-      end;
-
-    { read from HashB }
-    if L2 >= SizeOf(integer) then
-    begin
-      V := (V*1103515245 + 12345) xor integer(Src2^);
-      inc(PByte(Src2), SizeOf(integer));
-      dec(L2, SizeOf(integer));
-    end
-    else
-      while L2 > 0 do
-      begin
-        V := (V*1103515245 + 12345) xor PByte(Src2)^;
-        inc(PByte(Src2));
-        dec(L2);
-      end;
-
-    integer(Dst^) := V;
-    dec(LR, SizeOf(integer));
-  end;
-
-  while LR > 0 do
-  begin
-    if L1 > 0 then
-    begin
-      V := (V*1103515245 + 12345) xor byte(Src1^);
-      inc(PByte(Src1));
-      dec(L1);
-    end;
-    if L2 > 0 then
-    begin
-      V := (V*1103515245 + 12345) xor byte(Src2^);
-      inc(PByte(Src2));
-      dec(L2);
-    end;
-    Byte(Dst^) := V;
-    dec(LR);
-  end;
-end;
-
-class function THashUtils.HashToString(const AHash: TBytes): string;
-begin
-  Result := THex.Encode(AHash);
-end;
-
-class function THashUtils.GetHash32(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      (integer(Hash[0]) shl 24) or
-      (integer(Hash[1]) shl 16) or
-      (integer(Hash[2]) shl  8) or
-      (integer(Hash[3]))
-  else
-    result := GetHash32(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.GetHash24(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      (integer(Hash[0]) shl 16) or
-      (integer(Hash[1]) shl  8) or
-      (integer(Hash[2]) xor integer(Hash[3]))
-  else
-    result := GetHash24(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.GetHash16(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      ((integer(Hash[0]) xor integer(Hash[1])) shl 8) or
-      (integer(Hash[2]) xor integer(Hash[3]))
-  else
-    result := GetHash16(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.Mix(const Hashes: array of integer): integer;
-var
-  I: Integer;
-begin
-  result := 0;
-  for I := Low(Hashes) to High(Hashes) do
-    result := Mix(result, Hashes[I]);
-end;
-
-class function THashUtils.Mix(const Hashes: array of TBytes): TBytes;
-var
-  I: Integer;
-begin
-  SetLength(result, 0);
-  for I := Low(Hashes) to High(Hashes) do
-    result := Mix(result, Hashes[I]);
-end;
-
-{ TBuffer }
-
-procedure TBuffer.Clear;
-begin
-  Size := 0;
-  Capacity := Size;
-end;
-
-function TBuffer.GetCapacity: integer;
-begin
-  result := Length(FData);
-end;
-
-function TBuffer.GetCurrentData: pointer;
-begin
-  result := @FData[Position];
-end;
-
-function TBuffer.GetEmpty: Boolean;
-begin
-  result := Size=0;
-end;
-
-function TBuffer.GetEOF: boolean;
-begin
-  result := Position >= Size;
-end;
-
-function TBuffer.GetLeft: integer;
-begin
-  result := Size-Position;
-end;
-
-procedure TBuffer.SetText(const Value: string);
-begin
-  Clear;
-  Write(Value);
-  Position := 0;
-end;
-
-function TBuffer.GetText: string;
-var
-  P: Integer;
-begin
-  P := Position;
-  Position := 0;
-  Read(Result, Size div SizeOf(Char));
-  Position := P;
-end;
-
-procedure TBuffer.Init;
-begin
-  Self := Default(TBuffer);
-end;
-
-procedure TBuffer.LoadFromFile(const FileName: string);
-begin
-  TFileUtils.Load<Byte>(FileName, FData);
-  FSize := Length(FData);
-  FPosition := 0;
-end;
-
-procedure TBuffer.SaveToFile(const FileName: string);
-begin
-  TFileUtils.Save<Byte>(FileName, FData, 0,Size);
-end;
-
-procedure TBuffer.SetLeft(Value: integer);
-begin
-  Size := Position + Value;
-end;
-
-procedure TBuffer.SetCapacity(Value: integer);
-begin
-  Assert(Value >= Size);
-  SetLength(FData, Value);
-end;
-
-procedure TBuffer.CheckCapacity(MinCapacity: integer);
-begin
-  if Capacity < MinCapacity then
-    Capacity := TFun.Max(MinCapacity, Capacity shl 1, 16);
-end;
-
-procedure TBuffer.SetSize(Value: integer);
-begin
-  CheckCapacity(Value);
-  FSize := Value;
-  FPosition := Max(Min(FPosition, FSize), 0);
-end;
-
-procedure TBuffer.TrimExcess;
-begin
-  Capacity := Size;
-end;
-
-procedure TBuffer.Read(var Dst; ByteCount: integer);
-begin
-  Assert(Position + ByteCount <= Size);
-  System.Move(FData[Position], Dst, ByteCount);
-  inc(FPosition, ByteCount);
-end;
-
-procedure TBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
-begin
-  Read(Dst[DstCharOffset+Low(Dst)], CharCount*SizeOf(Char));
-end;
-
-procedure TBuffer.Read(var Dst: string; CharCount: integer);
-begin
-  SetLength(Dst, CharCount);
-  Read(Dst[Low(Dst)], CharCount*SizeOf(Char));
-end;
-
-procedure TBuffer.Write(const Src; ByteCount: integer);
-begin
-  CheckCapacity(Position + ByteCount);
-  System.Move(Src, FData[Position], ByteCount);
-  inc(FPosition, ByteCount);
-  if FPosition > FSize then
-    FSize := FPosition;
-end;
-
-procedure TBuffer.Write(const Src: string; CharOffset,CharCount: integer);
-begin
-  if CharCount<>0 then
-    Write(Src[CharOffset+Low(Src)], CharCount*SizeOf(Char));
-end;
-
-procedure TBuffer.Write(const Src: string);
-begin
-  if Src<>'' then
-    Write(Src[Low(Src)], Length(Src)*SizeOf(Char));
-end;
-
-procedure TBuffer.Cut(Start, Len: integer);
-begin
-  Len := TArrayUtils.Cut<byte>(FData, Size, Start, Len);
-  dec(FSize, Len);
-  if Position > Size then
-    Position := Size;
-end;
-
-function TBuffer.Slice(Start, Len: integer): TArray<byte>;
-begin
-  result := TArrayUtils.Slice<byte>(FData, Size, Start, Len);
-end;
-
-procedure TBuffer.SetData(AData: TArray<Byte>);
-begin
-  FData := AData;
-  FSize := Length(FData);
-  FPosition := 0;
-end;
-
 { TOutOfScopeAction.TOnDestroyRunner }
 
 type
@@ -4629,12 +2035,12 @@ end;
 
 { TFun }
 
-class procedure TFun.Clear<T>(var R: T);
+class procedure Sys.Clear<T>(var R: T);
 begin
   R := Default(T);
 end;
 
-class procedure TFun.Exchange<T>(var A, B: T);
+class procedure Sys.Exchange<T>(var A, B: T);
 var C: T;
 begin
   C := A;
@@ -4642,7 +2048,7 @@ begin
   B := C;
 end;
 
-class procedure TFun.FreeAndNil<T>(var Obj: T);
+class procedure Sys.FreeAndNil<T>(var Obj: T);
 begin
   {$IF Defined(AUTOREFCOUNT)}
     Obj := nil;
@@ -4656,19 +2062,19 @@ begin
   {$ENDIF}
 end;
 
-class function TFun.GetPtr(const Values: TArray<byte>): pointer;
+class function Sys.GetPtr(const Values: TArray<byte>): pointer;
 begin
   if Length(Values)=0
     then result := nil
     else result := @Values[0];
 end;
 
-class function TFun.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
+class function Sys.IfThen<T>(ACondition: Boolean; AValueTrue, AValueFalse: T): T;
 begin
   if ACondition then result := AValueTrue else result := AValueFalse;
 end;
 
-class function TFun.InRange(const AValue, AValueFrom, AValueTo: integer): boolean;
+class function Sys.InRange(const AValue, AValueFrom, AValueTo: integer): boolean;
 begin
   if AValueFrom <= AValueTo then
     result := (AValue >= AValueFrom) and (AValue <= AValueTo)
@@ -4676,7 +2082,7 @@ begin
     result := (AValue >= AValueTo) and (AValue <= AValueFrom);
 end;
 
-class function TFun.InRange(const AValue, AValueFrom, AValueTo: double): boolean;
+class function Sys.InRange(const AValue, AValueFrom, AValueTo: double): boolean;
 begin
   if AValueFrom <= AValueTo then
     result := (AValue >= AValueFrom) and (AValue <= AValueTo)
@@ -4684,7 +2090,7 @@ begin
     result := (AValue >= AValueTo) and (AValue <= AValueFrom);
 end;
 
-class function TFun.ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean;
+class function Sys.ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean;
 var
   Comparer: IComparer<T>;
 begin
@@ -4695,7 +2101,7 @@ begin
     Result := (Comparer.Compare(AValue, AValueTo) >= 0) and (Comparer.Compare(AValue, AValueFrom) <= 0);
 end;
 
-class function TFun.Max(const A, B, C: double): double;
+class function Sys.Max(const A, B, C: double): double;
 begin
   Result := A;
   if B > Result then
@@ -4704,7 +2110,7 @@ begin
     Result := C;
 end;
 
-class function TFun.Max(const A, B: double): double;
+class function Sys.Max(const A, B: double): double;
 begin
   if A >= B then
     result := A
@@ -4712,7 +2118,7 @@ begin
     result := B;
 end;
 
-class function TFun.Max(const A, B: integer): integer;
+class function Sys.Max(const A, B: integer): integer;
 begin
   if A >= B then
     result := A
@@ -4720,7 +2126,7 @@ begin
     result := B;
 end;
 
-class function TFun.Min(const Values: array of integer): integer;
+class function Sys.Min(const Values: array of integer): integer;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4730,7 +2136,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Min(const Values: TArray<integer>): integer;
+class function Sys.Min(const Values: TArray<integer>): integer;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4740,7 +2146,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Max(const Values: array of integer): integer;
+class function Sys.Max(const Values: array of integer): integer;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4750,7 +2156,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Max(const Values: TArray<integer>): integer;
+class function Sys.Max(const Values: TArray<integer>): integer;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4760,7 +2166,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Max(const A, B, C: integer): integer;
+class function Sys.Max(const A, B, C: integer): integer;
 begin
   Result := A;
   if B > Result then
@@ -4769,7 +2175,7 @@ begin
     Result := C;
 end;
 
-class function TFun.Min(const A, B, C: double): double;
+class function Sys.Min(const A, B, C: double): double;
 begin
   Result := A;
   if B < Result then
@@ -4778,7 +2184,7 @@ begin
     Result := C;
 end;
 
-class function TFun.Min(const A, B: double): double;
+class function Sys.Min(const A, B: double): double;
 begin
   if A <= B then
     result := A
@@ -4786,7 +2192,7 @@ begin
     result := B;
 end;
 
-class function TFun.Min(const A, B: integer): integer;
+class function Sys.Min(const A, B: integer): integer;
 begin
   if A <= B then
     result := A
@@ -4794,7 +2200,7 @@ begin
     result := B;
 end;
 
-class function TFun.Min(const A, B, C: integer): integer;
+class function Sys.Min(const A, B, C: integer): integer;
 begin
   Result := A;
   if B < Result then
@@ -4803,7 +2209,7 @@ begin
     Result := C;
 end;
 
-class function TFun.Overlapped(const AFrom, ATo, BFrom, BTo: integer): boolean;
+class function Sys.Overlapped(const AFrom, ATo, BFrom, BTo: integer): boolean;
 begin
   if AFrom <= ATo then
     if BFrom <= BTo then
@@ -4817,7 +2223,7 @@ begin
       result := (ATo <= BFrom) and (BTo <= AFrom);
 end;
 
-class function TFun.Overlapped(const AFrom, ATo, BFrom, BTo: double): boolean;
+class function Sys.Overlapped(const AFrom, ATo, BFrom, BTo: double): boolean;
 begin
   if AFrom <= ATo then
     if BFrom <= BTo then
@@ -4831,7 +2237,7 @@ begin
       result := (ATo <= BFrom) and (BTo <= AFrom);
 end;
 
-class function TFun.Min(const Values: array of double): double;
+class function Sys.Min(const Values: array of double): double;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4841,7 +2247,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Min(const Values: TArray<double>): double;
+class function Sys.Min(const Values: TArray<double>): double;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4851,7 +2257,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Max(const Values: array of double): double;
+class function Sys.Max(const Values: array of double): double;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -4861,7 +2267,7 @@ begin
       result := Values[I];
 end;
 
-class function TFun.Max(const Values: TArray<double>): double;
+class function Sys.Max(const Values: TArray<double>): double;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -5028,190 +2434,6 @@ begin
   result := Left.FSize-Right.FSize;
 end;
 
-{ TIntegralImageInt64 }
-
-procedure TIntegralImageInt64.Init;
-begin
-  Self := Default(TIntegralImageInt64);
-end;
-
-procedure TIntegralImageInt64.SetSize(AWidth, AHeight: integer);
-begin
-  Width := AWidth;
-  Height := AHeight;
-  SetLength(Image, 0);
-  SetLength(Image, Width*Height);
-end;
-
-procedure TIntegralImageInt64.Build;
-var
-  x,y: Integer;
-begin
-  for x := 1 to Width-1 do
-    Inc(Image[x],Image[x-1]);
-  for y := 1 to Height-1 do
-    Inc(Image[y*Width],Image[(y-1)*Width]);
-  for y := 1 to Height-1 do
-    BuildLine(@Image[y*Width+1]);
-end;
-
-(*
-  #####
-  #   #
-  ####?
-*)
-procedure TIntegralImageInt64.BuildLine(ADst: PInt64Array);
-var
-  x: Integer;
-begin
-  for x := 0 to Width-2 do
-    inc(ADst[x], ADst[x-1]+ADst[x-Width]-ADst[x-Width-1]);
-end;
-
-procedure TIntegralImageInt64.Clear;
-begin
-  SetSize(0,0);
-end;
-
-function TIntegralImageInt64.GetLine(y: integer): PInt64Array;
-begin
-  result := @Image[y*Width];
-end;
-
-function TIntegralImageInt64.GetSum(x1, y1, x2, y2: integer): int64;
-begin
-  Result := Image[x2+y2*Width];
-  if x1>0 then
-  begin
-    if y1>0 then
-      Inc(Result, Image[x1-1+(y1-1)*Width]);
-    dec(Result, Image[x1-1+y2*Width]);
-  end;
-  if y1>0 then
-    dec(Result, Image[x2+(y1-1)*Width]);
-end;
-
-function TIntegralImageInt64.GetAvg(x1, y1, x2, y2: integer): int64;
-begin
-  assert((x2>=x1) and (y2>=y1));
-  if x2-x1+1>width then
-    x2 := x1+width-1;
-  if y2-y1+1>height then
-    y2 := y1+height-1;
-  if x1<0 then
-  begin
-    dec(x2, x1);
-    x1 := 0;
-  end;
-  if y1<0 then
-  begin
-    dec(y2, y1);
-    y1 := 0;
-  end;
-  if x2>=width then
-  begin
-    dec(x1,x2-width+1);
-    x2 := width-1;
-  end;
-  if y2>=height then
-  begin
-    dec(y1,y2-height+1);
-    y2 := height-1;
-  end;
-  result := Sum[x1,y1,x2,y2] div ((x2-x1+1)*(y2-y1+1));
-end;
-
-{ TInterpolation_Int64Custom }
-
-constructor TInterpolation_Int64Custom.Create(PointCount: integer);
-begin
-  SetLength(FPoints, PointCount);
-  FComparer := TDelegatedComparer<TPt>.Create(
-    function (const A, B: TPt): integer
-    begin
-      if A.X < B.X then result := -1 else
-        if A.X = B.X then result := 0 else
-          result := 1;
-    end);
-end;
-
-procedure TInterpolation_Int64Custom.BeginUpdate;
-begin
-  inc(FUpdateCnt);
-  if FUpdateCnt=1 then
-    DoBeginUpdate;
-end;
-
-procedure TInterpolation_Int64Custom.EndUpdate;
-begin
-  dec(FUpdateCnt);
-  if FUpdateCnt=0 then
-    DoEndUpdate;
-end;
-
-procedure TInterpolation_Int64Custom.DoBeginUpdate;
-begin
-end;
-
-procedure TInterpolation_Int64Custom.DoEndUpdate;
-var
-  I: Integer;
-begin
-
-  { reorder if necessary }
-  for I := 0 to High(FPoints)-1 do
-    if FPoints[I].X > FPoints[I+1].X then
-    begin
-      TArray.Sort<TPt>(FPoints, FComparer);
-      Break;
-    end;
-
-  { It is not allowed to have Xi=Xj for any i<>j,
-    items are ordered, so we can check it eficiently. }
-  for I := 0 to High(FPoints)-1 do
-    if FPoints[I].X=FPoints[I+1].X then
-      raise Exception.Create('Error');
-end;
-
-function TInterpolation_Int64Custom.GetPoint(i: integer): TPt;
-begin
-  result := FPoints[i];
-end;
-
-procedure TInterpolation_Int64Custom.SetPoint(i: integer; const Value: TPt);
-begin
-  Assert((FUpdateCnt>0) and (i>=0) and (i<=High(FPoints)));
-  FPoints[i] := Value;
-end;
-
-function TInterpolation_Int64Custom.GetPointCount: integer;
-begin
-  result := Length(FPoints);
-end;
-
-{ TLinearInterpolation_Int64 }
-
-function TLinearInterpolation_Int64.DoGetValue(const X: int64): int64;
-var
-  Item: TPt;
-  FoundIndex: Integer;
-begin
-  Assert(Length(FPoints)>0);
-  Item.X := X;
-  Item.Y := 0;
-  if TArray.BinarySearch<TPt>(FPoints, Item, FoundIndex, FComparer) then
-    result := FPoints[FoundIndex].Y
-  else
-    { If not found, FoundIndex contains the index of the first entry larger than Item }
-    if FoundIndex = 0 then result := FPoints[0].Y else
-      if FoundIndex > High(FPoints) then result := FPoints[High(FPoints)].Y else
-        { Xi<>Xj for any i<>j (check DoEndUpdate), so div by zero is not possible here. }
-        result := FPoints[FoundIndex-1].Y +
-          (X-FPoints[FoundIndex-1].X) *
-          (FPoints[FoundIndex].Y-FPoints[FoundIndex-1].Y) div
-          (FPoints[FoundIndex].X-FPoints[FoundIndex-1].X);
-end;
-
 { TDebugUtils }
 
 class function TDebugUtils.DebuggerIsAttached: boolean;
@@ -5250,110 +2472,6 @@ begin
   FData := AData;
 end;
 
-{ TCustomReadOnlyStream }
-
-function TCustomReadOnlyStream.GetSize: Int64;
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-function TCustomReadOnlyStream.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-function TCustomReadOnlyStream.Seek(Offset: Longint; Origin: Word): Longint;
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-procedure TCustomReadOnlyStream.SetSize(const NewSize: Int64);
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-procedure TCustomReadOnlyStream.SetSize(NewSize: Longint);
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-function TCustomReadOnlyStream.Write(const Buffer; Count: Longint): Longint;
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-function TCustomReadOnlyStream.Write(const Buffer: TBytes; Offset, Count: Longint): Longint;
-begin
-  raise EAbstractError.CreateRes(@SAbstractError);
-end;
-
-{ TEventStat }
-
-procedure TEventStat.Reg(const EventCategory: string);
-begin
-  Reg(EventCategory, 1);
-end;
-
-procedure TEventStat.Reg(const EventCategory: string; Count: int64);
-var
-  C: int64;
-begin
-  if not FEvents.TryGetValue(EventCategory, C) then
-    C:= 0;
-  inc(C, Count);
-  FEvents.AddOrSetValue(EventCategory, C);
-end;
-
-procedure TEventStat.UnReg(const EventCategory: string);
-begin
-  UnReg(EventCategory, 1);
-end;
-
-procedure TEventStat.UnReg(const EventCategory: string; Count: int64);
-var
-  C: int64;
-begin
-  if FEvents.TryGetValue(EventCategory, C) then
-  begin
-    dec(C, Count);
-    if C <=0
-      then FEvents.Remove(EventCategory)
-      else FEvents.AddOrSetValue(EventCategory, C);
-  end;
-end;
-
-procedure TEventStat.Add(const Src: TArray<TPair<string, int64>>);
-var
-  I: Integer;
-begin
-  for I := Low(Src) to High(Src) do
-    Reg(Src[I].Key, Src[I].Value);
-end;
-
-function TEventStat.GetStat: TArray<TPair<string, int64>>;
-var
-  C: IComparer<TPair<string, int64>>;
-  S: IComparer<string>;
-begin
-  result := FEvents.ToArray;
-  S := TIStringComparer.Ordinal;
-  C := TDelegatedComparer<TPair<string, int64>>.Create(
-    function (const A,B: TPair<string, int64>): integer
-    begin
-      result := S.Compare(A.Key, B.Key);
-      if result = 0 then
-        if A.Key < B.Key then result := -1 else
-          if A.Key = B.Key then result := 0 else
-            result := 1 else
-    end);
-  TArray.Sort<TPair<string, int64>>(result, C);
-end;
-
-procedure TEventStat.Clear;
-begin
-  FEvents.Clear;
-end;
-
 { TEnvelop<T> }
 
 constructor TEnvelop<T>.Create;
@@ -5366,5 +2484,3 @@ begin
 end;
 
 end.
-
-

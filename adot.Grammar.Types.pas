@@ -9,6 +9,7 @@ uses
   adot.Collections.Sets,
   adot.Collections.Trees,
   adot.Tools,
+  adot.Tools.IO,
   adot.Tools.Rtti,
   adot.Strings,
   {$IF Defined(LogExceptions)}
@@ -530,11 +531,11 @@ procedure TParseTree.LogTextInputParseTree(var InputData: TBuffer);
       InputData.Read(S, R.Position.Len div SizeOf(Char));
       T := InputData.Text;
       if T=S then
-        L('       %s', [TStr.GetPrintable(S)], Margin)
+        L('       %s', [TEnc.GetPrintable(S)], Margin)
       else
       begin
-        L('       %s', [StringOfChar(' ', R.Position.Start div 2) + ShowWS(TStr.GetPrintable(S)) ], Margin);
-        L('       %s', [ShowWS(TStr.GetPrintable(T))], Margin);
+        L('       %s', [StringOfChar(' ', R.Position.Start div 2) + ShowWS(TEnc.GetPrintable(S)) ], Margin);
+        L('       %s', [ShowWS(TEnc.GetPrintable(T))], Margin);
       end;
 
       LogTree(Tree.Nodes.Items[ResIndex].FirstChild, Margin + 2);

@@ -27,6 +27,9 @@
   TCompoundEqualityComparer<TypeA,TypeB> = class
     Equality comparer for compound of two fields.
 
+  TIndexBackEnumerator = record
+    Index enumerator "from last to first".
+
 }
 interface
 
@@ -105,6 +108,12 @@ type
 
     constructor Create(const A: TypeA; const B: TypeB);
     procedure Init(const A: TypeA; const B: TypeB);
+
+    class operator Implicit(const Src: TCompound<TypeA,TypeB>): TPair<TypeA,TypeB>;
+    class operator Implicit(const Src: TPair<TypeA,TypeB>): TCompound<TypeA,TypeB>;
+
+    class operator Explicit(const Src: TCompound<TypeA,TypeB>): TPair<TypeA,TypeB>;
+    class operator Explicit(const Src: TPair<TypeA,TypeB>): TCompound<TypeA,TypeB>;
   end;
 
   { Compound record with three fields. Provides constructor and comparers for use in collections. }
@@ -386,17 +395,58 @@ type
     class procedure SetOrdinal(const Value: T); static;
   end;
 
+  {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
+
+     function TListExt.GetEnumerator: TIndexBackEnumerator;
+     begin
+       result := TIndexBackEnumerator.Create(LastIndex, StartIndex);
+     end; }
+  { Index enumerator "from last to first". }
+  TIndexBackEnumerator = record
+  private
+    FCurrentIndex, FToIndex: integer;
+
+  public
+    procedure Init(AIndexFrom, AIndexTo: integer);
+
+    function GetCurrent: Integer;
+    function MoveNext:   Boolean;
+
+    property Current:    Integer read GetCurrent;
+  end;
+
 implementation
 
 uses
   adot.Arithmetic,
-  adot.Tools;
+  adot.Tools,
+  adot.Hash;
 
 { TCompound<TypeA, TypeB> }
 
 constructor TCompound<TypeA, TypeB>.Create(const A: TypeA; const B: TypeB);
 begin
   Init(A,B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Explicit(const Src: TCompound<TypeA, TypeB>): TPair<TypeA, TypeB>;
+begin
+  result := result.Create(Src.A, Src.B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Explicit(const Src: TPair<TypeA, TypeB>): TCompound<TypeA, TypeB>;
+begin
+  result.Init(Src.Key, Src.Value);
+end;
+
+class operator TCompound<TypeA, TypeB>.Implicit(const Src: TCompound<TypeA, TypeB>): TPair<TypeA, TypeB>;
+begin
+  result := result.Create(Src.A, Src.B);
+end;
+
+class operator TCompound<TypeA, TypeB>.Implicit(const Src: TPair<TypeA, TypeB>): TCompound<TypeA, TypeB>;
+begin
+  result.Init(Src.Key, Src.Value);
 end;
 
 procedure TCompound<TypeA, TypeB>.Init(const A: TypeA; const B: TypeB);
@@ -1110,8 +1160,26 @@ begin
   FOrdinal := Value;
 end;
 
+{ TIndexBackEnumerator }
+
+procedure TIndexBackEnumerator.Init(AIndexFrom, AIndexTo: integer);
+begin
+  Self := Default(TIndexBackEnumerator);
+  FCurrentIndex := AIndexFrom;
+  FToIndex := AIndexTo;
+end;
+
+function TIndexBackEnumerator.MoveNext: Boolean;
+begin
+  result := FCurrentIndex>=FToIndex;
+  if result then
+    dec(FCurrentIndex);
+end;
+
+function TIndexBackEnumerator.GetCurrent: Integer;
+begin
+  result := FCurrentIndex+1;
+end;
+
 end.
-
-
-
 
