@@ -11,6 +11,7 @@ interface
 uses
   adot.Types,
   adot.Collections.Types,
+  adot.Collections.Slices,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.SysUtils,
@@ -77,6 +78,13 @@ type
     class function Create(ACapacity: integer): TArr<T>; overload; static;
     class function Create(AItems: TArray<T>): TArr<T>; overload; static;
 
+    { Creates empty slice on underlying array }
+    function GetSlice: TSlice<T>; overload;
+    { Creates slice from range of underlying array }
+    function GetSlice(AStartSliceIndexIncl,AEndSliceIndexExcl: integer): TSlice<T>; overload;
+    { Creates slice on the array for items accepted by filter }
+    function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
+
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
     procedure Add(const Value: TArray<T>); overload;
@@ -102,6 +110,8 @@ type
     function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
 
     { Trims and returns Items }
+    function ToString: string;
+    function ToText(const ValuesDelimiter: string = #13#10): string;
     function ToArray: TArray<T>;
 
     function GetEnumerator: TEnumerator; reintroduce;
@@ -183,6 +193,13 @@ type
     constructor Create(const AItems: TArray<T>; AComparison: TComparison<T>); overload;
 
     destructor Destroy; override;
+
+    { Creates empty slice on underlying array }
+    function GetSlice: TSlice<T>; overload;
+    { Creates slice from range of underlying array }
+    function GetSlice(AStartSliceIndexIncl,AEndSliceIndexExcl: integer): TSlice<T>; overload;
+    { Creates slice on the array for items accepted by filter }
+    function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
 
     procedure Clear;
 
@@ -339,6 +356,13 @@ type
     class function Create(ACapacity: integer; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     class function Create(const Values: TArray<T>; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
     class function Create(const Values: TEnumerable<T>; ACapacity: integer = 0; AComparer: IComparer<T> = nil): TVector<T>; overload; static;
+
+    { Creates empty slice on underlying array }
+    function GetSlice: TSlice<T>; overload;
+    { Creates slice from range of underlying array }
+    function GetSlice(AStartSliceIndexIncl,AEndSliceIndexExcl: integer): TSlice<T>; overload;
+    { Creates slice on the array for items accepted by filter }
+    function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
 
     function GetEnumerator: TEnumerator<T>;
 
@@ -702,6 +726,26 @@ begin
   Items[Index2] := Value;
 end;
 
+function TArr<T>.ToString: string;
+begin
+  result := ToText(' ');
+end;
+
+function TArr<T>.ToText(const ValuesDelimiter: string = #13#10): string;
+var
+  S: TStringBuilder;
+  I: Integer;
+begin
+  S := TStringBuilder.Create;
+  for I := 0 to FCount-1 do
+  begin
+    if S.Length > 0 then
+      S.Append(ValuesDelimiter);
+    S.Append(TRttiUtils.ValueAsString<T>(Items[I]));
+  end;
+  result := S.ToString;
+end;
+
 function TArr<T>.ToArray: TArray<T>;
 begin
   TrimExcess;
@@ -846,6 +890,27 @@ end;
 function TArr<T>.GetLast: T;
 begin
   Result := Items[Count-1];
+end;
+
+function TArr<T>.GetSlice: TSlice<T>;
+begin
+  result.Init(Items, FCount);
+end;
+
+function TArr<T>.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl: integer): TSlice<T>;
+begin
+  result.Init(Items, FCount);
+  result.Add(AStartSliceIndexIncl, AEndSliceIndexExcl);
+end;
+
+function TArr<T>.GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>;
+var
+  I: Integer;
+begin
+  result.Init(Items, FCount);
+  for I := 0 to FCount-1 do
+    if AFilter(Items[I], I) then
+      result.Add(I);
 end;
 
 function TArr<T>.GetTotalSizeBytes: int64;
@@ -1489,6 +1554,27 @@ function TVectorClass<T>.GetLast: T;
 begin
   Assert(FCount>0);
   Result := FItems[Count-1];
+end;
+
+function TVectorClass<T>.GetSlice: TSlice<T>;
+begin
+  result.Init(FItems, FCount);
+end;
+
+function TVectorClass<T>.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl: integer): TSlice<T>;
+begin
+  result.Init(FItems, FCount);
+  result.Add(AStartSliceIndexIncl, AEndSliceIndexExcl);
+end;
+
+function TVectorClass<T>.GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>;
+var
+  I: Integer;
+begin
+  result.Init(FItems, FCount);
+  for I := 0 to FCount-1 do
+    if AFilter(FItems[I], I) then
+      result.Add(I);
 end;
 
 function TVectorClass<T>.GetTotalSizeBytes: int64;
@@ -2280,6 +2366,21 @@ begin
       FVectorInt.Data.OwnsValues := SrcVectorInt.Data.OwnsValues;
     end;
   result := FVectorInt.Data;
+end;
+
+function TVector<T>.GetSlice: TSlice<T>;
+begin
+  result := RO.GetSlice;
+end;
+
+function TVector<T>.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl: integer): TSlice<T>;
+begin
+  result := RO.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl);
+end;
+
+function TVector<T>.GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>;
+begin
+  result := RO.GetSlice(AFilter);
 end;
 
 function TVector<T>.GetTotalSizeBytes: int64;

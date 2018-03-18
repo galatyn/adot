@@ -7,7 +7,8 @@ uses
   adot.Collections,
   System.Generics.Defaults,
   System.Generics.Collections,
-  System.SysUtils;
+  System.SysUtils,
+  System.Math;
 
 type
   TSlice<T> = record
@@ -48,6 +49,7 @@ type
     procedure Init; overload;
     { Init empty slice on specified array }
     procedure Init(const AValues: TArray<T>); overload;
+    procedure Init(const AValues: TArray<T>; AValuesCount: integer); overload;
     { Init slice for range of values from specified array }
     procedure Init(const AValues: TArray<T>; AStartIndexIncl,AEndIndexExcl: integer); overload;
     { Init slice on specified array and select some values by filter function }
@@ -81,6 +83,7 @@ type
             Slice.Add(I);
     }
     function Add(ArrayIndex: integer): integer; overload;
+    procedure Add(AStartArrayIndexIncl,AEndArrayIndexExcl: integer); overload;
     procedure Add(ArrayIndices: TEnumerable<integer>); overload;
     procedure Add(const ArrayIndices: TArray<integer>); overload;
 
@@ -172,6 +175,13 @@ begin
   Self := Default(TSlice<T>);
   FValues := AValues;
   FValuesCount := Length(FValues);
+end;
+
+procedure TSlice<T>.Init(const AValues: TArray<T>; AValuesCount: integer);
+begin
+  Self := Default(TSlice<T>);
+  FValues := AValues;
+  FValuesCount := AValuesCount;
 end;
 
 procedure TSlice<T>.Init(const AValues: TArray<T>; AFilter: TFuncFilterValueIndex<T>);
@@ -267,6 +277,21 @@ begin
   result := FSliceCount;
   FSlice[result] := ArrayIndex;
   inc(FSliceCount);
+end;
+
+procedure TSlice<T>.Add(AStartArrayIndexIncl,AEndArrayIndexExcl: integer);
+var
+  L,I: Integer;
+begin
+  if AEndArrayIndexExcl <= AStartArrayIndexIncl then
+    Exit;
+  Assert((AStartArrayIndexIncl>=0) and (AEndArrayIndexExcl<=FValuesCount));
+  L := AEndArrayIndexExcl - AStartArrayIndexIncl;
+  if FSliceCount + L > Length(FSlice) then
+    SetLength(FSlice, Max(FSliceCount + L, GetExpandSize(Length(FSlice))));
+  for I := 0 to L-1 do
+    FSlice[I+FSliceCount] := I+AStartArrayIndexIncl;
+  inc(FSliceCount, L);
 end;
 
 function TSlice<T>.Append(Value: T): integer;
