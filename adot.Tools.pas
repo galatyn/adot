@@ -1647,15 +1647,17 @@ begin
 end;
 
 class function TGUIDUtils.TryStrToGuid(const S: string; out Dst: TGUID): boolean;
+var V: string;
 begin
-  result := IsValid(S);
+  V := Trim(S);
+  result := IsValid(V);
   if result then
-    Dst := StringToGuid(S);
+    Dst := StringToGuid(V);
 end;
 
 class function TGUIDUtils.StrToGuid(const S: string): TGUID;
 begin
-  result := StringToGuid(S);
+  result := StringToGuid(Trim(S));
 end;
 
 class function TGUIDUtils.StrToGuidDef(const S: string): TGUID;
@@ -1664,9 +1666,11 @@ begin
 end;
 
 class function TGUIDUtils.StrToGuidDef(const S: string; const Def: TGUID): TGUID;
+var V: string;
 begin
-  if IsValid(S)
-    then result := StringToGuid(S)
+  V := Trim(S);
+  if IsValid(V)
+    then result := StringToGuid(V)
     else result := Def;
 end;
 

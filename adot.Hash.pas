@@ -56,6 +56,7 @@ type
     class procedure Update(const Value; ValueByteSize: integer; var Hash: THashData); overload;
     class procedure Update(const Value: integer;      var Hash: THashData); overload;
     class procedure Update(const Value: double;       var Hash: THashData); overload;
+    class procedure Update(const Value: TGUID;        var Hash: THashData); overload;
 
     { for values with variable length, hash will be generated from length and data }
     class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
@@ -332,6 +333,11 @@ begin
 end;
 
 class procedure TCustomHash.Update(const Value: double; var Hash: THashData);
+begin
+  DoUpdate(Value, SizeOf(Value), Hash);
+end;
+
+class procedure TCustomHash.Update(const Value: TGUID; var Hash: THashData);
 begin
   DoUpdate(Value, SizeOf(Value), Hash);
 end;
