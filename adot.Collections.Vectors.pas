@@ -2,10 +2,11 @@ unit adot.Collections.Vectors;
 
 interface
 {
-  TArr<T>          Ligtweight managed wrapper for TArray<T> (simple and fast analog of TList<T>)
-  TVectorClass<T>  Extended analog of TList<T>
-  TVector<T>       Managed analog of TList<T> with overloaded operators
-  TVector2D<T>     Simple managed analog of TList<T> for 2-dimensional array
+                                                                       managed  copy-on-write
+  TArr<T>          generic record,  wrapper for TArray<T>                +            -
+  TArr2D<T>        generic record, wrapper for 2-dimensional array       +            -
+  TVector<T>       generic record, supports copy-on-write                +            +
+  TVectorClass<T>  generic class, base for TVector<T>                    -            -
 }
 
 uses
@@ -19,18 +20,20 @@ uses
   System.Math;
 
 type
-  { Wrapper for TArray<T> (array with Add/Delete functionality). Example:
+  { Most efficient vector-like container, but doesn't support copy-on-write.
+    Wrapper for TArray<T> (array with Add/Delete functionality). Example:
        function GetFiltered(const Src: TArray<integer>; Filter: TFunc<integer, boolean>): TArray<integer>;
        var
          V: TArr<integer>;
          I: integer;
        begin
-         V.Clear;
+         V.Init;
          for I := 0 to High(Src) do
            if Filter(Src[I]) then
              V.Add(Src[I]); // more efficient than resizing TArray<> every time
          Result := V.ToArray; // there is no copying of data here, we get array pointer only
-       end; }
+       end;
+   }
   TArr<T> = record
   public
     { we define it before other field to make access more efficient }
@@ -88,6 +91,7 @@ type
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
     procedure Add(const Value: TArray<T>); overload;
+    procedure Add(const Value: TArray<T>; AStartIndex,ACount: integer); overload;
     procedure Add(const Value: TEnumerable<T>); overload;
     procedure Add(const Value: TArr<T>); overload;
 
@@ -121,12 +125,19 @@ type
     procedure Sort; overload;
     procedure Sort(Comparer: IComparer<T>); overload;
     procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
-    procedure Sort(Comparer: TFunc<T,T,integer>); overload;
-    procedure Sort(Comparer: TFunc<T,T,integer>; AIndex, ACount: Integer); overload;
+    procedure Sort(Comparison: TComparison<T>); overload;
+    procedure Sort(Comparison: TComparison<T>; AIndex, ACount: Integer); overload;
 
     function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>; AIndex,ACount: Integer): Boolean; overload;
+
+    class operator Explicit(const a : TArr<T>) : TArray<T>;
+    class operator Explicit(const a : TArray<T>) : TArr<T>;
+    class operator Implicit(const a : TArr<T>) : TArray<T>;
+    class operator Implicit(const a : TArray<T>) : TArr<T>;
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
@@ -542,7 +553,7 @@ type
   end;
 
   { Dynamic 2-dimensional array }
-  TVector2D<T> = record
+  TArr2D<T> = record
   public
     Rows: TArr<TArr<T>>;
 
@@ -664,7 +675,7 @@ end;
 
 function TArr<T>.Add: integer;
 begin
-  if Count>=Capacity then
+  if Count >= Capacity then
     Grow;
   result := FCount;
   inc(FCount);
@@ -677,13 +688,20 @@ begin
 end;
 
 procedure TArr<T>.Add(const Value: TArray<T>);
+begin
+  Add(Value, 0, System.Length(Value));
+end;
+
+procedure TArr<T>.Add(const Value: TArray<T>; AStartIndex,ACount: integer);
 var
   I: Integer;
 begin
-  I := Count + System.Length(Value);
+  if ACount <= 0 then
+    Exit;
+  I := Count + ACount;
   if I > Capacity then
     Capacity := I;
-  for I := Low(Value) to High(Value) do
+  for I := AStartIndex to AStartIndex+ACount-1 do
     Add(Value[I]);
 end;
 
@@ -724,6 +742,26 @@ begin
   Value := Items[Index1];
   Items[Index1] := Items[Index2];
   Items[Index2] := Value;
+end;
+
+class operator TArr<T>.Implicit(const a: TArr<T>): TArray<T>;
+begin
+  result := a.ToArray;
+end;
+
+class operator TArr<T>.Implicit(const a: TArray<T>): TArr<T>;
+begin
+  result.Init(a);
+end;
+
+class operator TArr<T>.Explicit(const a: TArr<T>): TArray<T>;
+begin
+  result := a.ToArray;
+end;
+
+class operator TArr<T>.Explicit(const a: TArray<T>): TArr<T>;
+begin
+  result.Init(a);
 end;
 
 function TArr<T>.ToString: string;
@@ -969,20 +1007,16 @@ begin
   TArray.Sort<T>(Items, Comparer, AIndex, ACount);
 end;
 
-procedure TArr<T>.Sort(Comparer: TFunc<T, T, integer>);
+procedure TArr<T>.Sort(Comparison: TComparison<T>);
 begin
-  Sort(Comparer, 0, Count);
+  Sort(Comparison, 0, Count);
 end;
 
-procedure TArr<T>.Sort(Comparer: TFunc<T, T, integer>; AIndex, ACount: Integer);
+procedure TArr<T>.Sort(Comparison: TComparison<T>; AIndex, ACount: Integer);
 var
   C: IComparer<T>;
 begin
-  C := TDelegatedComparer<T>.Create(
-    function (const A,B: T): integer
-    begin
-      result := Comparer(A,B);
-    end);
+  C := TDelegatedComparer<T>.Create(Comparison);
   TArray.Sort<T>(Items, C, AIndex, ACount);
 end;
 
@@ -999,6 +1033,16 @@ end;
 function TArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean;
 begin
   result := TArray.BinarySearch<T>(Items, Item, FoundIndex, Comparer, AIndex,ACount);
+end;
+
+function TArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>; AIndex, ACount: Integer): Boolean;
+begin
+  result := BinarySearch(Item, FoundIndex, TDelegatedComparer<T>.Create(Comparison), AIndex, ACount);
+end;
+
+function TArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>): Boolean;
+begin
+  result := BinarySearch(Item, FoundIndex, TDelegatedComparer<T>.Create(Comparison), 0, Count);
 end;
 
 procedure TArr<T>.Add(const Value: TArr<T>);
@@ -2795,9 +2839,9 @@ begin
   RW.Remove(AFilter);
 end;
 
-{ TVector2D<T>.TCollectionEnumerator }
+{ TArr2D<T>.TCollectionEnumerator }
 
-constructor TVector2D<T>.TEnumerator.Create(const Rows: TArr<TArr<T>>);
+constructor TArr2D<T>.TEnumerator.Create(const Rows: TArr<TArr<T>>);
 begin
   inherited Create;
   Self.Rows := Rows;
@@ -2805,7 +2849,7 @@ begin
   Y := 0;
 end;
 
-function TVector2D<T>.TEnumerator.DoMoveNext: Boolean;
+function TArr2D<T>.TEnumerator.DoMoveNext: Boolean;
 begin
   if Y >= Rows.Count then
     Exit(False);
@@ -2823,32 +2867,32 @@ begin
   Result := True;
 end;
 
-function TVector2D<T>.TEnumerator.DoGetCurrent: T;
+function TArr2D<T>.TEnumerator.DoGetCurrent: T;
 begin
   result := Rows[Y][X];
 end;
 
-{ TVector2D<T>.TCollection }
+{ TArr2D<T>.TCollection }
 
-constructor TVector2D<T>.TCollection.Create(const Rows: TArr<TArr<T>>);
+constructor TArr2D<T>.TCollection.Create(const Rows: TArr<TArr<T>>);
 begin
   inherited Create;
   Self.Rows := Rows;
 end;
 
-function TVector2D<T>.TCollection.DoGetEnumerator: TEnumerator<T>;
+function TArr2D<T>.TCollection.DoGetEnumerator: TEnumerator<T>;
 begin
   result := TEnumerator.Create(Rows);
 end;
 
-{ TVector2D<T> }
+{ TArr2D<T> }
 
-procedure TVector2D<T>.Init(Width, Height: integer);
+procedure TArr2D<T>.Init(Width, Height: integer);
 var
   Y: integer;
   V: TArr<T>;
 begin
-  Self := Default(TVector2D<T>);
+  Self := Default(TArr2D<T>);
   Rows := TArr<TArr<T>>.Create(Height);
   Rows.Count := Height;
   for Y := 0 to Height-1 do
@@ -2858,27 +2902,27 @@ begin
   end;
 end;
 
-procedure TVector2D<T>.Clear;
+procedure TArr2D<T>.Clear;
 begin
-  Self := Default(TVector2D<T>);
+  Self := Default(TArr2D<T>);
 end;
 
-function TVector2D<T>.Collection: IInterfacedObject<TEnumerable<T>>;
+function TArr2D<T>.Collection: IInterfacedObject<TEnumerable<T>>;
 begin
   result := TInterfacedObject<TEnumerable<T>>.Create(TCollection.Create(Rows));
 end;
 
-function TVector2D<T>.Add(y: integer): integer;
+function TArr2D<T>.Add(y: integer): integer;
 begin
   result := Rows.Items[y].Add;
 end;
 
-function TVector2D<T>.Add(y: integer; const Value: T): integer;
+function TArr2D<T>.Add(y: integer; const Value: T): integer;
 begin
   result := Rows.Items[y].Add(Value);
 end;
 
-function TVector2D<T>.Add(y: integer; const Values: TEnumerable<T>): integer;
+function TArr2D<T>.Add(y: integer; const Values: TEnumerable<T>): integer;
 var
   Value: T;
 begin
@@ -2887,7 +2931,7 @@ begin
     result := Self.Rows.Items[y].Add(Value);
 end;
 
-function TVector2D<T>.Add(y: integer; const Values: TArray<T>): integer;
+function TArr2D<T>.Add(y: integer; const Values: TArray<T>): integer;
 var
   I: Integer;
 begin
@@ -2896,37 +2940,37 @@ begin
     result := Self.Rows.Items[y].Add(Values[I]);
 end;
 
-function TVector2D<T>.AddRow: integer;
+function TArr2D<T>.AddRow: integer;
 begin
   result := Rows.Add;
 end;
 
-function TVector2D<T>.GetValue(x, y: integer): T;
+function TArr2D<T>.GetValue(x, y: integer): T;
 begin
   result := Rows.Items[y].Items[x];
 end;
 
-procedure TVector2D<T>.SetValue(x, y: integer; const Value: T);
+procedure TArr2D<T>.SetValue(x, y: integer; const Value: T);
 begin
   Rows.Items[y].Items[x] := Value;
 end;
 
-function TVector2D<T>.GetRowCount: integer;
+function TArr2D<T>.GetRowCount: integer;
 begin
   result := Rows.Count;
 end;
 
-procedure TVector2D<T>.SetRowCount(const Value: integer);
+procedure TArr2D<T>.SetRowCount(const Value: integer);
 begin
   Rows.Count := Value;
 end;
 
-function TVector2D<T>.GetWidth(y: integer): integer;
+function TArr2D<T>.GetWidth(y: integer): integer;
 begin
   result := Rows.Items[y].Count;
 end;
 
-procedure TVector2D<T>.SetWidth(y: integer; const Value: integer);
+procedure TArr2D<T>.SetWidth(y: integer; const Value: integer);
 begin
   Rows.Items[y].Count := Value;
 end;
