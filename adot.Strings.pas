@@ -104,92 +104,6 @@ type
   TStrCharsPos = (scAll, scFirst, scLast);
   TTextEncoding = (teUnknown, teAnsi,  teUTF8,  teUTF16LE,  teUTF16BE,  teUTF32LE,  teUTF32BE);
 
-  { Lightweight and managed analog of TStringStream:
-    - write operations are faster on large input in comparing with regular string concatenation
-    - supports stream-like read/write operations
-    - lighter/faster than TStringStream
-    DEPRECATED: For new development it is better to use TStringBuilder class }
-  TStringBuffer = record
-  public
-  private
-    FData: string;
-    FSize: integer;
-    FPosition: integer;
-
-    procedure SetSize(Value: integer);
-    function GetCapacity: integer;
-    procedure SetCapacity(Value: integer);
-    procedure CheckCapacity(MinCapacity: integer);
-    function GetLeft: integer;
-    procedure SetLeft(Value: integer);
-    function GetEOF: boolean;
-    function GetText: string;
-    procedure SetText(const Value: string);
-    function GetEmpty: Boolean;
-  public
-    procedure Init;
-
-    procedure Clear;
-
-    procedure Write(const Src: string; CharOffset,CharCount: integer); overload;
-    procedure Write(const Src: string); overload;
-    procedure Write(const Src: char); overload;
-
-    { Reads CharCount chars from current position of the buffer to Dst starting from DstCharOffset.
-      Dst should be preallocated to fit all requested characters. }
-    procedure Read(var Dst: string; DstCharOffset,CharCount: integer); overload;
-    { Reads CharCount chars from current position of the buffer to Dst. Length of Dst will be set equal to Size. }
-    procedure Read(var Dst: string; CharCount: integer); overload;
-    { Reads one character from current position of the buffer to Dst. }
-    procedure Read(var Dst: char); overload;
-
-    procedure TrimExcess;
-
-    { default encoding is UTF8 }
-    procedure LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
-    procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil);
-
-    { assign as string }
-    class operator Implicit(const Buffer: TStringBuffer): String; static;
-    class operator Implicit(const Data: string): TStringBuffer; static;
-    class operator Implicit(const Data: integer): TStringBuffer; static;
-    class operator Implicit(const Data: double): TStringBuffer; static;
-
-    { case insensitive compare: AnsiSameText(ALeft.Text,ARight.Text) }
-    class operator Equal(const ALeft, ARight: TStringBuffer): Boolean; overload;
-    class operator Equal(const ALeft: TStringBuffer; const ARight: string): Boolean; overload;
-    class operator Equal(const ALeft: string; const ARight: TStringBuffer): Boolean; overload;
-    class operator NotEqual(const Left, Right: TStringBuffer): Boolean;
-
-    { Concatenation. Position will be set behind last char of ARight. }
-    class operator Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
-    class operator Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
-    class operator Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
-
-    { 'tests'-'s'='test', 'c:\1\2\'-'\'='c:\1\2', ...}
-    class operator Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
-
-    { -'123'='321' }
-    class operator Negative(Value: TStringBuffer): TStringBuffer;
-
-    { 'test'*3='testtesttest'}
-    class operator Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
-    class operator Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
-
-    class operator In(const Left,Right: TStringBuffer): Boolean; overload;
-    class operator In(const Left: TStringBuffer; const Right: string): Boolean; overload;
-
-    property Size: integer read FSize write SetSize;
-    property Capacity: integer read GetCapacity write SetCapacity;
-    property Position: integer read FPosition write FPosition;
-    property Left: integer read GetLeft write SetLeft;
-    property EOF: boolean read GetEOF;
-    property Empty: boolean read GetEmpty;
-    property Text: string read GetText write SetText;
-    { Returns dirty buffer (capacity can be larger than size). }
-    property Data: string read FData;
-  end;
-
   { Position of token in the text. Starts from zero. }
   TTokenPos = record
   public
@@ -441,7 +355,7 @@ type
       "a'bc" -> "a'''bc"
       " a'bc " -> "' a'''bc '"}
     class function EncodeStringLiteral(const Value: string): string; overload; static;
-    class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuffer); overload; static;
+    class procedure EncodeStringLiteral(const Value: string; var Dst: TStringBuilder); overload; static;
 
     { hex-encoded string of utf8 presentation }
     class function EscapeIniValue(const KeyOrValue: string): string; static;
@@ -1288,17 +1202,17 @@ end;
 
 class function TStr.Replace(const Src: string; const CharsToReplace: TArray<Char>; const CharReplacement: string): string;
 var
-  Buf: TStringBuffer;
+  Buf: TStringBuilder;
   I: Integer;
   S: TSet<Char>;
 begin
   S.Init(CharsToReplace);
-  Buf.Clear;
+  Buf := TStringBuilder.Create;
   for I := 0 to Src.Length-1 do
     if Src.Chars[I] in S
-      then Buf.Write(CharReplacement)
-      else Buf.Write(Src.Chars[I]);
-  result := Buf.Text;
+      then Buf.Append(CharReplacement)
+      else Buf.Append(Src.Chars[I]);
+  result := Buf.ToString;
 end;
 
 class function TStr.Remove(const Src: string; const CharsToDelete: TArray<Char>): string;
@@ -1653,7 +1567,7 @@ var
   Parser: TTokText;
   Tokens: TArr<TCompound<TTokenPos, TTokText.TTextTokenType>>;
   Pair: TCompound<TTokenPos, TTokText.TTextTokenType>;
-  Buf: TStringBuffer;
+  Buf: TStringBuilder;
   Res: TArr<string>;
   I,J,N,L: integer;
 begin
@@ -1683,7 +1597,7 @@ begin
     Sys.FreeAndNil(Parser);
   end;
 
-  Buf.Clear;
+  Buf := TStringBuilder.Create;
   Res.Clear;
   I := 0;
   while I < Tokens.Count do
@@ -1708,12 +1622,12 @@ begin
       { if word + punctuation is too long for single line }
       if Pair.A.Len + L > Options.MaxStrLen then
       begin
-        if Buf.Size > 0 then
-          begin Res.Add(Buf.Text); Buf.Clear; end;
+        if Buf.Length > 0 then
+          begin Res.Add(Buf.ToString); Buf.Clear; end;
         if Options.AllowWordToExceedMaxLen then
         begin
           for J := I to I+N do
-            Buf.Write(Parser[Tokens[J].A]);
+            Buf.Append(Parser[Tokens[J].A]);
           inc(I, N);
         end
         else
@@ -1724,20 +1638,20 @@ begin
             inc(Pair.A.Start, Options.MaxStrLen);
             dec(Pair.A.Len, Options.MaxStrLen);
           end;
-          Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+          Buf.Append(Src, Pair.A.Start, Pair.A.Len);
         end;
       end
       else
       { if word + punctuation is small enough to fit a line }
       begin
-        if Buf.Size + Ifthen(Buf.Size=0,0,1) + Pair.A.Len + N > Options.MaxStrLen then
-          begin Res.Add(Buf.Text); Buf.Clear; end;
-        if Buf.Size > 0 then
-          Buf.Write(' ');
+        if Buf.Length + Ifthen(Buf.Length=0,0,1) + Pair.A.Len + N > Options.MaxStrLen then
+          begin Res.Add(Buf.ToString); Buf.Clear; end;
+        if Buf.Length > 0 then
+          Buf.Append(' ');
         for J := I to I+N do
         begin
           Pair := Tokens[J];
-          Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+          Buf.Append(Src, Pair.A.Start, Pair.A.Len);
         end;
         inc(I, N);
       end;
@@ -1745,16 +1659,16 @@ begin
     else
     begin
       { tttPunctuation }
-      if Buf.Size + Pair.A.Len > Options.MaxStrLen then
-        begin Res.Add(Buf.Text); Buf.Clear; end;
-      Buf.Write(Src, Pair.A.Start, Pair.A.Len);
+      if Buf.Length + Pair.A.Len > Options.MaxStrLen then
+        begin Res.Add(Buf.ToString); Buf.Clear; end;
+      Buf.Append(Src, Pair.A.Start, Pair.A.Len);
     end;
 
     inc(I);
   end;
 
-  if Buf.Size > 0 then
-    Res.Add(Buf.Text);
+  if Buf.Length > 0 then
+    Res.Add(Buf.ToString);
   result := Res.ToArray;
 end;
 
@@ -3804,9 +3718,9 @@ function TStringEditor.Apply(const Src: string): string;
 var
   L,I,SrcPos: Integer;
   P: PReplace;
-  Buffer: TStringBuffer;
+  Buffer: TStringBuilder;
 begin
-  Buffer.Clear;
+  Buffer := TStringBuilder.Create;
   Sort;
   SrcPos := 0;
   L := Length(Src);
@@ -3816,266 +3730,14 @@ begin
     if P.DstPos.Start > L then
       Break;
     if P.DstPos.Start > SrcPos then
-      Buffer.Write(Src, SrcPos, P.DstPos.Start-SrcPos);
+      Buffer.Append(Src, SrcPos, P.DstPos.Start-SrcPos);
     if P.SrcPos.Len > 0 then
-      Buffer.Write(P.SrcText, P.SrcPos.Start, P.SrcPos.Len);
+      Buffer.Append(P.SrcText, P.SrcPos.Start, P.SrcPos.Len);
     SrcPos := Min(Max(P.DstPos.Start + P.DstPos.Len, SrcPos), L);
   end;
   if SrcPos < L then
-    Buffer.Write(Src, SrcPos, L-SrcPos);
-  result := Buffer.Text;
-end;
-
-{ TStringBuffer }
-
-class operator TStringBuffer.Add(const ALeft: TStringBuffer; const ARight: string): TStringBuffer;
-begin
-  result.Text := ALeft.Text + ARight;
-  result.Position := result.Size;
-end;
-
-class operator TStringBuffer.Add(const ALeft, ARight: TStringBuffer): TStringBuffer;
-begin
-  result.Text := ALeft.Text + ARight.Text;
-  result.Position := result.Size;
-end;
-
-class operator TStringBuffer.In(const Left, Right: TStringBuffer): Boolean;
-begin
-  result := TStr.Contains(Left.Text, Right.Text);
-end;
-
-class operator TStringBuffer.In(const Left: TStringBuffer; const Right: string): Boolean;
-begin
-  result := TStr.Contains(Left.Text, Right);
-end;
-
-procedure TStringBuffer.Init;
-begin
-  Self := Default(TStringBuffer);
-end;
-
-class operator TStringBuffer.Add(const ALeft: string; const ARight: TStringBuffer): TStringBuffer;
-begin
-  result.Text := ALeft + ARight.Text;
-  result.Position := result.Size;
-end;
-
-procedure TStringBuffer.CheckCapacity(MinCapacity: integer);
-begin
-  if Capacity < MinCapacity then
-    Capacity := Sys.Max(MinCapacity, Capacity shl 1, 32);
-end;
-
-procedure TStringBuffer.Clear;
-begin
-  Self := Default(TStringBuffer);
-end;
-
-class operator TStringBuffer.Equal(const ALeft: string; const ARight: TStringBuffer): Boolean;
-begin
-  result := AnsiSameText(ALeft, ARight.Text);
-end;
-
-class operator TStringBuffer.Equal(const ALeft: TStringBuffer; const ARight: string): Boolean;
-begin
-  result := AnsiSameText(ALeft.Text, ARight);
-end;
-
-class operator TStringBuffer.Equal(const ALeft, ARight: TStringBuffer): Boolean;
-begin
-  result := AnsiSameText(ALeft.Text, ARight.Text);
-end;
-
-function TStringBuffer.GetCapacity: integer;
-begin
-  result := Length(FData);
-end;
-
-function TStringBuffer.GetEmpty: Boolean;
-begin
-  result := Size=0;
-end;
-
-function TStringBuffer.GetEOF: boolean;
-begin
-  result := Position >= Size;
-end;
-
-function TStringBuffer.GetLeft: integer;
-begin
-  result := Size-Position;
-end;
-
-function TStringBuffer.GetText: string;
-begin
-  if Size=Capacity then
-    result := FData
-  else
-  begin
-    SetLength(result, Size);
-    System.Move(FData[Low(FData)], result[Low(result)], Size*SizeOf(Char));
-  end;
-end;
-
-class operator TStringBuffer.Implicit(const Buffer: TStringBuffer): String;
-begin
-  result := Buffer.Text;
-end;
-
-class operator TStringBuffer.Implicit(const Data: string): TStringBuffer;
-begin
-  result.Text := Data;
-end;
-
-class operator TStringBuffer.Implicit(const Data: integer): TStringBuffer;
-begin
-  result.Text := Data.ToString;
-end;
-
-class operator TStringBuffer.Implicit(const Data: double): TStringBuffer;
-begin
-  result.Text := Data.ToString;
-end;
-
-procedure TStringBuffer.SaveToFile(const FileName: string; Encoding: TEncoding = nil);
-var
-  Bytes: TArray<Byte>;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  SetLength(Bytes, Encoding.GetByteCount(FData, 0,Size));
-  Encoding.GetBytes(FData, 0,Size, Bytes,0);
-  TFileUtils.Save<Byte>(FileName, Bytes, 0,Length(Bytes));
-end;
-
-procedure TStringBuffer.LoadFromFile(const FileName: string; Encoding: TEncoding = nil);
-var
-  Bytes: TArray<byte>;
-begin
-  if Encoding=nil then
-    Encoding := TEncoding.UTF8;
-  TFileUtils.Load<Byte>(FileName, Bytes);
-  FData := Encoding.GetString(Bytes);
-  FSize := Length(FData);
-  FPosition := 0;
-end;
-
-class operator TStringBuffer.Multiply(const ALeft: TStringBuffer; ARight: integer): TStringBuffer;
-var
-  S: string;
-  I: Integer;
-begin
-  result.Clear;
-  S := ALeft.Text;
-  for I := 0 to ARight-1 do
-    result.Write(S);
-end;
-
-class operator TStringBuffer.Multiply(ALeft: integer; const ARight: TStringBuffer): TStringBuffer;
-begin
-  result := ARight*ALeft;
-end;
-
-class operator TStringBuffer.Negative(Value: TStringBuffer): TStringBuffer;
-begin
-  result.Text := TStr.Reverse(Value.Text);
-end;
-
-class operator TStringBuffer.NotEqual(const Left, Right: TStringBuffer): Boolean;
-begin
-  result := not (Left=Right);
-end;
-
-procedure TStringBuffer.Read(var Dst: char);
-begin
-  Assert(Position + 1 <= Size);
-  Dst := FData.Chars[Position];
-  inc(FPosition);
-end;
-
-procedure TStringBuffer.Read(var Dst: string; DstCharOffset, CharCount: integer);
-begin
-  Assert(Position + CharCount <= Size);
-  System.Move(FData[Position+Low(FData)], Dst[DstCharOffset+Low(FData)], CharCount*SizeOf(Char));
-  inc(FPosition, CharCount);
-end;
-
-procedure TStringBuffer.Read(var Dst: string; CharCount: integer);
-begin
-  SetLength(Dst, CharCount);
-  Read(Dst, 0, CharCount);
-end;
-
-procedure TStringBuffer.SetCapacity(Value: integer);
-begin
-  Assert(Value >= Size);
-  SetLength(FData, Value);
-end;
-
-procedure TStringBuffer.SetLeft(Value: integer);
-begin
-  Size := Position + Value;
-end;
-
-procedure TStringBuffer.SetSize(Value: integer);
-begin
-  CheckCapacity(Value);
-  FSize := Value;
-  FPosition := Max(Min(FPosition, FSize), 0);
-end;
-
-procedure TStringBuffer.SetText(const Value: string);
-begin
-  Clear;
-  Write(Value);
-  Position := 0;
-end;
-
-class operator TStringBuffer.Subtract(const ALeft, ARight: TStringBuffer): TStringBuffer;
-var
-  L,R: string;
-begin
-  L := ALeft.Text;
-  R := ARight.Text;
-  if L.EndsWith(R, True) then
-    result.Text := L.Substring(0, Length(L)-Length(R))
-  else
-    result.Text := L;
-end;
-
-procedure TStringBuffer.TrimExcess;
-begin
-  Capacity := Size;
-end;
-
-procedure TStringBuffer.Write(const Src: char);
-begin
-  CheckCapacity(Position + 1);
-  FData[Position+Low(FData)] := Src;
-  inc(FPosition);
-  if FPosition > FSize then
-    FSize := FPosition;
-end;
-
-procedure TStringBuffer.Write(const Src: string);
-begin
-  Write(Src, 0, Length(Src));
-end;
-
-procedure TStringBuffer.Write(const Src: string; CharOffset, CharCount: integer);
-begin
-  {$IFOPT R+}
-  Assert((CharOffset>=0) and (CharOffset+CharCount<=Length(Src)));
-  {$ENDIF}
-  if CharCount>0 then
-  begin
-    CheckCapacity(Position + CharCount);
-    System.Move(Src[CharOffset+Low(Src)], FData[Position+Low(Src)], CharCount*SizeOf(Char));
-    inc(FPosition, CharCount);
-    if FPosition > FSize then
-      FSize := FPosition;
-  end;
+    Buffer.Append(Src, SrcPos, L-SrcPos);
+  result := Buffer.ToString;
 end;
 
 { TCodePages }
@@ -4419,21 +4081,21 @@ end;
 
 class function TEnc.EncodeStringLiteral(const Value: string): string;
 var
-  Buf: TStringBuffer;
+  Buf: TStringBuilder;
 begin
-  Buf.Clear;
+  Buf := TStringBuilder.Create;
   EncodeStringLiteral(Value, Buf);
-  Result := Buf.Text;
+  Result := Buf.ToString;
 end;
 
-class procedure TEnc.EncodeStringLiteral(const Value: string; var Dst: TStringBuffer);
+class procedure TEnc.EncodeStringLiteral(const Value: string; var Dst: TStringBuilder);
 var
   I: integer;
 begin
   for I := Low(Value) to High(Value) do
     if Value[I]=''''
-      then Dst.Write('''''')
-      else Dst.Write(Value[I]);
+      then Dst.Append('''''')
+      else Dst.Append(Value[I]);
 end;
 
 class function TEnc.EscapeIniValue(const KeyOrValue: string): string;

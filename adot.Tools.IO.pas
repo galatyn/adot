@@ -261,8 +261,7 @@ type
   end;
 
   { Lightweight and managed analog of TBytesStream.
-    Has mixed set of methods - byte and string-compatible.
-    Check also TStringBuffer from *.Strings unit. }
+    Has mixed set of methods - byte and string-compatible }
   TBuffer = record
   private
     FData: TArray<Byte>;
@@ -1385,3 +1384,4 @@ begin
 end;
 
 end.
+

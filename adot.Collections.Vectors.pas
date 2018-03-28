@@ -1990,17 +1990,17 @@ end;
 
 function TVectorClass<T>.ToString(const ValueSeparator: string; SepAfterLastValue: boolean): string;
 var
-  Buf: TStringBuffer;
+  Buf: TStringBuilder;
   I: Integer;
 begin
-  Buf.Clear;
+  Buf := TStringBuilder.Create;
   if Count > 0 then
-    Buf.Write(TRttiUtils.ValueAsString<T>(FItems[0]));
+    Buf.Append(TRttiUtils.ValueAsString<T>(FItems[0]));
   for I := 1 to Count-1 do
-    Buf.Write(ValueSeparator + TRttiUtils.ValueAsString<T>(FItems[I]));
+    Buf.Append(ValueSeparator + TRttiUtils.ValueAsString<T>(FItems[I]));
   if (Count > 0) and SepAfterLastValue then
-    Buf.Write(ValueSeparator);
-  Result := Buf.Text;
+    Buf.Append(ValueSeparator);
+  Result := Buf.ToString;
 end;
 
 function TVectorClass<T>.ToText: string;

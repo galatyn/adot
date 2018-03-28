@@ -27,6 +27,7 @@ uses
 type
   { Class for map. Based on TDictionary and extends it with some features. }
   TMapClass<TKey,TValue> = class(TDictionary<TKey,TValue>)
+  private
   protected
     FComparerCopy: IEqualityComparer<TKey>; { FDictionary.Comparer is hidden in private section, so we keep copy }
     FOwnerships: TDictionaryOwnerships;
@@ -37,7 +38,6 @@ type
     function GetOwnsValues: boolean;
     procedure SetOwnsKeys(const Value: boolean);
     procedure SetOwnsValues(const Value: boolean);
-    function GetAsString: string;
     class function EscapeStrVal(const S: string): string; static;
 
   public
@@ -55,11 +55,12 @@ type
     procedure Remove(const AKeys: TEnumerable<TKey>); overload;
 
     function Empty: boolean;
+    function ToText(const Delimiter: string = #13#10): string;
+    function ToString: string; override;
 
     property Comparer: IEqualityComparer<TKey> read FComparerCopy;
     property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
-    property AsString:string read GetAsString;
   end;
 
   { Class for map. Based on TDictionary and extends it with some features. }
@@ -98,7 +99,6 @@ type
     procedure SetItem(const Key: TKey; const Value: TValue);
     function GetCount: integer;
     function GetEmpty: Boolean;
-    function GetAsString: string;
 
   public
     procedure Init; overload;
@@ -135,6 +135,9 @@ type
     function ContainsKey(const Key: TKey): Boolean;
     function ToArray: TArray<TPair<TKey,TValue>>;
 
+    function ToString: string;
+    function ToText(const Delimiter: string = #13#10): string;
+
     class operator Equal(A,B: TMap<TKey,TValue>): Boolean;
     class operator NotEqual(A,B: TMap<TKey,TValue>): Boolean;
 
@@ -145,7 +148,6 @@ type
     property Values: TValueCollection read GetValues;
     property OwnsKeys: boolean read GetOwnsKeys write SetOwnsKeys;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
-    property AsString:string read GetAsString;
     property Collection: TEnumerable<TPair<TKey, TValue>> read GetCollection;
   end;
 
@@ -586,7 +588,7 @@ begin
   result := S;
 end;
 
-function TMapClass<TKey, TValue>.GetAsString: string;
+function TMapClass<TKey, TValue>.ToText(const Delimiter: string = #13#10): string;
 var
   Arr: TArray<TPair<TKey, TValue>>;
   KeyComparer: IComparer<TKey>;
@@ -594,7 +596,7 @@ var
   PairComparer: IComparer<TPair<TKey, TValue>>;
   Pair: TPair<TKey, TValue>;
   i: Integer;
-  Buf: TStringBuffer;
+  Buf: TStringBuilder;
 begin
   Arr := ToArray;
   KeyComparer := TComparerUtils.DefaultComparer<TKey>;
@@ -607,17 +609,22 @@ begin
         result := ValueComparer.Compare(L.Value, R.Value);
     end);
   TArray.Sort<TPair<TKey, TValue>>(Arr, PairComparer);
-  Buf.Clear;
+  Buf := TStringBuilder.Create;
   for Pair in Arr do
-    Buf.Write(
-      IfThen(Buf.Empty,'',' ') +
-      '(' +
-      EscapeStrVal(TRttiUtils.ValueAsString<TKey>(Pair.Key)) +
-      ', ' +
-      EscapeStrVal(TRttiUtils.ValueAsString<TValue>(Pair.Value)) +
-      ')'
-    );
-  Result := Buf.Text;
+  begin
+    if Buf.Length>0 then Buf.Append(Delimiter);
+    Buf.Append('(');
+    Buf.Append( EscapeStrVal(TRttiUtils.ValueAsString<TKey>(Pair.Key)));
+    Buf.Append(', ');
+    Buf.Append(TRttiUtils.ValueAsString<TValue>(Pair.Value));
+    Buf.Append(')');
+  end;
+  Result := Buf.ToString;
+end;
+
+function TMapClass<TKey, TValue>.ToString: string;
+begin
+  result := ToText(' ');
 end;
 
 function TMapClass<TKey, TValue>.GetOwnsKeys: boolean;
@@ -1341,9 +1348,14 @@ begin
   result := ReadOnly.ToArray;
 end;
 
-function TMap<TKey, TValue>.GetAsString: string;
+function TMap<TKey, TValue>.ToString: string;
 begin
-  result := ReadOnly.AsString;
+  result := ReadOnly.ToString;
+end;
+
+function TMap<TKey, TValue>.ToText(const Delimiter: string = #13#10): string;
+begin
+  result := ReadOnly.ToText(Delimiter);
 end;
 
 function TMap<TKey, TValue>.GetCollection: TEnumerable<TPair<TKey, TValue>>;
