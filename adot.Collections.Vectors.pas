@@ -13,6 +13,7 @@ uses
   adot.Types,
   adot.Collections.Types,
   adot.Collections.Slices,
+  adot.Collections.Sets,
   System.Generics.Collections,
   System.Generics.Defaults,
   System.SysUtils,
@@ -53,6 +54,7 @@ type
     procedure SetLast(const Value: T);
     function GetEmpty: Boolean;
     function GetTotalSizeBytes: int64;
+    function ContainsAll(V: TArray<T>): boolean;
 
   public
     type
@@ -88,6 +90,9 @@ type
     { Creates slice on the array for items accepted by filter }
     function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
 
+    procedure Clear;
+    procedure TrimExcess;
+
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
     procedure Add(const Value: TArray<T>); overload;
@@ -100,11 +105,50 @@ type
     function Copy: TArr<T>;
 
     function Insert(Index: integer; const Value: T): integer;
+
     procedure Delete(ItemIndex: integer); overload;
-    procedure Move(SrcIndex, DstIndex: integer);
-    procedure Exchange(Index1,Index2: integer);
+    procedure Delete(AStartIndex,ACount: integer); overload;
+    procedure Delete(const AIndices: TArray<integer>); overload;
+    procedure Delete(AIndices: TSet<integer>); overload;
     procedure DeleteLast;
+
+    procedure Remove(const V: T; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(AFilter: TFuncFilterValueIndex<T>); overload;
+
+    function Extract(ItemIndex: integer): T;
+    function ExtractAll: TArray<T>;
     function ExtractLast: T;
+
+    procedure Move(SrcIndex, DstIndex: integer);
+
+    procedure Exchange(Index1,Index2: integer);
+        { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
+    procedure Reverse; overload;
+    procedure Reverse(AStartIndex,ACount: integer); overload;
+    { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
+      RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
+    procedure RotateLeft(Index1,Index2,Shift: integer);
+    { RotateRight( [1,2,3,4,5], 1, 3, 1 ) = [1, 4,2,3, 5]
+      RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
+    procedure RotateRight(Index1,Index2,Shift: integer);
+    { Shuffle items of the range in random order }
+    procedure Shuffle; overload;
+    procedure Shuffle(AStartIndex,ACount: integer); overload;
+    { Generate all permutations. Permutations of [2,1,3]:
+        [1,2,3] [1,3,2] [2,1,3] [2,3,1] [3,1,2] [3,2,1] }
+    procedure FirstPermutation;
+    function NextPermutation: boolean;
+    function PrevPermutation: boolean;
+
+    function Contains(const Value: T): boolean; overload;
+    function Contains(const Values: TArray<T>): boolean; overload;
+    function Contains(const Values: TEnumerable<T>): boolean; overload;
+
+    function Sorted: boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparer: IComparer<T>): boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparison: TComparison<T>): boolean; overload;
 
     function IndexOf(const Value: T): integer; overload;
     function IndexOf(const Value: T; Comparer: IComparer<T>): integer; overload;
@@ -112,15 +156,6 @@ type
     function FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
     function FindNext(const Value: T; var Index: integer): boolean; overload;
     function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
-
-    { Trims and returns Items }
-    function ToString: string;
-    function ToText(const ValuesDelimiter: string = #13#10): string;
-    function ToArray: TArray<T>;
-
-    function GetEnumerator: TEnumerator; reintroduce;
-    procedure Clear;
-    procedure TrimExcess;
 
     procedure Sort; overload;
     procedure Sort(Comparer: IComparer<T>); overload;
@@ -134,6 +169,23 @@ type
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>): Boolean; overload;
     function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>; AIndex,ACount: Integer): Boolean; overload;
 
+    { TArray }
+    function Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer; overload;
+    function Compare(const B: TArray<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
+    { TEnumerable }
+    function Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer; overload;
+    function Compare(B: TEnumerable<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
+
+    function Equal(const B: TArray<T>): boolean; overload;
+    function Equal(B: TEnumerable<T>): boolean; overload;
+
+    { Trims and returns Items }
+    function ToString: string;
+    function ToText(const ValuesDelimiter: string = #13#10): string;
+    function ToArray: TArray<T>;
+
+    function GetEnumerator: TEnumerator; reintroduce;
+
     class operator Explicit(const a : TArr<T>) : TArray<T>;
     class operator Explicit(const a : TArray<T>) : TArr<T>;
     class operator Implicit(const a : TArr<T>) : TArray<T>;
@@ -142,7 +194,149 @@ type
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
     property Count: integer read FCount write SetCount;
-    property Length: integer read FCount write SetCount;
+    property Capacity: integer read GetCapacity write SetCapacity;
+    property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
+    property Empty: boolean read GetEmpty;
+    property TotalSizeBytes: int64 read GetTotalSizeBytes;
+  end;
+
+  TObjectArr<T: class> = record
+  private
+    Arr: TArr<T>;
+
+    function GetCapacity: integer;
+    function GetEmpty: boolean;
+    function GetFirst: T;
+    function GetItem(ItemIndex: integer): T;
+    function GetLast: T;
+    function GetTotalSizeBytes: int64;
+    procedure SetCapacity(const Value: integer);
+    procedure SetCount(const Value: integer);
+    procedure SetFirst(const Value: T);
+    procedure SetItem(ItemIndex: integer; const Value: T);
+    procedure SetLast(const Value: T);
+    function GetCount: integer;
+  public
+
+    { Init is preferred over Create, it is obviously distinguished from classes.
+      Class-like Create can be useful when new instance is param of some routine }
+    procedure Init; overload;
+    procedure Init(ACapacity: integer); overload;
+    procedure Init(AItems: TArray<T>); overload;
+
+    class function Create: TArr<T>; overload; static;
+    class function Create(ACapacity: integer): TArr<T>; overload; static;
+    class function Create(AItems: TArray<T>): TArr<T>; overload; static;
+
+    { Creates empty slice on underlying array }
+    function GetSlice: TSlice<T>; overload;
+    { Creates slice from range of underlying array }
+    function GetSlice(AStartSliceIndexIncl,AEndSliceIndexExcl: integer): TSlice<T>; overload;
+    { Creates slice on the array for items accepted by filter }
+    function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
+
+    procedure Clear;
+    procedure TrimExcess;
+
+    function Add: integer; overload;
+    function Add(const Value: T): integer; overload;
+    procedure Add(const Value: TArray<T>); overload;
+    procedure Add(const Value: TArray<T>; AStartIndex,ACount: integer); overload;
+    procedure Add(const Value: TEnumerable<T>); overload;
+    procedure Add(const Value: TArr<T>); overload;
+
+    { There is no general way to copy object in Delphi.
+      We can get copy of all elements as TArr<T>, but not TObjectArr<T> }
+    function Copy: TArr<T>;
+
+    function Insert(Index: integer; const Value: T): integer;
+
+    procedure Delete(ItemIndex: integer); overload;
+    procedure Delete(AStartIndex,ACount: integer); overload;
+    procedure Delete(const AIndices: TArray<integer>); overload;
+    procedure Delete(AIndices: TSet<integer>); overload;
+    procedure DeleteLast;
+
+    procedure Remove(const V: T; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TArray<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(const V: TEnumerable<T>; AComparer: IComparer<T> = nil); overload;
+    procedure Remove(AFilter: TFuncFilterValueIndex<T>); overload;
+
+    function Extract(ItemIndex: integer): T;
+    function ExtractAll: TArray<T>;
+    function ExtractLast: T;
+
+    procedure Move(SrcIndex, DstIndex: integer);
+
+    procedure Exchange(Index1,Index2: integer);
+        { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
+    procedure Reverse; overload;
+    procedure Reverse(AStartIndex,ACount: integer); overload;
+    { RotateLeft( [1,2,3,4,5], 1, 3, 1 ) = [1, 3,4,2, 5]
+      RotateLeft( [1,2,3,4,5], 1, 3,-1 ) = [1, 4,2,3, 5] }
+    procedure RotateLeft(Index1,Index2,Shift: integer);
+    { RotateRight( [1,2,3,4,5], 1, 3, 1 ) = [1, 4,2,3, 5]
+      RotateRight( [1,2,3,4,5], 1, 3,-1 ) = [1, 3,4,2, 5] }
+    procedure RotateRight(Index1,Index2,Shift: integer);
+    { Shuffle items of the range in random order }
+    procedure Shuffle; overload;
+    procedure Shuffle(AStartIndex,ACount: integer); overload;
+    { Generate all permutations. Permutations of [2,1,3]:
+        [1,2,3] [1,3,2] [2,1,3] [2,3,1] [3,1,2] [3,2,1] }
+    procedure FirstPermutation;
+    function NextPermutation: boolean;
+    function PrevPermutation: boolean;
+
+    function Contains(const Value: T): boolean; overload;
+    function Contains(const Values: TArray<T>): boolean; overload;
+    function Contains(const Values: TEnumerable<T>): boolean; overload;
+
+    function Sorted: boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparer: IComparer<T>): boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparison: TComparison<T>): boolean; overload;
+
+    function IndexOf(const Value: T): integer; overload;
+    function IndexOf(const Value: T; Comparer: IComparer<T>): integer; overload;
+    function FindFirst(const Value: T; var Index: integer): boolean; overload;
+    function FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+    function FindNext(const Value: T; var Index: integer): boolean; overload;
+    function FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean; overload;
+
+    procedure Sort; overload;
+    procedure Sort(Comparer: IComparer<T>); overload;
+    procedure Sort(Comparer: IComparer<T>; AIndex, ACount: Integer); overload;
+    procedure Sort(Comparison: TComparison<T>); overload;
+    procedure Sort(Comparison: TComparison<T>; AIndex, ACount: Integer); overload;
+
+    function BinarySearch(const Item: T; out FoundIndex: Integer): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex,ACount: Integer): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>): Boolean; overload;
+    function BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>; AIndex,ACount: Integer): Boolean; overload;
+
+    { TArray }
+    function Compare(const B: TArray<T>; AComparer: IComparer<T> = nil): integer; overload;
+    function Compare(const B: TArray<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
+    { TEnumerable }
+    function Compare(B: TEnumerable<T>; AComparer: IComparer<T> = nil): integer; overload;
+    function Compare(B: TEnumerable<T>; AStartIndex,BStartIndex,ACount: integer; AComparer: IComparer<T> = nil): integer; overload;
+
+    function Equal(const B: TArray<T>): boolean; overload;
+    function Equal(B: TEnumerable<T>): boolean; overload;
+
+    { Trims and returns Items }
+    function ToString: string;
+    function ToText(const ValuesDelimiter: string = #13#10): string;
+    function ToArray: TArray<T>;
+
+    function GetEnumerator: TArr<T>.TEnumerator; reintroduce;
+
+    class operator Explicit(const a : TObjectArr<T>) : TArray<T>;
+    class operator Implicit(const a : TObjectArr<T>) : TArray<T>;
+
+    property First: T read GetFirst write SetFirst;
+    property Last: T read GetLast write SetLast;
+    property Count: integer read GetCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
@@ -213,6 +407,7 @@ type
     function GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>; overload;
 
     procedure Clear;
+    procedure TrimExcess;
 
     function Add: integer; overload;
     function Add(const Value: T): integer; overload;
@@ -225,13 +420,10 @@ type
 
     function Insert(Index: integer; const Value: T): integer;
 
-    function Sorted: boolean; overload;
-    function Sorted(AStartIndex,ACount: integer; AComparer: IComparer<T>): boolean; overload;
-    function Sorted(AStartIndex,ACount: integer; AComparison: TComparison<T>): boolean; overload;
-
     procedure Delete(ItemIndex: integer); overload;
     procedure Delete(AStartIndex,ACount: integer); overload;
     procedure Delete(const AIndices: TArray<integer>); overload;
+    procedure Delete(AIndices: TSet<integer>); overload;
     procedure DeleteLast;
 
     procedure Remove(const V: T; AComparer: IComparer<T> = nil); overload;
@@ -245,17 +437,6 @@ type
     function ExtractLast: T;
 
     procedure Move(SrcIndex, DstIndex: integer);
-
-    function IndexOf(const Value: T): integer; overload;
-    function IndexOf(const Value: T; AComparer: IComparer<T>): integer; overload;
-    function FindFirst(const Value: T; var Index: integer): boolean; overload;
-    function FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
-    function FindNext(const Value: T; var Index: integer): boolean; overload;
-    function FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
-
-    function Contains(const Value: T): boolean; overload;
-    function Contains(const Values: TArray<T>): boolean; overload;
-    function Contains(const Values: TEnumerable<T>): boolean; overload;
 
     procedure Exchange(Index1,Index2: integer);
     { Reverse( [1,2,3,4,5], 1, 3 ) = [1, 4,3,2, 5] }
@@ -276,7 +457,20 @@ type
     function NextPermutation: boolean;
     function PrevPermutation: boolean;
 
-    procedure TrimExcess;
+    function Contains(const Value: T): boolean; overload;
+    function Contains(const Values: TArray<T>): boolean; overload;
+    function Contains(const Values: TEnumerable<T>): boolean; overload;
+
+    function Sorted: boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparer: IComparer<T>): boolean; overload;
+    function Sorted(AStartIndex,ACount: integer; AComparison: TComparison<T>): boolean; overload;
+
+    function IndexOf(const Value: T): integer; overload;
+    function IndexOf(const Value: T; AComparer: IComparer<T>): integer; overload;
+    function FindFirst(const Value: T; var Index: integer): boolean; overload;
+    function FindFirst(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
+    function FindNext(const Value: T; var Index: integer): boolean; overload;
+    function FindNext(const Value: T; var Index: integer; AComparer: IComparer<T>): boolean; overload;
 
     procedure Sort(AComparer: IComparer<T> = nil); overload;
     procedure Sort(AIndex, ACount: Integer; AComparer: IComparer<T> = nil); overload;
@@ -315,7 +509,7 @@ type
     property Comparer: IComparer<T> read FComparer write SetComparer;
     property Comparison: TComparison<T> write SetComparison;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
-    property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray;
+    property ItemsArray: TArray<T> read GetItemsArray write SetItemsArray; { "dirty" array - length >= count }
   end;
 
   TVector<T> = record
@@ -614,7 +808,7 @@ uses
   adot.Collections,
   adot.Tools,
   adot.Tools.RTTI,
-  adot.Strings, adot.Collections.Sets;
+  adot.Strings;
 
 { TArr<T>.TEnumerator }
 
@@ -718,6 +912,136 @@ begin
   Self := Default(TArr<T>);
 end;
 
+procedure TArr<T>.TrimExcess;
+begin
+  if Capacity>Count then
+    Capacity := Count;
+end;
+
+function TArr<T>.ContainsAll(V: TArray<T>): boolean;
+var
+  C: IComparer<T>;
+  B: TArray<boolean>;
+  I,J,N: Integer;
+begin
+  if (System.Length(V) = 0) or (Count = 0) then
+    Exit(False);
+
+  { We can't use TSet, because it needs IEqualityComparer.GetHash,
+    IComparer can not be tranformed into IEqualityComparer hasher }
+  C := TComparerUtils.DefaultComparer<T>;
+  TArray.Sort<T>(V, C);
+
+  { remove duplicates }
+  J := 0;
+  for I := 1 to High(V) do
+    if C.Compare(V[I], V[J])<>0 then
+    begin
+      inc(J);
+      Items[J] := Items[I];
+    end;
+  SetLength(V, J+1);
+
+  { find items in sorted version of Values }
+  SetLength(B, System.Length(V));
+  N := System.Length(V);
+  for I := 0 to FCount-1 do
+    if TArray.BinarySearch<T>(V, Items[I], J, C) and not B[J] then
+    begin
+      B[J] := True;
+      dec(N);
+      if N <= 0 then
+        Exit(True);
+    end;
+  result := False;
+end;
+
+function TArr<T>.Contains(const Value: T): boolean;
+begin
+  result := IndexOf(Value)>=0;
+end;
+
+function TArr<T>.Contains(const Values: TArray<T>): boolean;
+begin
+  result := ContainsAll(TArrayUtils.Copy<T>(Values));
+end;
+
+function TArr<T>.Compare(B: TEnumerable<T>; AComparer: IComparer<T>): integer;
+var
+  Value: T;
+  BItemsCount: integer;
+begin
+  BItemsCount := 0;
+  for Value in B do
+    inc(BItemsCount);
+  if Count = BItemsCount then
+    result := Compare(B,0,0,Count, AComparer)
+  else
+    if Count < BItemsCount
+      then result := -1
+      else result := 1;
+end;
+
+function TArr<T>.Compare(const B: TArray<T>; AStartIndex, BStartIndex, ACount: integer; AComparer: IComparer<T>): integer;
+var
+  I: Integer;
+begin
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  Assert((ACount=0) or (ACount>0) and (AStartIndex>=0) and (AStartIndex+ACount-1<Count));
+  Assert((ACount=0) or (ACount>0) and (BStartIndex>=0) and (BStartIndex+ACount-1<System.Length(B)));
+  if ACount <= 0 then
+    result := 0
+  else
+    for I := 0 to ACount-1 do
+    begin
+      result := AComparer.Compare(Items[I+AStartIndex], B[I+BStartIndex]);
+      if result <> 0 then
+        Break;
+    end;
+end;
+
+function TArr<T>.Compare(const B: TArray<T>; AComparer: IComparer<T>): integer;
+begin
+  if Count = System.Length(B) then
+    result := Compare(B,0,0,Count, AComparer)
+  else
+    if Count < System.Length(B)
+      then result := -1
+      else result := 1;
+end;
+
+function TArr<T>.Compare(B: TEnumerable<T>; AStartIndex, BStartIndex, ACount: integer; AComparer: IComparer<T>): integer;
+var
+  Value: T;
+  BItemsCount: integer;
+begin
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  BItemsCount := 0;
+  for Value in B do
+    inc(BItemsCount);
+  Assert((ACount=0) or (ACount>0) and (AStartIndex>=0) and (AStartIndex+ACount-1<Count));
+  Assert((ACount=0) or (ACount>0) and (BStartIndex>=0) and (BStartIndex+ACount-1<BItemsCount));
+  result := 0;
+  for Value in B do
+    if BStartIndex > 0 then
+      dec(BStartIndex)
+    else
+    begin
+      result := AComparer.Compare(Items[AStartIndex], Value);
+      inc(AStartIndex);
+      dec(ACount);
+      if (result <> 0) or (ACount <= 0) then
+        break;
+    end;
+end;
+
+function TArr<T>.Contains(const Values: TEnumerable<T>): boolean;
+begin
+  result := ContainsAll(Values.ToArray);
+end;
+
 function TArr<T>.Copy: TArr<T>;
 begin
   result.Clear;
@@ -736,9 +1060,64 @@ begin
   Items[FCount] := Default(T);
 end;
 
+procedure TArr<T>.Delete(AStartIndex,ACount: integer);
+var
+  I,C: Integer;
+begin
+  Assert((AStartIndex>=0) and (AStartIndex<Count) and (ACount>=0) and (AStartIndex+ACount-1<Count));
+  C := Count-ACount; { new Count }
+  for I := AStartIndex to C-1 do
+    Items[I] := Items[I+ACount];
+  for I := C to Count-1 do
+    Items[I] := Default(T);
+  FCount := C;
+end;
+
+procedure TArr<T>.Delete(const AIndices: TArray<integer>);
+begin
+  Delete(TSet<integer>.Create(AIndices));
+end;
+
+procedure TArr<T>.Delete(AIndices: TSet<integer>);
+var
+  S,D,I: Integer;
+begin
+  if (AIndices.Count = 0) or (Count = 0) then
+    Exit;
+  S := 0;
+  D := 0;
+  for I := 0 to Count-1 do
+    if not (I in AIndices) then
+    begin
+      Items[D] := Items[I];
+      inc(D);
+    end;
+  for I := D to FCount-1 do
+    Items[I] := Default(T);
+  FCount := D;
+end;
+
+procedure TArr<T>.DeleteLast;
+begin
+  Assert(FCount>0);
+  Dec(FCount);
+  Items[FCount] := Default(T);
+end;
+
+function TArr<T>.Equal(B: TEnumerable<T>): boolean;
+begin
+  result := Compare(B) = 0;
+end;
+
+function TArr<T>.Equal(const B: TArray<T>): boolean;
+begin
+  result := Compare(B) = 0;
+end;
+
 procedure TArr<T>.Exchange(Index1, Index2: integer);
 var Value: T;
 begin
+  Assert((Index1>=0) and (Index1<Count) and (Index2>=0) and (Index2<Count));
   Value := Items[Index1];
   Items[Index1] := Items[Index2];
   Items[Index2] := Value;
@@ -790,16 +1169,27 @@ begin
   result := Items;
 end;
 
-procedure TArr<T>.DeleteLast;
+function TArr<T>.Extract(ItemIndex: integer): T;
 begin
-  Assert(FCount>=0);
-  Dec(FCount);
-  Items[FCount] := Default(T);
+  Assert((ItemIndex>=0) and (ItemIndex<Count));
+  result := Items[ItemIndex];
+  Items[ItemIndex] := Default(T);
+  Delete(ItemIndex);
+end;
+
+function TArr<T>.ExtractAll: TArray<T>;
+var L: TArray<T>;
+begin
+  TrimExcess;
+  result := Items;
+  SetLength(L, 0);
+  Items := L;
+  FCount := 0;
 end;
 
 function TArr<T>.ExtractLast: T;
 begin
-  Assert(FCount>=0);
+  Assert(FCount>0);
   Dec(FCount);
   result := Items[FCount];
   Items[FCount] := Default(T);
@@ -860,6 +1250,11 @@ begin
   result := False;
 end;
 
+procedure TArr<T>.FirstPermutation;
+begin
+  Sort;
+end;
+
 function TArr<T>.Insert(Index: integer; const Value: T): integer;
 begin
   for result := Add downto Index+1 do
@@ -892,6 +1287,231 @@ begin
       Items[I] := Items[I-1];
     Items[DstIndex] := Value;
   end;
+end;
+
+function TArr<T>.NextPermutation: boolean;
+var
+  i,x,n: integer;
+  C: IComparer<T>;
+begin
+  C := TComparerUtils.DefaultComparer<T>;
+
+  { find max N where A[N] < A[N+1] }
+  n := -1;
+  for i := Count-2 downto 0 do
+    if C.Compare(Items[i], Items[i+1]) < 0 then
+    begin
+      n := i;
+      break;
+    end;
+
+  { if A[N] > A[N+1] for any N then there is no more permutations }
+  result := n<>-1;
+  if not result then
+    exit;
+
+  { let's order range [N+1; FCount-1]
+    now it has reverse order so just call .reverse }
+  Reverse(n+1,FCount-n-1);
+
+  { find value next to A[N] in range [N+1; Count-1]
+    such value exists because at least original A[N+1] > A[N] }
+  x := -1;
+  for i := N+1 to Count-1 do
+    if C.Compare(Items[i], Items[N]) > 0 then
+    begin
+      x := i;
+      break;
+    end;
+
+  { swap A[N] and A[X] }
+  Exchange(n, x);
+
+  { change position of A[X] to make range [N+1; FCoun-1] ordered again }
+  i := x;
+  while (i > n+1) and (C.Compare(Items[i-1], Items[x]) > 0) do
+    dec(i);
+  while (i < Count-1) and (C.Compare(Items[x], Items[i+1]) > 0) do
+    inc(i);
+  if i<>x then
+    Move(x,i);
+end;
+
+function TArr<T>.PrevPermutation: boolean;
+var
+  i,x,n: integer;
+  C: IComparer<T>;
+begin
+  C := TComparerUtils.DefaultComparer<T>;
+
+  { find max N where A[N] > A[N+1] }
+  n := -1;
+  for i := FCount-2 downto 0 do
+    if C.Compare(Items[i], Items[i+1]) > 0 then
+    begin
+      n := i;
+      break;
+    end;
+
+  { if A[N] > A[N+1] for any N then there is no more permutations }
+  result := n<>-1;
+  if not result then
+    exit;
+
+  { let's order range [N+1; FCoun-1]
+    now it has reverse order so just call .reverse }
+  reverse(n+1,FCount-n-1);
+
+  { find value previous to A[N] in range [N+1; FCount-1]
+    such value exists because at least original A[N+1] < A[N] }
+  x := -1;
+  for i := N+1 to FCount-1 do
+    if C.Compare(Items[i], Items[N]) < 0 then
+    begin
+      x := i;
+      break;
+    end;
+
+  { swap A[N] and A[X] }
+  Exchange(n,x);
+
+  { change position of A[X] to make range [N+1; FCoun-1] back ordered again }
+  i := x;
+  while (i > n+1) and (C.Compare(Items[i-1], Items[x]) < 0) do
+    dec(i);
+  while (i < FCount-1) and (C.Compare(Items[x], Items[i+1]) < 0) do
+    inc(i);
+  if i<>x then
+    Move(x,i);
+end;
+
+procedure TArr<T>.Remove(const V: T; AComparer: IComparer<T>);
+var
+  I,D: Integer;
+begin
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  D := 0;
+  for I := 0 to FCount-1 do
+    if AComparer.Compare(Items[I], V) <> 0 then
+    begin
+      Items[D] := Items[I];
+      inc(D);
+    end;
+  for I := D to FCount-1 do
+    Items[I] := Default(T);
+  FCount := D;
+end;
+
+procedure TArr<T>.Remove(const V: TArray<T>; AComparer: IComparer<T>);
+var
+  S: TArr<T>;
+  I,J,D: integer;
+begin
+  if (System.Length(V)=0) or (Count=0) then
+    Exit;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  S.Init(TArrayUtils.Copy<T>(V));
+  S.Sort(AComparer);
+  D := 0;
+  for I := 0 to FCount-1 do
+    if not S.BinarySearch(Items[I],J,AComparer) then
+    begin
+      Items[D] := Items[I];
+      inc(D);
+    end;
+  for I := D to FCount-1 do
+    Items[I] := Default(T);
+  FCount := D;
+end;
+
+procedure TArr<T>.Remove(const V: TEnumerable<T>; AComparer: IComparer<T>);
+begin
+  Remove(V.ToArray, AComparer);
+end;
+
+procedure TArr<T>.Remove(AFilter: TFuncFilterValueIndex<T>);
+var
+  I,D: Integer;
+begin
+  D := 0;
+  for I := 0 to FCount-1 do
+    if not AFilter(Items[I], I) then
+    begin
+      Items[D] := Items[I];
+      inc(D);
+    end;
+  for I := D to FCount-1 do
+    Items[I] := Default(T);
+  FCount := D;
+end;
+
+procedure TArr<T>.Reverse;
+begin
+  Reverse(0, Count);
+end;
+
+procedure TArr<T>.Reverse(AStartIndex, ACount: integer);
+var
+  I: Integer;
+  Value: T;
+begin
+  if ACount <= 0 then
+    Exit;
+  Assert((AStartIndex >= 0) and (AStartIndex + ACount <= Count));
+  for I := 0 to (ACount shr 1) - 1 do
+  begin
+    Value := Items[AStartIndex+I];
+    Items[AStartIndex+I] := Items[AStartIndex+ACount-1-I];
+    Items[AStartIndex+ACount-1-I] := Value;
+  end;
+end;
+
+procedure TArr<T>.RotateLeft(Index1, Index2, Shift: integer);
+var
+  I: integer;
+begin
+  Assert((Index1>=0) and (Index1<Count) and (Index2>=0) and (Index2<Count));
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  I := Index2-Index1+1;
+  Shift := (I - (Shift mod I)) mod I;
+  if Shift <= 0 then
+    if Shift < 0 then
+      Inc(Shift, I)
+    else
+      Exit;
+  Reverse(Index1, Index2-Index1+1);
+  Reverse(Index1, Shift);
+  Reverse(Index1+Shift, Index2-Index1+1-Shift);
+end;
+
+procedure TArr<T>.RotateRight(Index1, Index2, Shift: integer);
+var
+  I: integer;
+begin
+  Assert((Index1>=0) and (Index1<Count) and (Index2>=0) and (Index2<Count));
+  if Index2 < Index1 then
+  begin
+    I := Index1;
+    Index1 := Index2;
+    Index2 := I;
+  end;
+  I := Index2-Index1+1;
+  Shift := Shift mod I;
+  if Shift <= 0 then
+    if Shift < 0 then
+      Inc(Shift, I)
+    else
+      Exit;
+  Reverse(Index1, Index2-Index1+1);
+  Reverse(Index1, Shift);
+  Reverse(Index1+Shift, Index2-Index1+1-Shift);
 end;
 
 function TArr<T>.GetCapacity: integer;
@@ -961,22 +1581,32 @@ begin
   Items[Count-1] := Value;
 end;
 
+procedure TArr<T>.Shuffle(AStartIndex, ACount: integer);
+var
+  I: Integer;
+begin
+  if ACount <= 1 then
+    Exit;
+  Assert((AStartIndex >= 0) and (AStartIndex + ACount <= Count));
+  for I := ACount-1 downto 1 do
+    Exchange(I+AStartIndex, Random(I+1)+AStartIndex);
+end;
+
+procedure TArr<T>.Shuffle;
+begin
+  Shuffle(0, Count);
+end;
+
 function TArr<T>.GetItem(ItemIndex: integer): T;
 begin
-  {$IF Defined(Debug)} Assert((ItemIndex >= 0) and (ItemIndex < Count)); {$ENDIF}
+  Assert((ItemIndex >= 0) and (ItemIndex < Count));
   result := Items[ItemIndex];
 end;
 
 procedure TArr<T>.SetItem(ItemIndex: integer; const Value: T);
 begin
-  {$IF Defined(Debug)} Assert((ItemIndex >= 0) and (ItemIndex < Count)); {$ENDIF}
+  Assert((ItemIndex >= 0) and (ItemIndex < Count));
   Items[ItemIndex] := Value;
-end;
-
-procedure TArr<T>.TrimExcess;
-begin
-  if Capacity>Count then
-    Capacity := Count;
 end;
 
 procedure TArr<T>.SetCount(ACount: integer);
@@ -1020,7 +1650,27 @@ begin
   TArray.Sort<T>(Items, C, AIndex, ACount);
 end;
 
+function TArr<T>.Sorted: boolean;
+var C: IComparer<T>;
+begin
+  C := TComparerUtils.DefaultComparer<T>;
+  result := TArrayUtils.Sorted<T>(Items, 0, Count, C);
+end;
+
+function TArr<T>.Sorted(AStartIndex, ACount: integer; AComparer: IComparer<T>): boolean;
+begin
+  result := TArrayUtils.Sorted<T>(Items, AStartIndex, ACount, AComparer);
+end;
+
+function TArr<T>.Sorted(AStartIndex, ACount: integer; AComparison: TComparison<T>): boolean;
+var C: IComparer<T>;
+begin
+  C := TDelegatedComparer<T>.Create(AComparison);
+  result := TArrayUtils.Sorted<T>(Items, AStartIndex, ACount, C);
+end;
+
 function TArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer): Boolean;
+var C: IComparer<T>;
 begin
   result := TArray.BinarySearch<T>(Items, Item, FoundIndex, TComparerUtils.DefaultComparer<T>, 0, Count);
 end;
@@ -1367,6 +2017,11 @@ begin
   for I := D to FCount-1 do
     FItems[I] := Default(T);
   FCount := D;
+end;
+
+procedure TVectorClass<T>.Delete(AIndices: TSet<integer>);
+begin
+//TODO
 end;
 
 procedure TVectorClass<T>.DeleteLast;
@@ -2975,6 +3630,516 @@ begin
   Rows.Items[y].Count := Value;
 end;
 
+{ TObjectArr<T> }
+
+procedure TObjectArr<T>.Init(AItems: TArray<T>);
+begin
+  Clear;
+  Arr.Init(AItems);
+end;
+
+procedure TObjectArr<T>.Init(ACapacity: integer);
+begin
+  Clear;
+  Arr.Init(ACapacity);
+end;
+
+procedure TObjectArr<T>.Init;
+begin
+  Clear;
+end;
+
+procedure TObjectArr<T>.Add(const Value: TArray<T>; AStartIndex, ACount: integer);
+begin
+  Arr.Add(Value, AStartIndex, ACount);
+end;
+
+procedure TObjectArr<T>.Add(const Value: TEnumerable<T>);
+begin
+  Arr.Add(Value);
+end;
+
+procedure TObjectArr<T>.Add(const Value: TArr<T>);
+begin
+  Arr.Add(Value);
+end;
+
+procedure TObjectArr<T>.Add(const Value: TArray<T>);
+begin
+  Arr.Add(Value);
+end;
+
+function TObjectArr<T>.Add: integer;
+begin
+  result := Arr.Add;
+end;
+
+function TObjectArr<T>.Add(const Value: T): integer;
+begin
+  result := Arr.Add(Value);
+end;
+
+function TObjectArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>; AIndex, ACount: Integer): Boolean;
+begin
+  result := Arr.BinarySearch(Item, FoundIndex, Comparer, AIndex, ACount);
+end;
+
+function TObjectArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>): Boolean;
+begin
+  result := Arr.BinarySearch(Item, FoundIndex, Comparison);
+end;
+
+function TObjectArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparison: TComparison<T>; AIndex, ACount: Integer): Boolean;
+begin
+  result := Arr.BinarySearch(Item, FoundIndex, Comparison, AIndex, ACount);
+end;
+
+function TObjectArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer; Comparer: IComparer<T>): Boolean;
+begin
+  result := Arr.BinarySearch(Item, FoundIndex, Comparer);
+end;
+
+function TObjectArr<T>.BinarySearch(const Item: T; out FoundIndex: Integer): Boolean;
+begin
+  result := Arr.BinarySearch(Item, FoundIndex);
+end;
+
+procedure TObjectArr<T>.Clear;
+var
+  I: Integer;
+begin
+  for I := Arr.FCount-1 downto 0 do
+    PObject(@Arr.Items[I])^.DisposeOf;
+  Self := Default(TObjectArr<T>);
+end;
+
+function TObjectArr<T>.Compare(B: TEnumerable<T>; AComparer: IComparer<T>): integer;
+begin
+  result := Arr.Compare(B, AComparer);
+end;
+
+function TObjectArr<T>.Compare(B: TEnumerable<T>; AStartIndex, BStartIndex, ACount: integer; AComparer: IComparer<T>): integer;
+begin
+  result := Arr.Compare(B, AStartIndex, BStartIndex, ACount, AComparer);
+end;
+
+function TObjectArr<T>.Compare(const B: TArray<T>; AStartIndex, BStartIndex, ACount: integer; AComparer: IComparer<T>): integer;
+begin
+  result := Arr.Compare(B, AStartIndex, BStartIndex, ACount, AComparer);
+end;
+
+function TObjectArr<T>.Compare(const B: TArray<T>; AComparer: IComparer<T>): integer;
+begin
+  result := Arr.Compare(B, AComparer);
+end;
+
+function TObjectArr<T>.Contains(const Values: TEnumerable<T>): boolean;
+begin
+  result := Arr.Contains(Values);
+end;
+
+function TObjectArr<T>.Contains(const Value: T): boolean;
+begin
+  result := Arr.Contains(Value);
+end;
+
+function TObjectArr<T>.Contains(const Values: TArray<T>): boolean;
+begin
+  result := Arr.Contains(Values);
+end;
+
+function TObjectArr<T>.Copy: TArr<T>;
+begin
+  result := Arr.Copy;
+end;
+
+class function TObjectArr<T>.Create(AItems: TArray<T>): TArr<T>;
+begin
+  result.Init(AItems);
+end;
+
+class function TObjectArr<T>.Create(ACapacity: integer): TArr<T>;
+begin
+  result.Init(ACapacity);
+end;
+
+class function TObjectArr<T>.Create: TArr<T>;
+begin
+  result.Init;
+end;
+
+procedure TObjectArr<T>.Delete(const AIndices: TArray<integer>);
+begin
+  Delete(TSet<integer>.Create(AIndices));
+end;
+
+procedure TObjectArr<T>.Delete(AIndices: TSet<integer>);
+var
+  I: Integer;
+begin
+  for I := 0 to Count-1 do
+    if I in AIndices then
+      PObject(@Arr.Items[I])^.DisposeOf;
+  Arr.Delete(AIndices);
+end;
+
+procedure TObjectArr<T>.Delete(ItemIndex: integer);
+begin
+  PObject(@Arr.Items[ItemIndex])^.DisposeOf;
+  Arr.Delete(ItemIndex);
+end;
+
+procedure TObjectArr<T>.Delete(AStartIndex, ACount: integer);
+var
+  I: Integer;
+begin
+  for I := AStartIndex to AStartIndex+ACount-1 do
+    PObject(@Arr.Items[I])^.DisposeOf;
+  Arr.Delete(AStartIndex, ACount);
+end;
+
+procedure TObjectArr<T>.DeleteLast;
+begin
+  Assert(Arr.FCount>0);
+  PObject(@Arr.Items[Arr.FCount-1])^.DisposeOf;
+  Arr.DeleteLast;
+end;
+
+function TObjectArr<T>.Equal(const B: TArray<T>): boolean;
+begin
+  result := Arr.Equal(B);
+end;
+
+function TObjectArr<T>.Equal(B: TEnumerable<T>): boolean;
+begin
+  result := Arr.Equal(B);
+end;
+
+procedure TObjectArr<T>.Exchange(Index1, Index2: integer);
+begin
+  Arr.Exchange(Index1, Index2);
+end;
+
+class operator TObjectArr<T>.Explicit(const a: TObjectArr<T>): TArray<T>;
+begin
+  result := a.Arr.ToArray;
+end;
+
+function TObjectArr<T>.Extract(ItemIndex: integer): T;
+begin
+  result := Arr.Extract(ItemIndex);
+end;
+
+function TObjectArr<T>.ExtractAll: TArray<T>;
+begin
+  result := Arr.ExtractAll;
+end;
+
+function TObjectArr<T>.ExtractLast: T;
+begin
+  result := Arr.ExtractLast;
+end;
+
+function TObjectArr<T>.FindFirst(const Value: T; var Index: integer): boolean;
+begin
+  result := Arr.FindFirst(Value, Index);
+end;
+
+function TObjectArr<T>.FindFirst(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
+begin
+  result := Arr.FindFirst(Value, Index, Comparer);
+end;
+
+function TObjectArr<T>.FindNext(const Value: T; var Index: integer): boolean;
+begin
+  result := Arr.FindNext(Value, Index);
+end;
+
+function TObjectArr<T>.FindNext(const Value: T; var Index: integer; Comparer: IComparer<T>): boolean;
+begin
+  result := Arr.FindNext(Value, Index, Comparer);
+end;
+
+procedure TObjectArr<T>.FirstPermutation;
+begin
+  Arr.FirstPermutation;
+end;
+
+function TObjectArr<T>.GetCapacity: integer;
+begin
+  result := Arr.Capacity;
+end;
+
+function TObjectArr<T>.GetCount: integer;
+begin
+  result := Arr.Count;
+end;
+
+function TObjectArr<T>.GetEmpty: boolean;
+begin
+  Result := Arr.Empty;
+end;
+
+function TObjectArr<T>.GetEnumerator: TArr<T>.TEnumerator;
+begin
+  result := Arr.GetEnumerator;
+end;
+
+function TObjectArr<T>.GetFirst: T;
+begin
+  result := Arr.First;
+end;
+
+function TObjectArr<T>.GetItem(ItemIndex: integer): T;
+begin
+  result := Arr[ItemIndex];
+end;
+
+function TObjectArr<T>.GetLast: T;
+begin
+  result := Arr.Last;
+end;
+
+function TObjectArr<T>.GetSlice(AFilter: TFuncFilterValueIndex<T>): TSlice<T>;
+begin
+  result := Arr.GetSlice(AFilter);
+end;
+
+function TObjectArr<T>.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl: integer): TSlice<T>;
+begin
+  result := Arr.GetSlice(AStartSliceIndexIncl, AEndSliceIndexExcl);
+end;
+
+function TObjectArr<T>.GetSlice: TSlice<T>;
+begin
+  result := Arr.GetSlice;
+end;
+
+function TObjectArr<T>.GetTotalSizeBytes: int64;
+begin
+  result := Arr.GetTotalSizeBytes;
+end;
+
+class operator TObjectArr<T>.Implicit(const a: TObjectArr<T>): TArray<T>;
+begin
+  result := a.Arr.ToArray;
+end;
+
+function TObjectArr<T>.IndexOf(const Value: T; Comparer: IComparer<T>): integer;
+begin
+  result := Arr.IndexOf(Value, Comparer);
+end;
+
+function TObjectArr<T>.IndexOf(const Value: T): integer;
+begin
+  result := Arr.IndexOf(Value);
+end;
+
+function TObjectArr<T>.Insert(Index: integer; const Value: T): integer;
+begin
+  Arr.Insert(Index, Value);
+end;
+
+procedure TObjectArr<T>.Move(SrcIndex, DstIndex: integer);
+begin
+  Arr.Move(SrcIndex, DstIndex);
+end;
+
+function TObjectArr<T>.NextPermutation: boolean;
+begin
+  result := Arr.NextPermutation;
+end;
+
+function TObjectArr<T>.PrevPermutation: boolean;
+begin
+  result := Arr.PrevPermutation;
+end;
+
+procedure TObjectArr<T>.Remove(AFilter: TFuncFilterValueIndex<T>);
+var
+  I,D: Integer;
+begin
+  {
+    We do not use Arr.Remove here, to avoid double call of AFilter
+    (it may return another result)
+  }
+  D := 0;
+  for I := 0 to Arr.FCount-1 do
+    if AFilter(Arr.Items[I], I) then
+      PObject(@Arr.Items[I])^.DisposeOf
+    else
+    begin
+      Arr.Items[D] := Arr.Items[I];
+      inc(D);
+    end;
+  for I := D to Arr.FCount-1 do
+    Arr.Items[I] := Default(T);
+  Arr.FCount := D;
+end;
+
+procedure TObjectArr<T>.Remove(const V: TEnumerable<T>; AComparer: IComparer<T>);
+begin
+  Remove(V.ToArray, AComparer);
+end;
+
+procedure TObjectArr<T>.Remove(const V: TArray<T>; AComparer: IComparer<T>);
+var
+  S: TArr<T>;
+  I,J,D: integer;
+begin
+  {
+    We do not use Arr.Remove here, to avoid ordering of array V several times.
+  }
+  if (Length(V)=0) or (Count=0) then
+    Exit;
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  S.Init(TArrayUtils.Copy<T>(V));
+  S.Sort(AComparer);
+  D := 0;
+  for I := 0 to Arr.FCount-1 do
+    if S.BinarySearch(Arr.Items[I],J,AComparer) then
+      PObject(@Arr.Items[I])^.DisposeOf
+    else
+    begin
+      Arr.Items[D] := Arr.Items[I];
+      inc(D);
+    end;
+  for I := D to Arr.FCount-1 do
+    Arr.Items[I] := Default(T);
+  Arr.FCount := D;
+end;
+
+procedure TObjectArr<T>.Remove(const V: T; AComparer: IComparer<T>);
+var
+  I: Integer;
+begin
+  if AComparer = nil then
+    AComparer := TComparerUtils.DefaultComparer<T>;
+  for I := 0 to Arr.FCount-1 do
+    if AComparer.Compare(Arr.Items[I], V) = 0 then
+      PObject(@Arr.Items[I])^.DisposeOf;
+  Arr.Remove(V, AComparer);
+end;
+
+procedure TObjectArr<T>.Reverse;
+begin
+  Arr.Reverse;
+end;
+
+procedure TObjectArr<T>.Reverse(AStartIndex, ACount: integer);
+begin
+  Arr.Reverse(AStartIndex, ACount);
+end;
+
+procedure TObjectArr<T>.RotateLeft(Index1, Index2, Shift: integer);
+begin
+  Arr.RotateLeft(Index1, Index2, Shift);
+end;
+
+procedure TObjectArr<T>.RotateRight(Index1, Index2, Shift: integer);
+begin
+  Arr.RotateRight(Index1, Index2, Shift);
+end;
+
+procedure TObjectArr<T>.SetCapacity(const Value: integer);
+begin
+  Arr.Capacity := Value;
+end;
+
+procedure TObjectArr<T>.SetCount(const Value: integer);
+begin
+  Arr.Count := Value;
+end;
+
+procedure TObjectArr<T>.SetFirst(const Value: T);
+begin
+  Arr.First := Value;
+end;
+
+procedure TObjectArr<T>.SetItem(ItemIndex: integer; const Value: T);
+begin
+  Assert((ItemIndex >= 0) and (ItemIndex < Arr.FCount));
+  PObject(@Arr.Items[ItemIndex])^.DisposeOf;
+  Arr.Items[ItemIndex] := Value;
+end;
+
+procedure TObjectArr<T>.SetLast(const Value: T);
+begin
+  Arr.Last := Value;
+end;
+
+procedure TObjectArr<T>.Shuffle;
+begin
+  Arr.Shuffle;
+end;
+
+procedure TObjectArr<T>.Shuffle(AStartIndex, ACount: integer);
+begin
+  Arr.Shuffle(AStartIndex, ACount);
+end;
+
+procedure TObjectArr<T>.Sort(Comparison: TComparison<T>; AIndex, ACount: Integer);
+begin
+  Arr.Sort(Comparison, AIndex, ACount);
+end;
+
+procedure TObjectArr<T>.Sort(Comparer: IComparer<T>);
+begin
+  Arr.Sort(Comparer);
+end;
+
+procedure TObjectArr<T>.Sort(Comparer: IComparer<T>; AIndex, ACount: Integer);
+begin
+  Arr.Sort(Comparer, AIndex, ACount);
+end;
+
+procedure TObjectArr<T>.Sort(Comparison: TComparison<T>);
+begin
+  Arr.Sort(Comparison);
+end;
+
+procedure TObjectArr<T>.Sort;
+begin
+  Arr.Sort;
+end;
+
+function TObjectArr<T>.Sorted: boolean;
+begin
+  result := Arr.Sorted;
+end;
+
+function TObjectArr<T>.Sorted(AStartIndex, ACount: integer; AComparer: IComparer<T>): boolean;
+begin
+  result := Arr.Sorted(AStartIndex, ACount, AComparer);
+end;
+
+function TObjectArr<T>.Sorted(AStartIndex, ACount: integer; AComparison: TComparison<T>): boolean;
+begin
+  result := Arr.Sorted(AStartIndex, ACount, AComparison);
+end;
+
+function TObjectArr<T>.ToArray: TArray<T>;
+begin
+  result := Arr.ToArray;
+end;
+
+function TObjectArr<T>.ToString: string;
+begin
+  result := Arr.ToString;
+end;
+
+function TObjectArr<T>.ToText(const ValuesDelimiter: string): string;
+begin
+  result := Arr.ToText(ValuesDelimiter);
+end;
+
+procedure TObjectArr<T>.TrimExcess;
+begin
+  Arr.TrimExcess;
+end;
+
 end.
+
 
 
