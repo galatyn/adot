@@ -19,7 +19,7 @@ type
   TRingClass<T> = class(TEnumerableExt<T>)
   protected
     { FValues.Items is inner array, Items is property to access elements of the ring by index }
-    FValues: TArr<T>;
+    FValues: TVector<T>;
     FHead: integer;
     FCount: integer;
     FOwnsValues: Boolean;

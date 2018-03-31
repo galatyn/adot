@@ -74,7 +74,7 @@ function TPegParser.Accepted: Boolean;
 var
 
   { stack of calls (to avoid deep recursion) }
-  Stack: TArr<TCallStackItem>;
+  Stack: TVector<TCallStackItem>;
 
   { result of last operation on stack:
     Accept   - input accepted

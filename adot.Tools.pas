@@ -1491,15 +1491,14 @@ end;
 
 class function TArrayUtils.Slice<T>(const Src: TArray<T>; CopyValue: TFunc<T, boolean>): TArray<T>;
 var
-  V: TArr<T>;
+  V: TVector<T>;
   I: Integer;
 begin
-  V.Clear;
+  V.Init;
   for I := Low(Src) to High(Src) do
     if CopyValue(Src[I]) then
       V.Add(Src[I]);
-  V.TrimExcess;
-  result := V.Items;
+  result := V.ToArray;
 end;
 
 { TDateTimeUtils }
@@ -1932,33 +1931,29 @@ end;
 
 class function TComponentUtils.GetAll(AStart: TComponent): TArray<TComponent>;
 var
-  V: TArr<TComponent>;
+  V: TVector<TComponent>;
 begin
-  V.Clear;
-  V.Capacity := AStart.ComponentCount;
+  V.Init(AStart.ComponentCount);
   ForEach(AStart,
     procedure(C: TComponent)
     begin
       V.Add(C);
     end);
-  V.TrimExcess;
-  Result := V.Items;
+  Result := V.ToArray;
 end;
 
 class function TComponentUtils.GetAll<T>(AStart: TComponent): TArray<T>;
 var
-  V: TArr<T>;
+  V: TVector<T>;
 begin
-  V.Clear;
-  V.Capacity := AStart.ComponentCount;
+  V.Init(AStart.ComponentCount);
   ForEach(AStart,
     procedure(C: TComponent)
     begin
       if C is T then
         V.Add(T(C));
     end);
-  V.TrimExcess;
-  result := V.Items;
+  result := V.ToArray;
 end;
 
 class function TComponentUtils.GetUniqueName: string;

@@ -35,7 +35,7 @@ type
   TBinaryHeapClass<TKey,TValue> = class(TEnumerableExt<TPair<TKey,TValue>>)
   public
     type
-      TPairsEnumerator = TArr<TPair<TKey,TValue>>.TEnumerator;
+      TPairsEnumerator = TVector<TPair<TKey,TValue>>.TEnumerator;
 
       {# Enumerator for heap (we have to inherit from TEnumerator to be comatible with TEnumerable) }
       TBinaryHeapEnumerator = class(TEnumerator<TPair<TKey, TValue>>)
@@ -73,7 +73,7 @@ type
       end;
 
   protected
-    FItems: TArr<TPair<TKey,TValue>>;
+    FItems: TVector<TPair<TKey,TValue>>;
     FComparer: IComparer<TKey>;
     FOwnerships: TDictionaryOwnerships;
 

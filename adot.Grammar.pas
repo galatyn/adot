@@ -88,7 +88,7 @@ type
   protected
     procedure DoRelease; override;
   public
-    procedure GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>); override;
+    procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
   end;
 
   { abstract class for expression with one operand (link, repeater, NOT etc) }
@@ -99,7 +99,7 @@ type
     function GetInfo: string; override;
     procedure DoRelease; override;
   public
-    procedure GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>); override;
+    procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
 
     property Op: IInterfacedObject<TGrammarClass> read FOp;
   end;
@@ -113,7 +113,7 @@ type
     function GetInfo: string; override;
     procedure DoRelease; override;
   public
-    procedure GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>); override;
+    procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); override;
 
     property Op1: IInterfacedObject<TGrammarClass> read FOp1;
     property Op2: IInterfacedObject<TGrammarClass> read FOp2;
@@ -379,7 +379,7 @@ end;
 
 { TGrammarClassOp0 }
 
-procedure TGrammarClassOp0.GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>);
+procedure TGrammarClassOp0.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
 begin
   { nothing to do here }
 end;
@@ -396,7 +396,7 @@ begin
   result := inherited + ' ' + GetOperandInfo(FOp);
 end;
 
-procedure TGrammarClassOp1.GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>);
+procedure TGrammarClassOp1.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
 begin
   if FOp<>nil then
     Dst.Add(FOp);
@@ -414,7 +414,7 @@ begin
   result := inherited + ' ' + GetOperandInfo(FOp1) + ' ' + GetOperandInfo(FOp2);
 end;
 
-procedure TGrammarClassOp2.GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>);
+procedure TGrammarClassOp2.GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>);
 begin
   if FOp1<>nil then
     Dst.Add(FOp1);
@@ -888,9 +888,9 @@ end;
 
 procedure TCustomLanguage.SetMainRule(var Rule: TGrammar);
 var
-  Queue: TArr<TGrammarClass>;
+  Queue: TVector<TGrammarClass>;
   QueuedIds: TSet<int64>;
-  Operands: TArr<IInterfacedObject<TGrammarClass>>;
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
   Item: TGrammarClass;
   I: integer;
 begin

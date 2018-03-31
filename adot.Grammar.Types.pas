@@ -168,7 +168,7 @@ type
     type
       TCustomGrammarEnumerator = class(TEnumerator<IInterfacedObject<TGrammarClass>>)
       protected
-        FItems: TArr<IInterfacedObject<TGrammarClass>>;
+        FItems: TVector<IInterfacedObject<TGrammarClass>>;
         FPos: integer;
 
         function DoGetCurrent: IInterfacedObject<TGrammarClass>; override;
@@ -180,11 +180,11 @@ type
 
       TAllRulesEnumeratorPreProcessing = class(TEnumerator<TGrammarClass>)
       protected
-        Queue: TArr<IInterfacedObject<TGrammarClass>>;
+        Queue: TVector<IInterfacedObject<TGrammarClass>>;
         IdSet: TSet<TRuleId>;
         CurrentItemInt: IInterfacedObject<TGrammarClass>;
         CurrentItem: TGrammarClass;
-        Operands: TArr<IInterfacedObject<TGrammarClass>>;
+        Operands: TVector<IInterfacedObject<TGrammarClass>>;
         StartGrammar: TGrammarClass;
 
         function DoGetCurrent: TGrammarClass; override;
@@ -196,11 +196,11 @@ type
 
       TAllRulesEnumeratorPostProcessing = class(TEnumerator<TGrammarClass>)
       protected
-        Queue: TArr<IInterfacedObject<TGrammarClass>>;
+        Queue: TVector<IInterfacedObject<TGrammarClass>>;
         IdSet: TSet<TRuleId>;
         CurrentItemInt: IInterfacedObject<TGrammarClass>;
         CurrentItem: TGrammarClass;
-        Operands: TArr<IInterfacedObject<TGrammarClass>>;
+        Operands: TVector<IInterfacedObject<TGrammarClass>>;
         StartGrammar: TGrammarClass;
 
         function DoGetCurrent: TGrammarClass; override;
@@ -246,7 +246,7 @@ type
     procedure Release;
 
     { add operands to the collections }
-    procedure GetOperands(var Dst: TArr<IInterfacedObject<TGrammarClass>>); virtual; abstract;
+    procedure GetOperands(var Dst: TVector<IInterfacedObject<TGrammarClass>>); virtual; abstract;
 
     { called once for main rule by parser (TPegParser for example) }
     procedure SetupMainRule; virtual;
@@ -437,8 +437,8 @@ end;
 
 function TParseTree.GetSubTree(StartNode: integer; FilterProc: TFilterTreeProc): TParseTree;
 var
-  Stack: TArr<TCompound<integer,integer>>;  { Src, DstParent }
-  DstLastChild: TArr<integer>;              { indices in Dst }
+  Stack: TVector<TCompound<integer,integer>>;  { Src, DstParent }
+  DstLastChild: TVector<integer>;              { indices in Dst }
   I: TCompound<integer,integer>;
   J: integer;
   Accept: Boolean;
@@ -759,7 +759,7 @@ end;
 
 class function TGrammarClass.GetOperandInfo(Operand: TGrammarClass): string;
 var
-  Operands: TArr<IInterfacedObject<TGrammarClass>>;
+  Operands: TVector<IInterfacedObject<TGrammarClass>>;
 begin
   if Operand=nil then
     result := 'Op:nil'

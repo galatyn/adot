@@ -31,13 +31,13 @@ type
       { Enumerates all nodes (by index) }
       TEnumerator = record
       private
-        Nodes: TArr<TNode>;
+        Nodes: TVector<TNode>;
         Index: integer;
 
         function GetCurrent: integer;
 
       public
-        procedure Init(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TVector<TNode>);
 
         function MoveNext: Boolean;
         property Current: integer read GetCurrent;
@@ -51,7 +51,7 @@ type
         function GetCurrent: T;
 
       public
-        procedure Init(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TVector<TNode>);
 
         function MoveNext: Boolean;
         property Current: T read GetCurrent;
@@ -60,12 +60,12 @@ type
       { Enumerates all nodes (by index) starting from specified one }
       TSubtreeEnumerator = record
       private
-        Nodes: TArr<TNode>;
-        Stack: TArr<integer>;
+        Nodes: TVector<TNode>;
+        Stack: TVector<integer>;
         CurrentNode: integer;
 
       public
-        procedure Init(const ANodes: TArr<TNode>; ARoot: integer);
+        procedure Init(const ANodes: TVector<TNode>; ARoot: integer);
 
         function MoveNext: Boolean;
         property Current: integer read CurrentNode;
@@ -73,24 +73,24 @@ type
 
       { Enumerates all values }
       TValuesCollection = record
-        Nodes: TArr<TNode>;
+        Nodes: TVector<TNode>;
 
-        procedure Init(const ANodes: TArr<TNode>);
+        procedure Init(const ANodes: TVector<TNode>);
         function GetEnumerator: TValuesEnumerator;
       end;
 
       { Enumerable subtree starting from specified node }
       TSubtreeCollection = record
-        Nodes: TArr<TNode>;
+        Nodes: TVector<TNode>;
         Root: integer;
 
-        procedure Init(const ANodes: TArr<TNode>; ARoot: integer);
+        procedure Init(const ANodes: TVector<TNode>; ARoot: integer);
         function GetEnumerator: TSubtreeEnumerator;
       end;
 
     var
-      Nodes: TArr<TNode>;   { Tree of the nodes stored as array. It is recommended to create single root node. }
-      Stack: TArr<integer>; { Stack for tracking of CurParent }
+      Nodes: TVector<TNode>;   { Tree of the nodes stored as array. It is recommended to create single root node. }
+      Stack: TVector<integer>; { Stack for tracking of CurParent }
       CurParent: integer;      { Current destination (parent node) for Append/Add. }
 
   private
@@ -98,7 +98,6 @@ type
     function GetCount: integer;
     function GetValue(n: integer): T;
     procedure SetValue(n: integer; const Value: T);
-    function GetValuesAsArray: TArray<T>;
     function GetTotalSizeBytes: int64;
     function GetSubtreeCollection(StaringNode: integer): TSubtreeCollection;
     function GetValuesCollection: TValuesCollection;
@@ -151,10 +150,11 @@ type
     { Enumerator of all nodes (top-down,left-right). }
     function GetEnumerator: TEnumerator;
 
+    function ToArray: TArray<T>;
+
     property Empty: boolean read GetEmpty;
     property Count: integer read GetCount;
     property Values[n: integer]: T read GetValue write SetValue; default;
-    property AsArray: TArray<T> read GetValuesAsArray;
     property TotalSizeBytes: int64 read GetTotalSizeBytes;
 
     { Enumerator of all nodes from subtree (top-down,left-right). }
@@ -170,7 +170,7 @@ uses
 
 { TTreeArrayClass<T>.TEnumerator }
 
-procedure TTreeArrayClass<T>.TEnumerator.Init(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TEnumerator.Init(const ANodes: TVector<TNode>);
 begin
   Self := Default(TEnumerator);
   Nodes := ANodes;
@@ -226,7 +226,7 @@ begin
   Nodes.Items[n].Data := Value;
 end;
 
-function TTreeArrayClass<T>.GetValuesAsArray: TArray<T>;
+function TTreeArrayClass<T>.ToArray: TArray<T>;
 var
   I: Integer;
 begin
@@ -400,7 +400,7 @@ end;
 
 { TTreeArrayClass<T>.TSubtreeEnumerator }
 
-procedure TTreeArrayClass<T>.TSubtreeEnumerator.Init(const ANodes: TArr<TNode>; ARoot: integer);
+procedure TTreeArrayClass<T>.TSubtreeEnumerator.Init(const ANodes: TVector<TNode>; ARoot: integer);
 begin
   Self := Default(TSubtreeEnumerator);
   Nodes := ANodes;
@@ -429,7 +429,7 @@ end;
 
 { TTreeArrayClass<T>.TSubtreeCollection }
 
-procedure TTreeArrayClass<T>.TSubtreeCollection.Init(const ANodes: TArr<TNode>; ARoot: integer);
+procedure TTreeArrayClass<T>.TSubtreeCollection.Init(const ANodes: TVector<TNode>; ARoot: integer);
 begin
   Self := Default(TSubtreeCollection);
   Nodes := ANodes;
@@ -443,7 +443,7 @@ end;
 
 { TTreeArrayClass<T>.TValuesEnumerator }
 
-procedure TTreeArrayClass<T>.TValuesEnumerator.Init(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TValuesEnumerator.Init(const ANodes: TVector<TNode>);
 begin
   Self := Default(TValuesEnumerator);
   Enum.Init(ANodes);
@@ -461,7 +461,7 @@ end;
 
 { TTreeArrayClass<T>.TValuesCollection }
 
-procedure TTreeArrayClass<T>.TValuesCollection.Init(const ANodes: TArr<TNode>);
+procedure TTreeArrayClass<T>.TValuesCollection.Init(const ANodes: TVector<TNode>);
 begin
   Self := Default(TValuesCollection);
   Nodes := ANodes;

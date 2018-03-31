@@ -1207,12 +1207,12 @@ end;
 class procedure TMessenger.SendInputString(const S: string);
 var
   I: Integer;
-  V: TArr<TInput>;
+  V: TVector<TInput>;
   InputValue: TInput;
 begin
   if Length(S)=0 then
     Exit;
-  V.Clear;
+  V.Init;
   for I := Low(S) to High(S) do
   begin
     InputValue := Default(TInput);

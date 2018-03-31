@@ -137,7 +137,7 @@ type
       PReplace = ^TReplace;
 
     var
-      Instructions: TArr<TReplace>;
+      Instructions: TVector<TReplace>;
 
     procedure Add(const Instr: TReplace);
     procedure Sort;
@@ -1565,10 +1565,10 @@ end;
 class function TStr.Split(const Src: string; const Options: TSplitOptions): TArray<string>;
 var
   Parser: TTokText;
-  Tokens: TArr<TCompound<TTokenPos, TTokText.TTextTokenType>>;
+  Tokens: TVector<TCompound<TTokenPos, TTokText.TTextTokenType>>;
   Pair: TCompound<TTokenPos, TTokText.TTextTokenType>;
   Buf: TStringBuilder;
-  Res: TArr<string>;
+  Res: TVector<string>;
   I,J,N,L: integer;
 begin
   if Options.MaxStrLen <= 0 then
