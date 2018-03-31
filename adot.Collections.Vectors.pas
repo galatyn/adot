@@ -19,6 +19,7 @@ interface
 
 uses
   adot.Types,
+  adot.Collections.Iterators,
   adot.Collections.Types,
   adot.Collections.Slices,
   adot.Collections.Sets,
@@ -76,9 +77,9 @@ type
     { we define it before other field to make access more efficient }
     Items: TArray<T>;
   private
-    FCount: integer;
+    FCount: NativeInt;
 
-    procedure SetCount(ACount: integer);
+    procedure SetCount(ACount: NativeInt);
     procedure SetCapacity(ACapacity: integer);
     procedure Grow;
     function GetCapacity: integer;
@@ -210,8 +211,15 @@ type
     function ToText(const ValuesDelimiter: string = #13#10): string;
     function ToArray: TArray<T>;
 
+    { for-in support }
     function GetEnumerator: TEnumerator;         { record (default) }
     function GetEnumeratorClass: TEnumerator<T>; { class (if compatibility with TEnumerator<T> is required) }
+
+    { iterators }
+    function Start: TArrayIterator<T>;
+    function Finish: TArrayIterator<T>;
+    function RStart: TArrayRIterator<T>;
+    function RFinish: TArrayRIterator<T>;
 
     class operator In(const a: T; b: TVector<T>) : Boolean;
     class operator In(a: TVector<T>; b: TVector<T>) : Boolean;
@@ -282,7 +290,7 @@ type
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
-    property Count: integer read FCount write SetCount;
+    property Count: NativeInt read FCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
@@ -295,14 +303,14 @@ type
     FOwnsValues: boolean;
 
     function GetCapacity: integer;
-    function GetCount: integer;
+    function GetCount: NativeInt;
     function GetEmpty: boolean;
     function GetFirst: T;
     function GetItem(ItemIndex: integer): T;
     function GetLast: T;
     function GetTotalSizeBytes: int64;
     procedure SetCapacity(const Value: integer);
-    procedure SetCount(const Value: integer);
+    procedure SetCount(const Value: NativeInt);
     procedure SetFirst(const Value: T);
     procedure SetItem(ItemIndex: integer; const Value: T);
     procedure SetLast(const Value: T);
@@ -419,13 +427,19 @@ type
     function ToText(const ValuesDelimiter: string = #13#10): string;
     function ToArray: TArray<T>; override;
 
+    { iterators }
+    function Start: TArrayIterator<T>;
+    function Finish: TArrayIterator<T>;
+    function RStart: TArrayRIterator<T>;
+    function RFinish: TArrayRIterator<T>;
+
     { operator overloading is not allowed for classes yet }
     function Equal(const Values: TArray<T>): boolean; overload;
     function Equal(const Values: TEnumerable<T>): boolean; overload;
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
-    property Count: integer read GetCount write SetCount;
+    property Count: NativeInt read GetCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Elements[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
@@ -443,7 +457,7 @@ type
     function GetRO: TVectorClass<T>;
     function GetRW: TVectorClass<T>;
     function GetItemsArray: TArray<T>;
-    function GetCount: integer;
+    function GetCount: NativeInt;
     function GetEmpty: Boolean;
     function GetCollection: TEnumerable<T>;
     function GetCapacity: integer;
@@ -452,7 +466,7 @@ type
     function GetLast: T;
     function GetTotalSizeBytes: int64;
     procedure SetCapacity(const Value: integer);
-    procedure SetCount(const Value: integer);
+    procedure SetCount(const Value: NativeInt);
     procedure SetFirst(const Value: T);
     procedure SetItem(ItemIndex: integer; const Value: T);
     procedure SetLast(const Value: T);
@@ -585,6 +599,13 @@ type
     procedure SaveToStream(Dst: TStream; Encoding: TEncoding = nil);
     procedure SaveToFile(const FileName: string; Encoding: TEncoding = nil; MemStream: boolean = True);
 
+    { iterators }
+    function Start: TArrayIterator<T>;
+    function Finish: TArrayIterator<T>;
+    function RStart: TArrayRIterator<T>;
+    function RFinish: TArrayRIterator<T>;
+
+    { operators }
     class operator In(const a: T; b: TCVector<T>) : Boolean;
     class operator In(a: TCVector<T>; b: TCVector<T>) : Boolean;
     class operator In(const a: TArray<T>; b: TCVector<T>) : Boolean;
@@ -659,7 +680,7 @@ type
 
     property First: T read GetFirst write SetFirst;
     property Last: T read GetLast write SetLast;
-    property Count: integer read GetCount write SetCount;
+    property Count: NativeInt read GetCount write SetCount;
     property Capacity: integer read GetCapacity write SetCapacity;
     property Items[ItemIndex: integer]: T read GetItem write SetItem; default;
     property Empty: boolean read GetEmpty;
@@ -1580,6 +1601,12 @@ begin
   end;
 end;
 
+function TVector<T>.RFinish: TArrayRIterator<T>;
+begin
+  result.Init(@Items[0]);
+  dec(result);
+end;
+
 procedure TVector<T>.RotateLeft(Index1, Index2, Shift: integer);
 var
   I: integer;
@@ -1624,6 +1651,12 @@ begin
   Reverse(Index1, Index2-Index1+1);
   Reverse(Index1, Shift);
   Reverse(Index1+Shift, Index2-Index1+1-Shift);
+end;
+
+function TVector<T>.RStart: TArrayRIterator<T>;
+begin
+  result.Init(@Items[0]);
+  inc(result, FCount-1);
 end;
 
 function TVector<T>.GetCapacity: integer;
@@ -1726,7 +1759,7 @@ begin
   Items[ItemIndex] := Value;
 end;
 
-procedure TVector<T>.SetCount(ACount: integer);
+procedure TVector<T>.SetCount(ACount: NativeInt);
 var
   I: Integer;
 begin
@@ -1787,6 +1820,17 @@ var C: IComparer<T>;
 begin
   C := TDelegatedComparer<T>.Create(AComparison);
   result := TArrayUtils.Sorted<T>(Items, AStartIndex, ACount, C);
+end;
+
+function TVector<T>.Start: TArrayIterator<T>;
+begin
+  result.Init(@Items[0]);
+end;
+
+function TVector<T>.Finish: TArrayIterator<T>;
+begin
+  result.Init(@Items[0]);
+  inc(result, FCount);
 end;
 
 class operator TVector<T>.Subtract(a: TVector<T>; const b: TArray<T>): TVector<T>;
@@ -2348,7 +2392,7 @@ begin
   result := Arr.Capacity;
 end;
 
-function TVectorClass<T>.GetCount: integer;
+function TVectorClass<T>.GetCount: NativeInt;
 begin
   result := Arr.Count;
 end;
@@ -2522,7 +2566,7 @@ begin
   Arr.Capacity := Value;
 end;
 
-procedure TVectorClass<T>.SetCount(const Value: integer);
+procedure TVectorClass<T>.SetCount(const Value: NativeInt);
 var
   I: Integer;
 begin
@@ -2609,6 +2653,26 @@ end;
 function TVectorClass<T>.Sorted(AStartIndex, ACount: integer; AComparison: TComparison<T>): boolean;
 begin
   result := Arr.Sorted(AStartIndex, ACount, AComparison);
+end;
+
+function TVectorClass<T>.Start: TArrayIterator<T>;
+begin
+  result := Arr.Start;
+end;
+
+function TVectorClass<T>.Finish: TArrayIterator<T>;
+begin
+  result := Arr.Finish;
+end;
+
+function TVectorClass<T>.RStart: TArrayRIterator<T>;
+begin
+  result := Arr.RStart;
+end;
+
+function TVectorClass<T>.RFinish: TArrayRIterator<T>;
+begin
+  result := Arr.RFinish;
 end;
 
 function TVectorClass<T>.ToArray: TArray<T>;
@@ -2955,7 +3019,7 @@ begin
   result := RO;
 end;
 
-function TCVector<T>.GetCount: integer;
+function TCVector<T>.GetCount: NativeInt;
 begin
   result := RO.Count;
 end;
@@ -3319,7 +3383,7 @@ begin
   RW.Capacity := Value;
 end;
 
-procedure TCVector<T>.SetCount(const Value: integer);
+procedure TCVector<T>.SetCount(const Value: NativeInt);
 begin
   RW.Count := Value;
 end;
@@ -3392,6 +3456,26 @@ end;
 function TCVector<T>.Sorted(AStartIndex, ACount: integer; AComparison: TComparison<T>): boolean;
 begin
   result := RO.Sorted(AStartIndex, ACount, AComparison);
+end;
+
+function TCVector<T>.Start: TArrayIterator<T>;
+begin
+  result := RW.Start;
+end;
+
+function TCVector<T>.Finish: TArrayIterator<T>;
+begin
+  result := RW.Finish;
+end;
+
+function TCVector<T>.RStart: TArrayRIterator<T>;
+begin
+  result := RW.RStart;
+end;
+
+function TCVector<T>.RFinish: TArrayRIterator<T>;
+begin
+  result := RW.RFinish;
 end;
 
 procedure TCVector<T>.Shuffle;
