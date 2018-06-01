@@ -283,66 +283,6 @@ type
     class function GetNewAsString: string; static;
   end;
 
-  {
-    Collections of system functions.
-    We call it Sys (not TSys), because
-      Sys.FreeAndNil looks more natural than
-      TSys.FreeAndNil
-  }
-  Sys = class
-  public
-
-    { Generic IfThen, compatible with any type.
-      Example: Rect := Sys.IfThen(Condition, Rect1, Rect2); }
-    class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
-
-    { Generic swap function, compatible with any type.
-      Example: Sys.Exchange(Rect1,Rect2); }
-    class procedure Exchange<T>(var A,B: T); static; {$IFDEF UseInline}inline;{$ENDIF}
-
-    { Generic version of FreeAndNil. Much safe than regular FreeAndNil, it accepts classes
-      only and wrong use with other type will be reported as error in compile time.
-      Example: Sys.FreeAndNil(Obj); }
-    class procedure FreeAndNil<T: class>(var Obj: T); static;
-
-    { Safe generic implementation of FillChar(A,SizeOf(A),0) :
-      - Strictly typified, size is calculated by compiler.
-      - Supports managed types (strings, interfaces, dynamic arrays and other managed
-        types will be freed correctly) }
-    class procedure Clear<T>(var R: T); static;
-
-    { Generic function to check if value is withing range }
-    class function ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean; static;
-
-    { Type specific functions to check if value is withing range (more efficient than generic ValueInRange) }
-    class function InRange(const AValue, AValueFrom, AValueTo: integer): boolean; overload; static;
-    class function InRange(const AValue, AValueFrom, AValueTo: double): boolean; overload; static;
-
-    { Type specific functions to check if two ranges are overlapped }
-    class function Overlapped(const AFrom,ATo, BFrom,BTo: integer): boolean; overload; static;
-    class function Overlapped(const AFrom,ATo, BFrom,BTo: double): boolean; overload; static;
-
-    class function Min(const A,B: integer): integer; overload; static;
-    class function Min(const A,B,C: integer): integer; overload; static;
-    class function Min(const Values: array of integer): integer; overload; static;
-    class function Min(const Values: TArray<integer>): integer; overload; static;
-    class function Max(const A,B: integer): integer; overload; static;
-    class function Max(const A,B,C: integer): integer; overload; static;
-    class function Max(const Values: array of integer): integer; overload; static;
-    class function Max(const Values: TArray<integer>): integer; overload; static;
-
-    class function Min(const A,B: double): double; overload; static;
-    class function Min(const A,B,C: double): double; overload; static;
-    class function Min(const Values: array of double): double; overload; static;
-    class function Min(const Values: TArray<double>): double; overload; static;
-    class function Max(const A,B: double): double; overload; static;
-    class function Max(const A,B,C: double): double; overload; static;
-    class function Max(const Values: array of double): double; overload; static;
-    class function Max(const Values: TArray<double>): double; overload; static;
-
-    class function GetPtr(const Values: TArray<byte>): pointer; overload; static;
-  end;
-
   { Currency type utils }
   TCurrencyUtils = class
   public
@@ -402,6 +342,74 @@ type
     property Value: T read GetValue write SetValue;
     property Empty: boolean read GetEmpty;
     property ValuePtr: PT read GetPointer;
+  end;
+
+  {
+    Collections of system functions.
+    We call it Sys (not TSys), because
+      Sys.FreeAndNil looks more natural than
+      TSys.FreeAndNil
+  }
+  Sys = class
+  public
+
+    { Generic IfThen, compatible with any type.
+      Example: Rect := Sys.IfThen(Condition, Rect1, Rect2); }
+    class function IfThen<T>(ACondition: Boolean; AValueTrue,AValueFalse: T):T; static;
+
+    { Generic swap function, compatible with any type.
+      Example: Sys.Exchange(Rect1,Rect2); }
+    class procedure Exchange<T>(var A,B: T); static; {$IFDEF UseInline}inline;{$ENDIF}
+
+    { Generic version of FreeAndNil. Much safe than regular FreeAndNil, it accepts classes
+      only and wrong use with other type will be reported as error in compile time.
+      Example: Sys.FreeAndNil(Obj); }
+    class procedure FreeAndNil<T: class>(var Obj: T); static;
+
+    { Safe generic implementation of FillChar(A,SizeOf(A),0) :
+      - Strictly typified, size is calculated by compiler.
+      - Supports managed types (strings, interfaces, dynamic arrays and other managed
+        types will be freed correctly) }
+    class procedure Clear<T>(var R: T); static;
+
+    { Generic function to check if value is withing range }
+    class function ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean; static;
+
+    { Type specific functions to check if value is withing range (more efficient than generic ValueInRange) }
+    class function InRange(const AValue, AValueFrom, AValueTo: integer): boolean; overload; static;
+    class function InRange(const AValue, AValueFrom, AValueTo: double): boolean; overload; static;
+
+    { Type specific functions to check if two ranges are overlapped }
+    class function Overlapped(const AFrom,ATo, BFrom,BTo: integer): boolean; overload; static;
+    class function Overlapped(const AFrom,ATo, BFrom,BTo: double): boolean; overload; static;
+
+    class function Min(const A,B: integer): integer; overload; static;
+    class function Min(const A,B,C: integer): integer; overload; static;
+    class function Min(const Values: TArray<integer>): integer; overload; static;
+    class function Max(const A,B: integer): integer; overload; static;
+    class function Max(const A,B,C: integer): integer; overload; static;
+    class function Max(const Values: TArray<integer>): integer; overload; static;
+
+    class function Min(const A,B: double): double; overload; static;
+    class function Min(const A,B,C: double): double; overload; static;
+    class function Min(const Values: TArray<double>): double; overload; static;
+    class function Max(const A,B: double): double; overload; static;
+    class function Max(const A,B,C: double): double; overload; static;
+    class function Max(const Values: TArray<double>): double; overload; static;
+
+    class function Min(const Values: TArray<TBox<integer>>): TBox<integer>; overload; static;
+    class function Max(const Values: TArray<TBox<integer>>): TBox<integer>; overload; static;
+    class function Add(const Values: TArray<TBox<integer>>): TBox<integer>; overload; static;
+    class function Neg(const A: TBox<integer>): TBox<integer>; overload; static;
+    class function Sub(const A,B: TBox<integer>): TBox<integer>; overload; static;
+
+    class function Min(const Values: TArray<TBox<double>>): TBox<double>; overload; static;
+    class function Max(const Values: TArray<TBox<double>>): TBox<double>; overload; static;
+    class function Add(const Values: TArray<TBox<double>>): TBox<double>; overload; static;
+    class function Neg(const A: TBox<double>): TBox<double>; overload; static;
+    class function Sub(const A,B: TBox<double>): TBox<double>; overload; static;
+
+    class function GetPtr(const Values: TArray<byte>): pointer; overload; static;
   end;
 
   { Simple generic class to keep record as object }
@@ -2125,16 +2133,6 @@ begin
     result := B;
 end;
 
-class function Sys.Min(const Values: array of integer): integer;
-var I: integer;
-begin
-  Assert(Length(Values)>0);
-  Result := Values[Low(Values)];
-  for I := Low(Values)+1 to High(Values) do
-    if Values[I] < result then
-      result := Values[I];
-end;
-
 class function Sys.Min(const Values: TArray<integer>): integer;
 var I: integer;
 begin
@@ -2142,16 +2140,6 @@ begin
   Result := Values[Low(Values)];
   for I := Low(Values)+1 to High(Values) do
     if Values[I] < result then
-      result := Values[I];
-end;
-
-class function Sys.Max(const Values: array of integer): integer;
-var I: integer;
-begin
-  Assert(Length(Values)>0);
-  Result := Values[Low(Values)];
-  for I := Low(Values)+1 to High(Values) do
-    if Values[I] > result then
       result := Values[I];
 end;
 
@@ -2236,14 +2224,28 @@ begin
       result := (ATo <= BFrom) and (BTo <= AFrom);
 end;
 
-class function Sys.Min(const Values: array of double): double;
-var I: integer;
+class function Sys.Sub(const A, B: TBox<double>): TBox<double>;
 begin
-  Assert(Length(Values)>0);
-  Result := Values[Low(Values)];
-  for I := Low(Values)+1 to High(Values) do
-    if Values[I] < result then
-      result := Values[I];
+  if A.Empty then
+    if B.Empty
+      then result.Init
+      else result.Value := -B.Value
+  else
+    if B.Empty
+      then result.Value := A.Value
+      else result.Value := A.Value - B.Value;
+end;
+
+class function Sys.Sub(const A, B: TBox<integer>): TBox<integer>;
+begin
+  if A.Empty then
+    if B.Empty
+      then result.Init
+      else result.Value := -B.Value
+  else
+    if B.Empty
+      then result.Value := A.Value
+      else result.Value := A.Value - B.Value;
 end;
 
 class function Sys.Min(const Values: TArray<double>): double;
@@ -2256,7 +2258,7 @@ begin
       result := Values[I];
 end;
 
-class function Sys.Max(const Values: array of double): double;
+class function Sys.Max(const Values: TArray<double>): double;
 var I: integer;
 begin
   Assert(Length(Values)>0);
@@ -2266,14 +2268,82 @@ begin
       result := Values[I];
 end;
 
-class function Sys.Max(const Values: TArray<double>): double;
-var I: integer;
+class function Sys.Max(const Values: TArray<TBox<integer>>): TBox<integer>;
+var
+  I: Integer;
 begin
-  Assert(Length(Values)>0);
-  Result := Values[Low(Values)];
-  for I := Low(Values)+1 to High(Values) do
-    if Values[I] > result then
-      result := Values[I];
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := Max(result.Value, Values[I].Value);
+end;
+
+class function Sys.Min(const Values: TArray<TBox<integer>>): TBox<integer>;
+var
+  I: Integer;
+begin
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := Min(result.Value, Values[I].Value);
+end;
+
+class function Sys.Max(const Values: TArray<TBox<double>>): TBox<double>;
+var
+  I: Integer;
+begin
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := Max(result.Value, Values[I].Value);
+end;
+
+class function Sys.Min(const Values: TArray<TBox<double>>): TBox<double>;
+var
+  I: Integer;
+begin
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := Min(result.Value, Values[I].Value);
+end;
+
+class function Sys.Neg(const A: TBox<double>): TBox<double>;
+begin
+  if A.Empty then result.Init else
+    result.Value := -A.Value;
+end;
+
+class function Sys.Neg(const A: TBox<integer>): TBox<integer>;
+begin
+  if A.Empty then result.Init else
+    result.Value := -A.Value;
+end;
+
+class function Sys.Add(const Values: TArray<TBox<integer>>): TBox<integer>;
+var
+  I: Integer;
+begin
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := result.Value + Values[I].Value;
+end;
+
+class function Sys.Add(const Values: TArray<TBox<double>>): TBox<double>;
+var
+  I: Integer;
+begin
+  result.Init;
+  for I := Low(Values) to High(Values) do
+    if not Values[I].Empty then
+      if result.Empty then result := Values[I] else
+        result.Value := result.Value + Values[I].Value;
 end;
 
 { TDataSize }

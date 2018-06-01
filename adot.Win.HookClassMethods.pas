@@ -8,7 +8,8 @@
 interface
 
 uses
-  Windows, SysUtils, System.Generics.Collections, System.Generics.Defaults;
+  Windows, SysUtils, System.Generics.Collections, System.Generics.Defaults,
+  System.SyncObjs;
 
 type
 
