@@ -47,6 +47,7 @@ type
     {$If Defined(MSWindows)}
       class function EncodeAnsiString(const S: AnsiString): TBytes;
     {$EndIf}
+    class function Encode(const Lines: TArray<string>): TBytes; overload;
     class function EncodeFile(const AFileName: string): TBytes; overload;
 
     { streaming functions }
@@ -287,6 +288,17 @@ begin
     result := DoEncode(nil^, 0)
   else
     result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+end;
+
+class function TCustomHash.Encode(const Lines: TArray<string>): TBytes;
+var
+  H: THashData;
+  S: string;
+begin
+  Init(H);
+  for S in Lines do
+    Update(S, H);
+  result := Done(H);
 end;
 
 {$If Defined(MSWindows)}
