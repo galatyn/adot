@@ -14,7 +14,7 @@ interface
     TVector<T>       generic record, light & fast wrapper for TArray<T>    +            -
     TVectorClass<T>  generic class, base for TCVector<T>                   -            -
     TCVector<T>      generic record, supports copy-on-write                +            +
-    TArr2D<T>        generic record, wrapper for 2-dimensional array       +            -
+    T2DVector<T>     generic record, wrapper for 2-dimensional array       +            -
 }
 
 uses
@@ -695,7 +695,7 @@ type
   //TCObjectVector<T: class> = record
 
   { Dynamic 2-dimensional array }
-  TArr2D<T> = record
+  T2DVector<T> = record
   public
     Rows: TVector<TVector<T>>;
 
@@ -732,7 +732,8 @@ type
     procedure SetWidth(y: integer; const Value: integer);
 
   public
-    procedure Init(Width, Height: integer);
+    procedure Init; overload;
+    procedure Init(Width, Height: integer); overload;
     procedure Clear;
 
     function AddRow: integer;
@@ -1916,9 +1917,9 @@ begin
     Items[Add] := Value[I];
 end;
 
-{ TArr2D<T>.TCollectionEnumerator }
+{ T2DVector<T>.TCollectionEnumerator }
 
-constructor TArr2D<T>.TEnumerator.Create(const Rows: TVector<TVector<T>>);
+constructor T2DVector<T>.TEnumerator.Create(const Rows: TVector<TVector<T>>);
 begin
   inherited Create;
   Self.Rows := Rows;
@@ -1926,7 +1927,7 @@ begin
   Y := 0;
 end;
 
-function TArr2D<T>.TEnumerator.DoMoveNext: Boolean;
+function T2DVector<T>.TEnumerator.DoMoveNext: Boolean;
 begin
   if Y >= Rows.Count then
     Exit(False);
@@ -1944,7 +1945,7 @@ begin
   Result := True;
 end;
 
-function TArr2D<T>.TEnumerator.DoGetCurrent: T;
+function T2DVector<T>.TEnumerator.DoGetCurrent: T;
 begin
   result := Rows[Y][X];
 end;
@@ -1998,57 +1999,62 @@ begin
   result.Add(B);
 end;
 
-{ TArr2D<T>.TCollection }
+{ T2DVector<T>.TCollection }
 
-constructor TArr2D<T>.TCollection.Create(const Rows: TVector<TVector<T>>);
+constructor T2DVector<T>.TCollection.Create(const Rows: TVector<TVector<T>>);
 begin
   inherited Create;
   Self.Rows := Rows;
 end;
 
-function TArr2D<T>.TCollection.DoGetEnumerator: TEnumerator<T>;
+function T2DVector<T>.TCollection.DoGetEnumerator: TEnumerator<T>;
 begin
   result := TEnumerator.Create(Rows);
 end;
 
-{ TArr2D<T> }
+{ T2DVector<T> }
 
-procedure TArr2D<T>.Init(Width, Height: integer);
+procedure T2DVector<T>.Init;
+begin
+  Self := Default(T2DVector<T>);
+end;
+
+procedure T2DVector<T>.Init(Width, Height: integer);
 var
   Y: integer;
   V: TVector<T>;
 begin
-  Self := Default(TArr2D<T>);
-  Rows := TVector<TVector<T>>.Create(Height);
+  Init;
+  Rows.Init;
   Rows.Count := Height;
   for Y := 0 to Height-1 do
   begin
-    Rows[Y] := TVector<T>.Create(Width);
+    Rows[Y].Init;
     Rows.Items[Y].Count := Width;
   end;
 end;
 
-procedure TArr2D<T>.Clear;
+procedure T2DVector<T>.Clear;
 begin
-  Self := Default(TArr2D<T>);
+  Init;
 end;
 
-function TArr2D<T>.Collection: IInterfacedObject<TEnumerable<T>>;
+function T2DVector<T>.Collection: IInterfacedObject<TEnumerable<T>>;
 begin
   result := TInterfacedObject<TEnumerable<T>>.Create(TCollection.Create(Rows));
 end;
 
-function TArr2D<T>.Add(y: integer): integer;
+function T2DVector<T>.Add(y: integer): integer;
 begin
   result := Rows.Items[y].Add;
 end;
 
-function TArr2D<T>.Add(y: integer; const Value: T): integer;
+function T2DVector<T>.Add(y: integer; const Value: T): integer;
 begin
   result := Rows.Items[y].Add(Value);
 end;
 
-function TArr2D<T>.Add(y: integer; const Values: TEnumerable<T>): integer;
+function T2DVector<T>.Add(y: integer; const Values: TEnumerable<T>): integer;
 var
   Value: T;
 begin
@@ -2057,7 +2063,7 @@ begin
     result := Self.Rows.Items[y].Add(Value);
 end;
 
-function TArr2D<T>.Add(y: integer; const Values: TArray<T>): integer;
+function T2DVector<T>.Add(y: integer; const Values: TArray<T>): integer;
 var
   I: Integer;
 begin
@@ -2066,37 +2072,40 @@ begin
     result := Self.Rows.Items[y].Add(Values[I]);
 end;
 
-function TArr2D<T>.AddRow: integer;
+function T2DVector<T>.AddRow: integer;
 begin
   result := Rows.Add;
 end;
 
-function TArr2D<T>.GetValue(x, y: integer): T;
+function T2DVector<T>.GetValue(x, y: integer): T;
 begin
   result := Rows.Items[y].Items[x];
 end;
 
-procedure TArr2D<T>.SetValue(x, y: integer; const Value: T);
+procedure T2DVector<T>.SetValue(x, y: integer; const Value: T);
 begin
+  assert((y>=0) and (y<Rows.FCount));
+  assert((x>=0) and (x<Rows.Items[y].FCount));
   Rows.Items[y].Items[x] := Value;
 end;
 
-function TArr2D<T>.GetRowCount: integer;
+function T2DVector<T>.GetRowCount: integer;
 begin
   result := Rows.Count;
 end;
 
-procedure TArr2D<T>.SetRowCount(const Value: integer);
+procedure T2DVector<T>.SetRowCount(const Value: integer);
 begin
   Rows.Count := Value;
 end;
 
-function TArr2D<T>.GetWidth(y: integer): integer;
+function T2DVector<T>.GetWidth(y: integer): integer;
 begin
   result := Rows.Items[y].Count;
 end;
 
-procedure TArr2D<T>.SetWidth(y: integer; const Value: integer);
+
+procedure T2DVector<T>.SetWidth(y: integer; const Value: integer);
 begin
   Rows.Items[y].Count := Value;
 end;

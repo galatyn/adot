@@ -128,6 +128,8 @@ type
     procedure Remove(const V: array of TKey); overload;
 
     function TryGetValue(const Key: TKey; out Value: TValue): Boolean;
+    function GetValue(const Key: TKey): TValue;
+    function GetValueDef(const Key: TKey): TValue;
     function ExtractPair(const Key: TKey): TPair<TKey,TValue>;
     procedure Clear;
     procedure Release; { release underlying object }
@@ -1290,6 +1292,18 @@ end;
 function TMap<TKey, TValue>.TryGetValue(const Key: TKey; out Value: TValue): Boolean;
 begin
   result := ReadOnly.TryGetValue(Key, Value);
+end;
+
+function TMap<TKey, TValue>.GetValue(const Key: TKey): TValue;
+begin
+  if not ReadOnly.TryGetValue(Key, Result) then
+    raise Exception.Create('Error');
+end;
+
+function TMap<TKey, TValue>.GetValueDef(const Key: TKey): TValue;
+begin
+  if not ReadOnly.TryGetValue(Key, Result) then
+    result := default(TValue);
 end;
 
 class operator TMap<TKey, TValue>.Equal(A, B: TMap<TKey, TValue>): Boolean;
