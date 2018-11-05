@@ -64,28 +64,46 @@ type
     type
       IAutoFreeCollection = interface(IUnknown)
         procedure Add(AObject: TObject);
-        function Count: integer;
+        function GetCount: integer;
+        function GetItem(n: integer): TObject;
+        function Extract(n: integer): TObject;
+        function ExtractAll: TArray<TObject>;
       end;
 
       TAutoFreeCollectionImpl = class(TInterfacedObject, IAutoFreeCollection)
       protected
         FList: TObjectList<TObject>;
+
       public
         constructor Create;
         destructor Destroy; override;
+
         procedure Add(AObject: TObject);
-        function Count: integer;
+        function GetCount: integer;
+        function GetItem(n: integer): TObject;
+        function Extract(n: integer): TObject;
+        function ExtractAll: TArray<TObject>;
       end;
 
     var
       FGuard: IAutoFreeCollection;
 
+    function GetCount: integer;
+    function GetItem(n: integer): TObject;
+    function Guard: IAutoFreeCollection;
+
   public
     procedure Init;
+    class function Create: TAutoFreeCollection; static;
+    procedure Clear;
 
     function Add<T: class>(AObject: T):T;
-    procedure Clear;
     function Empty: Boolean;
+    function Extract(n: integer): TObject;
+    function ExtractAll: TArray<TObject>;
+
+    property Count: integer read GetCount;
+    property Items[n: integer]: TObject read GetItem;
   end;
   TAC = TAutoFreeCollection;
 
@@ -360,7 +378,7 @@ type
 
   { Generic singleton pattern. Creates instance on first request. Example:
       Type
-        TOptions = class(TSingleton<TStringList>)
+        TOptions = class(TSingletonConstr<TStringList>)
         protected
           class function CreateInstance: TStringList; override;
         end;
@@ -375,7 +393,8 @@ type
         TOptions.Ordinal.Add('test');
       end;
   }
-  TSingleton<T: class> = class abstract
+  { constructor is required (CreateInstance) }
+  TSingletonConstr<T: class> = class abstract
   protected
     class var
       FOrdinal: T;
@@ -393,6 +412,21 @@ type
       That is why we have to use function Ordinal + procedure SetOrdinal instead of one property Ordinal }
     class function Ordinal: T;
     class procedure SetOrdinal(const Value: T); static;
+  end;
+
+  {
+      Type
+        TOptions = class(TSingleton<TStringList>);
+
+      procedure Test;
+      begin
+        TOptions.Ordinal.Add('test');
+      end;
+  }
+  { public/parameterless constructor is used by default }
+  TSingleton<T: class, constructor> = class(TSingletonConstr<T>)
+  protected
+    class function CreateInstance: T; override;
   end;
 
   {  Can be used as default enumerator in indexable containers (to implement "for I in XXX do" syntax), example:
@@ -670,22 +704,52 @@ begin
   Self := Default(TAutoFreeCollection);
 end;
 
+class function TAutoFreeCollection.Create: TAutoFreeCollection;
+begin
+  result := Default(TAutoFreeCollection);
+end;
+
 procedure TAutoFreeCollection.Clear;
 begin
   Self := Default(TAutoFreeCollection);
 end;
 
-function TAutoFreeCollection.Add<T>(AObject: T): T;
+function TAutoFreeCollection.Guard: IAutoFreeCollection;
 begin
   if FGuard=nil then
     FGuard := TAutoFreeCollectionImpl.Create;
-  FGuard.Add(AObject);
+  result := FGuard;
+end;
+
+function TAutoFreeCollection.Add<T>(AObject: T): T;
+begin
+  Guard.Add(AObject);
   result := AObject;
 end;
 
 function TAutoFreeCollection.Empty: Boolean;
 begin
-  result := (FGuard=nil) or (FGuard.Count=0);
+  result := Guard.GetCount=0;
+end;
+
+function TAutoFreeCollection.Extract(n: integer): TObject;
+begin
+  result := Guard.Extract(n);
+end;
+
+function TAutoFreeCollection.ExtractAll: TArray<TObject>;
+begin
+  result := Guard.ExtractAll;
+end;
+
+function TAutoFreeCollection.GetCount: integer;
+begin
+  result := Guard.GetCount;
+end;
+
+function TAutoFreeCollection.GetItem(n: integer): TObject;
+begin
+  result := Guard.GetItem(n);
 end;
 
 { TAutoFreeCollection.TAutoFreeCollectionImpl }
@@ -702,14 +766,44 @@ begin
   inherited;
 end;
 
+function TAutoFreeCollection.TAutoFreeCollectionImpl.Extract(n: integer): TObject;
+begin
+  FList.OwnsObjects := False;
+  try
+    result := FList[n];
+    FList.Delete(n);
+  finally
+    FList.OwnsObjects := True;
+  end;
+end;
+
+function TAutoFreeCollection.TAutoFreeCollectionImpl.ExtractAll: TArray<TObject>;
+var I: integer;
+begin
+  FList.OwnsObjects := False;
+  try
+    SetLength(result, FList.Count);
+    for I := 0 to FList.Count-1 do
+      result[I] := FList[I];
+    FList.Clear;
+  finally
+    FList.OwnsObjects := True;
+  end;
+end;
+
 procedure TAutoFreeCollection.TAutoFreeCollectionImpl.Add(AObject: TObject);
 begin
   FList.Add(AObject);
 end;
 
-function TAutoFreeCollection.TAutoFreeCollectionImpl.Count: integer;
+function TAutoFreeCollection.TAutoFreeCollectionImpl.GetCount: integer;
 begin
   result := FList.Count;
+end;
+
+function TAutoFreeCollection.TAutoFreeCollectionImpl.GetItem(n: integer): TObject;
+begin
+  result := FList[n];
 end;
 
 { TComparerUtils }
@@ -1138,26 +1232,33 @@ begin
     result := 1;
 end;
 
-{ TSingleton<T> }
+{ TSingletonConstr<T> }
 
-class destructor TSingleton<T>.DestroyClass;
+class destructor TSingletonConstr<T>.DestroyClass;
 begin
   FreeAndNil(FOrdinal);
 end;
 
-class function TSingleton<T>.Ordinal: T;
+class function TSingletonConstr<T>.Ordinal: T;
 begin
   if FOrdinal = nil then
     FOrdinal := CreateInstance;
   result := FOrdinal;
 end;
 
-class procedure TSingleton<T>.SetOrdinal(const Value: T);
+class procedure TSingletonConstr<T>.SetOrdinal(const Value: T);
 begin
   if Value = FOrdinal then
     Exit;
   FreeAndNil(FOrdinal);
   FOrdinal := Value;
+end;
+
+{ TSingleton<T> }
+
+class function TSingleton<T>.CreateInstance: T;
+begin
+  result := T.Create;
 end;
 
 { TIndexBackEnumerator }

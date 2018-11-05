@@ -96,7 +96,7 @@ begin
   PrevDMInst := ADMGlobalVar;
   try
     ADataModule  := TModel.Create(ADMOwner);
-    ADMGlobalVar := ADMGlobalVar; { should be assigned when form is creating }
+    ADMGlobalVar := ADataModule; { should be assigned when form is creating }
     AForm        := TView.Create(AFormOwner);
   finally
     ADMGlobalVar := PrevDMInst;
