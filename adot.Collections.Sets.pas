@@ -3,8 +3,36 @@ unit adot.Collections.Sets;
 interface
 
 {
-  TSetClass<T>
   TSet<T>
+  TSetClass<T>
+
+  Example:
+  var
+    a,b,c: TSet<string>;
+    s: string;
+  begin
+    a := ['Mandag', 'Tirsdag', 'Fredag'];
+    b := ['Fredag', 'Lørdag'];
+    c := a and b;                           // ['Fredag']
+    c := a or b;                            // ['Mandag', 'Tirsdag', 'Fredag', 'Lørdag']
+    c := a + b - ['Mandag', 'Tirsdag'];     // ['Fredag', 'Lørdag']
+    if a xor b = TSet<string>.Create(['Mandag', 'Tirsdag', 'Lørdag']) then
+      [...]
+    if (b in a) or ('Fredag' in a) then
+      [...]
+    if a>b then     // "a" contains all items from "b" and at least one item extra
+      [...]
+    if a>=b then    // "a" contains all items from "b" and maybe some items extra
+      [...]
+    for s in c do   // enumerate all values from the set
+      [...]
+    c := ['One'];
+    c.Add(['Two', 'Three']);
+    c.Remove('Two'); // ['One', 'Three']
+    Assert( ('one' in c) and ('three' in c) ); // default comparer for "string" type is case insensitive
+    c := TSet<string>.Create(['One','Two'], 0,TStringComparer.Ordinal);
+    Assert( ('One' in c) and NOT ('one' in c) ); // now we used case sensitive comparer
+  end;
 }
 
 uses
@@ -17,70 +45,12 @@ uses
   System.RTLConsts;
 
 type
-  TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
-
-  { Generic class for unordered set }
-  TSetClass<T> = class(TEnumerableExt<T>)
-  public
-    type
-      { TObjectDictionary (Delphi 10.2.1) doesn't allow to change Ownership for existing objects,
-        we can provide Ownership in constructor only. We implement own version of ObjectDictionary to fix it. }
-      TSetObjectDictionary<TSetDictKey,TSetDictValue> = class(TDictionary<TSetDictKey,TSetDictValue>)
-      protected
-        OwnsKeys: boolean;
-
-        procedure KeyNotify(const Key: TSetDictKey; Action: TCollectionNotification); override;
-      end;
-
-  protected
-    var
-      FSet: TSetObjectDictionary<T, TEmptyRec>;
-      FComparerCopy: IEqualityComparer<T>; { FSet.Comparer is hidden in private section, so we keep copy }
-
-    function GetCount: integer;
-    function DoGetEnumerator: TEnumerator<T>; override;
-    function GetComparer: IEqualityComparer<T>;
-    procedure SetOwnsValues(AOwnsValues: boolean);
-    function GetOwnsValues: boolean;
-
-  public
-    constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const AValues: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp; AComparer: IEqualityComparer<T> = nil); overload;
-
-    destructor Destroy; override;
-
-    procedure Add(const AValue: T); overload;
-    procedure Add(const ASet: array of T); overload;
-    procedure Add(const AValues: TEnumerable<T>); overload;
-
-    procedure IncludeLogicalAnd(const A,B: TSetClass<T>);
-    procedure IncludeLogicalOr(const A,B: TSetClass<T>);
-    procedure IncludeLogicalXor(const A,B: TSetClass<T>);
-
-    procedure Remove(const AValue: T); overload;
-    procedure Remove(const ASet: array of T); overload;
-    procedure Remove(const AValues: TEnumerable<T>); overload;
-
-    function Contains(const AValue: T): boolean; overload;
-    function Contains(const ASet: array of T): boolean; overload;
-    function Contains(const AValues: TEnumerable<T>): boolean; overload;
-
-    procedure Clear;
-    function Empty: Boolean;
-    function ToArray: TArray<T>; override;
-
-    property Count: integer read GetCount;
-    property Comparer: IEqualityComparer<T> read GetComparer;
-    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
-  end;
-
   { check TSet bellow }
   TCustomSetRec<T> = record
   private
     type
       TItem = record
+      private
         HashCode: Integer;
         Value: T;
       end;
@@ -164,33 +134,6 @@ type
     function GetEnumerator: TValueEnumerator; { must be public to allow "for in" syntax }
   end;
 
-  {  Example:
-      var
-        a,b,c: TSet<string>;
-        s: string;
-      begin
-        a := ['Mandag', 'Tirsdag', 'Fredag'];
-        b := ['Fredag', 'Lørdag'];
-        c := a and b;                           // ['Fredag']
-        c := a or b;                            // ['Mandag', 'Tirsdag', 'Fredag', 'Lørdag']
-        c := a + b - ['Mandag', 'Tirsdag'];     // ['Fredag', 'Lørdag']
-        if a xor b = TSet<string>.Create(['Mandag', 'Tirsdag', 'Lørdag']) then
-          [...]
-        if (b in a) or ('Fredag' in a) then
-          [...]
-        if a>b then     // "a" contains all items from "b" and at least one item extra
-          [...]
-        if a>=b then    // "a" contains all items from "b" and maybe some items extra
-          [...]
-        for s in c do   // enumerate all values from the set
-          [...]
-        c := ['En'];
-        c.Add(['To', 'Tre']);
-        c.Remove('To'); // ['En', 'Tre']
-        Assert( ('En' in c) and ('en' in c) ); // default comparer for "string" type is case insensitive
-        c := TSet<string>.Create(['En','To'], 0,TStringComparer.Ordinal);
-        Assert( ('En' in c) and NOT ('en' in c) ); // now we used case sensitive comparer
-      end; }
   TSet<T> = record
   private
     type
@@ -334,6 +277,65 @@ type
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property OnValueNotify: TValueNotifyEvent read GetOnValueNotify write SetOnValueNotify;
     property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
+  end;
+
+  TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
+
+  { Generic class for unordered set }
+  TSetClass<T> = class(TEnumerableExt<T>)
+  public
+    type
+      { TObjectDictionary (Delphi 10.2.1) doesn't allow to change Ownership for existing objects,
+        we can provide Ownership in constructor only. We implement own version of ObjectDictionary to fix it. }
+      TSetObjectDictionary<TSetDictKey,TSetDictValue> = class(TDictionary<TSetDictKey,TSetDictValue>)
+      protected
+        OwnsKeys: boolean;
+
+        procedure KeyNotify(const Key: TSetDictKey; Action: TCollectionNotification); override;
+      end;
+
+  protected
+    var
+      FSet: TSetObjectDictionary<T, TEmptyRec>;
+      FComparerCopy: IEqualityComparer<T>; { FSet.Comparer is hidden in private section, so we keep copy }
+
+    function GetCount: integer;
+    function DoGetEnumerator: TEnumerator<T>; override;
+    function GetComparer: IEqualityComparer<T>;
+    procedure SetOwnsValues(AOwnsValues: boolean);
+    function GetOwnsValues: boolean;
+
+  public
+    constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const AValues: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
+    constructor Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp; AComparer: IEqualityComparer<T> = nil); overload;
+
+    destructor Destroy; override;
+
+    procedure Add(const AValue: T); overload;
+    procedure Add(const ASet: array of T); overload;
+    procedure Add(const AValues: TEnumerable<T>); overload;
+
+    procedure IncludeLogicalAnd(const A,B: TSetClass<T>);
+    procedure IncludeLogicalOr(const A,B: TSetClass<T>);
+    procedure IncludeLogicalXor(const A,B: TSetClass<T>);
+
+    procedure Remove(const AValue: T); overload;
+    procedure Remove(const ASet: array of T); overload;
+    procedure Remove(const AValues: TEnumerable<T>); overload;
+
+    function Contains(const AValue: T): boolean; overload;
+    function Contains(const ASet: array of T): boolean; overload;
+    function Contains(const AValues: TEnumerable<T>): boolean; overload;
+
+    procedure Clear;
+    function Empty: Boolean;
+    function ToArray: TArray<T>; override;
+
+    property Count: integer read GetCount;
+    property Comparer: IEqualityComparer<T> read GetComparer;
+    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
   end;
 
 implementation
