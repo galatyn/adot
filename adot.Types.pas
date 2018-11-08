@@ -28,6 +28,9 @@ type
   TIEMode = (iemIE7, iemIE8, iemIE9, iemIE10, iemIE11, iemIEInstalled);
 
   TEmptyRec = record end;
+const
+  EmptyRec : TEmptyRec = ();
+type
   TSetOfByte = set of Byte;
 
   TProcConst<T> = reference to procedure (const Arg1: T);

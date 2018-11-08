@@ -59,10 +59,6 @@ type
     procedure IncludeLogicalOr(const A,B: TSetClass<T>);
     procedure IncludeLogicalXor(const A,B: TSetClass<T>);
 
-    procedure Include(const AValue: T); overload;
-    procedure Include(const ASet: array of T); overload;
-    procedure Include(const AValues: TEnumerable<T>); overload;
-
     procedure Remove(const AValue: T); overload;
     procedure Remove(const ASet: array of T); overload;
     procedure Remove(const AValues: TEnumerable<T>); overload;
@@ -392,7 +388,7 @@ begin
 
     soUnion:
       for I := 0 to High(AOperands) do
-        Include(AOperands[I]);
+        Add(AOperands[I]);
 
     soIntersection:
       begin
@@ -511,9 +507,8 @@ begin
 end;
 
 procedure TSetClass<T>.Add(const AValue: T);
-var R: TEmptyRec;
 begin
-  FSet.Add(AValue, R);
+  FSet.AddOrSetValue(AValue, EmptyRec);
 end;
 
 procedure TSetClass<T>.Add(const ASet: array of T);
@@ -521,7 +516,7 @@ var
   i: Integer;
 begin
   for i := Low(ASet) to High(ASet) do
-    Add(ASet[i]);
+    FSet.AddOrSetValue(ASet[i], EmptyRec);
 end;
 
 procedure TSetClass<T>.Add(const AValues: TEnumerable<T>);
@@ -529,7 +524,7 @@ var
   Item: T;
 begin
   for Item in AValues do
-    Add(Item);
+    FSet.AddOrSetValue(Item, EmptyRec);
 end;
 
 procedure TSetClass<T>.IncludeLogicalAnd(const A, B: TSetClass<T>);
@@ -540,13 +535,13 @@ begin
   begin
     for Value in A do
       if B.Contains(Value) then
-        Include(Value);
+        Add(Value);
   end
   else
   begin
     for Value in B do
       if A.Contains(Value) then
-        Include(Value);
+        Add(Value);
   end
 end;
 
@@ -555,9 +550,9 @@ var
   Value: T;
 begin
   for Value in A do
-    Include(Value);
+    Add(Value);
   for Value in B do
-    Include(Value);
+    Add(Value);
 end;
 
 procedure TSetClass<T>.IncludeLogicalXor(const A, B: TSetClass<T>);
@@ -566,32 +561,10 @@ var
 begin
   for Value in A do
     if not B.Contains(Value) then
-      Include(Value);
+      Add(Value);
   for Value in B do
     if not A.Contains(Value) then
-      Include(Value);
-end;
-
-procedure TSetClass<T>.Include(const AValue: T);
-var R: TEmptyRec;
-begin
-  FSet.AddOrSetValue(AValue, R);
-end;
-
-procedure TSetClass<T>.Include(const ASet: array of T);
-var
-  i: Integer;
-begin
-  for i := Low(ASet) to High(ASet) do
-    Include(ASet[i]);
-end;
-
-procedure TSetClass<T>.Include(const AValues: TEnumerable<T>);
-var
-  Item: T;
-begin
-  for Item in AValues do
-    Include(Item);
+      Add(Value);
 end;
 
 procedure TSetClass<T>.Clear;
