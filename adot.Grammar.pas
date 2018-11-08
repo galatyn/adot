@@ -630,7 +630,7 @@ constructor TGrammarCharSetClass.Create(const Chars: array of Char; CaseSensitiv
 var C: Char;
 begin
   inherited Create(gtCharSet);
-  CharSet.Clear;
+  CharSet.Init;
   if CaseSensitive then
     for C in Chars do
       CharSet.Add(C)
@@ -646,7 +646,7 @@ constructor TGrammarCharSetClass.Create(Chars: TEnumerable<Char>; CaseSensitive:
 var C: Char;
 begin
   inherited Create(gtCharSet);
-  CharSet.Clear;
+  CharSet.Init;
   if CaseSensitive then
     for C in Chars do
       CharSet.Add(C)
@@ -662,7 +662,7 @@ constructor TGrammarCharSetClass.Create(Chars: TSet<Char>; CaseSensitive: boolea
 var C: Char;
 begin
   inherited Create(gtCharSet);
-  CharSet.Clear;
+  CharSet.Init;
   if CaseSensitive then
     for C in Chars do
       CharSet.Add(C)
@@ -897,7 +897,7 @@ begin
   Assert(Rule.Grm<>nil, 'rule is not initialized');
   Queue.Clear;
   Queue.Add(Rule.Grm.Data);
-  QueuedIds.Clear;
+  QueuedIds.Init;
   QueuedIds.Add(Rule.Id);
   repeat
 

@@ -13,7 +13,8 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   System.StrUtils,
-  System.SysUtils;
+  System.SysUtils,
+  System.RTLConsts;
 
 type
   TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
@@ -79,6 +80,94 @@ type
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
   end;
 
+  { check TSet bellow }
+  TCustomSetRec<T> = record
+  private
+    type
+      TItem = record
+        HashCode: Integer;
+        Value: T;
+      end;
+
+      TValueEnumerator = record
+      private
+        FItems: TArray<TItem>;
+        FIndex: Integer;
+
+        function GetCurrent: T;
+
+      public
+        constructor Create(const AItems: TArray<TItem>);
+        function MoveNext: Boolean;
+
+        property Current: T read GetCurrent;
+      end;
+
+      TValueNotifyEvent = procedure(const Value: T; Action: TCollectionNotification) of object;
+
+    const
+      EMPTY_HASH = -1;
+
+    var
+      FItems: TArray<TItem>;
+      FCount: Integer;
+      FComparer: IEqualityComparer<T>;
+      FGrowThreshold: Integer;
+      FOnValueNotify: TValueNotifyEvent;
+      FOwnsValues: boolean;
+
+    procedure SetCapacity(ACapacity: Integer);
+    procedure Rehash(NewCapPow2: Integer);
+    procedure Grow;
+    function GetBucketIndex(const Value: T; HashCode: Integer): Integer;
+    function Hash(const Key: T): Integer;
+    procedure RehashAdd(HashCode: Integer; const Value: T);
+    procedure DoAdd(HashCode, Index: Integer; const Value: T);
+    procedure DoSetValue(Index: Integer; const Value: T);
+    function DoRemove(const Key: T; HashCode: Integer; Notification: TCollectionNotification): T;
+    procedure ValueNotify(const Value: T; Action: TCollectionNotification);
+
+  private
+    procedure Init(ACapacity: Integer = 0; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil); overload;
+
+    procedure Add(const Value: T); overload;
+    procedure Add(const Values: TEnumerable<T>); overload;
+    procedure Add(const Values: TArray<T>); overload;
+    procedure Add(const Values: array of T); overload;
+    procedure Add(const Values: TCustomSetRec<T>); overload;
+
+    procedure Remove(const Value: T); overload;
+    procedure Remove(const Values: TEnumerable<T>); overload;
+    procedure Remove(const Values: TArray<T>); overload;
+    procedure Remove(const Values: TCustomSetRec<T>); overload;
+
+    function Contains(const Value: T): Boolean; overload;
+    function Contains(const Values: TEnumerable<T>): Boolean; overload;
+    function Contains(const Values: TArray<T>): Boolean; overload;
+    function Contains(const Values: TCustomSetRec<T>): Boolean; overload;
+
+    procedure CopyFrom(const Src: TCustomSetRec<T>);
+    function ToArray: TArray<T>;
+    function ToString: string;
+    function ToText(const ValuesDelimiter: string = #13#10): string;
+
+    function Extract(const Value: T): T;
+    procedure Clear;
+    procedure TrimExcess;
+    procedure SetOwnsValues(const Value: boolean);
+
+    property Count: Integer read FCount;
+    property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
+    property OnValueNotify: TValueNotifyEvent read FOnValueNotify write FOnValueNotify;
+    property Comparer: IEqualityComparer<T> read FComparer write FComparer;
+
+  public
+    function GetEnumerator: TValueEnumerator; { must be public to allow "for in" syntax }
+  end;
+
   {  Example:
       var
         a,b,c: TSet<string>;
@@ -106,128 +195,149 @@ type
         c := TSet<string>.Create(['En','To'], 0,TStringComparer.Ordinal);
         Assert( ('En' in c) and NOT ('en' in c) ); // now we used case sensitive comparer
       end; }
-  { Record type for set. Support operators for all set operations and copy-on-write. }
   TSet<T> = record
   private
-    FSetInt: IInterfacedObject<TSetClass<T>>;
-
-    procedure CreateSet(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-
-    function GetReadonly: TSetClass<T>;
-    function GetReadWrite: TSetClass<T>;
-    function GetOwnsValues: boolean;
-    procedure SetOwnsValues(AOwnsValues: boolean);
-    function GetCount: integer;
-    function GetEmpty: Boolean;
-    function GetCollection: TEnumerable<T>;
-
-    property RO: TSetClass<T> read GetReadonly;
-    property RW: TSetClass<T> read GetReadWrite;
+    type
+      TData = class(TInterfacedObject, IInterface)
+      private
+        FSet: TCustomSetRec<T>;
+      public
+        destructor Destroy; override;
+      end;
 
   public
+    type
+      TValueEnumerator = TCustomSetRec<T>.TValueEnumerator;
+      TValueNotifyEvent = TCustomSetRec<T>.TValueNotifyEvent;
 
+  private
+    FData: TData;          { valid as long as FDataIntf is alive }
+    FDataIntf: IInterface; { maintain lifecycle }
+
+    function GetCount: Integer;
+    function GetOnValueNotify: TValueNotifyEvent;
+    procedure SetOnValueNotify(const Value: TValueNotifyEvent);
+    function GetComparer: IEqualityComparer<T>;
+    procedure SetComparer(const Value: IEqualityComparer<T>);
+    function GetEmpty: Boolean;
+    function GetOwnsValues: boolean;
+    procedure SetOwnsValues(const Value: boolean);
+
+  public
     procedure Init; overload;
-    procedure Init(ACapacity: integer; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Init(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Init(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Init(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
-    procedure Init(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil); overload;
+    procedure Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil); overload;
 
     class function Create: TSet<T>; overload; static;
-    class function Create(ACapacity: integer; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
-    class function Create(const V: array of T; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
-    class function Create(const V: TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
-    class function Create(const V: array of TEnumerable<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
-    class function Create(V: TSet<T>; ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
+    class function Create(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil): TSet<T>; overload; static;
 
-    function GetEnumerator: TEnumerator<T>;
+    function GetEnumerator: TValueEnumerator;
 
-    procedure Add(const V: T); overload;
-    procedure Add(const V: array of T); overload;
-    procedure Add(const V: TEnumerable<T>); overload;
-    procedure Add(const V: array of TEnumerable<T>); overload;
-    procedure Add(V: TSet<T>); overload;
+    procedure Add(const AValue: T); overload;
+    procedure Add(const AValues: TEnumerable<T>); overload;
+    procedure Add(const AValues: TArray<T>); overload;
+    procedure Add(const AValues: array of T); overload;
+    procedure Add(const AValues: TSet<T>); overload;
 
-    procedure Remove(const V: T); overload;
-    procedure Remove(const V: array of T); overload;
-    procedure Remove(const V: TEnumerable<T>); overload;
-    procedure Remove(const V: array of TEnumerable<T>); overload;
-    procedure Remove(V: TSet<T>); overload;
+    procedure Remove(const AValue: T); overload;
+    procedure Remove(const AValues: TEnumerable<T>); overload;
+    procedure Remove(const AValues: TArray<T>); overload;
+    procedure Remove(const AValues: TSet<T>); overload;
 
     { It is prefered to use syntax "Item in SomSet" over "SomeSet.Contains(Item)", but in
       rare situations compiler can be confused and then "Contains" method is the only way to go }
-    function Contains(const a: T) : Boolean; overload;
-    function Contains(const a: TEnumerable<T>) : Boolean; overload;
-    function Contains(a: TSet<T>) : Boolean; overload;
+    function Contains(const AValue: T): Boolean; overload;
+    function Contains(const AValues: TEnumerable<T>) : Boolean; overload;
+    function Contains(const AValues: TArray<T>) : Boolean; overload;
+    function Contains(const AValues: TSet<T>) : Boolean; overload;
 
+    function Extract(const Value: T): T;
+
+    procedure CopyFrom(const Src: TSet<T>);
     function Copy: TSet<T>;
     function ToArray: TArray<T>;
     function ToString: string;
-    function ToText(const ValueDelimiter: string = #13#10): string;
-
+    function ToText(const ValuesDelimiter: string = #13#10): string;
     procedure Clear;
+    procedure TrimExcess;
 
-    class operator In(const a: T; b: TSet<T>) : Boolean;
+    class operator In(const a: T;              b: TSet<T>) : Boolean;
     class operator In(const a: TEnumerable<T>; b: TSet<T>) : Boolean;
-    class operator In(a: TSet<T>; b: TSet<T>) : Boolean;
+    class operator In(const a: TArray<T>;      b: TSet<T>) : Boolean;
+    class operator In(const a: TSet<T>;        b: TSet<T>) : Boolean;
 
-    class operator Implicit(const a : T) : TSet<T>;
+    class operator Implicit(const a : T)              : TSet<T>;
     class operator Implicit(const a : TEnumerable<T>) : TSet<T>;
-    class operator Implicit(const a : array of T) : TSet<T>;
-    class operator Implicit(const a : TArray<T>) : TSet<T>;
+    class operator Implicit(const a : TArray<T>)      : TSet<T>;
 
-    class operator Explicit(const a : T) : TSet<T>;
+    class operator Explicit(const a : T)              : TSet<T>;
     class operator Explicit(const a : TEnumerable<T>) : TSet<T>;
-    class operator Explicit(const a : array of T) : TSet<T>;
-    class operator Explicit(const a : TArray<T>) : TSet<T>;
+    class operator Explicit(const a : TArray<T>)      : TSet<T>;
 
-    class operator Add(a: TSet<T>;       b: TSet<T>): TSet<T>;
-    class operator Add(a: TSet<T>; const b: T): TSet<T>;
-    class operator Add(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-    class operator Add(a: TSet<T>; const b: array of T): TSet<T>;
+    class operator Add(a: TSet<T>; const b: T              ): TSet<T>;
+    class operator Add(a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
+    class operator Add(a: TSet<T>; const b: TArray<T>      ): TSet<T>;
+    class operator Add(a: TSet<T>; const b: TSet<T>        ): TSet<T>;
+
     class operator Add(const a: T;              b: TSet<T>): TSet<T>;
-    class operator Add(const a: array of T;     b: TSet<T>): TSet<T>;
     class operator Add(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
+    class operator Add(const a: TArray<T>;      b: TSet<T>): TSet<T>;
 
-    class operator Subtract(a: TSet<T>; const b: T): TSet<T>;
-    class operator Subtract(a: TSet<T>;       b: TSet<T>): TSet<T>;
-    class operator Subtract(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-    class operator Subtract(a: TSet<T>; const b: array of T): TSet<T>;
+    class operator Subtract(a: TSet<T>; const b: T              ): TSet<T>;
+    class operator Subtract(a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
+    class operator Subtract(a: TSet<T>; const b: TArray<T>      ): TSet<T>;
+    class operator Subtract(a: TSet<T>; const b: TSet<T>        ): TSet<T>;
+
     class operator Subtract(const a: T;              b: TSet<T>): TSet<T>;
-    class operator Subtract(const a: array of T;     b: TSet<T>): TSet<T>;
     class operator Subtract(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
+    class operator Subtract(const a: TArray<T>;      b: TSet<T>): TSet<T>;
 
-    class operator Equal(a: TSet<T>;       b: TSet<T>) : Boolean;
-    class operator Equal(a: TSet<T>; const b: TEnumerable<T>) : Boolean;
+    class operator Equal(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator Equal(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator Equal(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator NotEqual(a: TSet<T>;       b: TSet<T>): Boolean;
-    class operator NotEqual(a: TSet<T>; const b: TEnumerable<T>) : Boolean;
+    class operator NotEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator NotEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator NotEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator GreaterThanOrEqual(a: TSet<T>;       b: TSet<T>): Boolean;
-    class operator GreaterThanOrEqual(a: TSet<T>; const b: TEnumerable<T>): Boolean;
+    class operator GreaterThanOrEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator GreaterThanOrEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator GreaterThanOrEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator GreaterThan(a: TSet<T>;       b: TSet<T>): Boolean;
-    class operator GreaterThan(a: TSet<T>; const b: TEnumerable<T>): Boolean;
+    class operator GreaterThan(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator GreaterThan(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator GreaterThan(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator LessThan(a: TSet<T>;       b: TSet<T>): Boolean;
-    class operator LessThan(a: TSet<T>; const b: TEnumerable<T>): Boolean;
+    class operator LessThan(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator LessThan(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator LessThan(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator LessThanOrEqual(a: TSet<T>;       b: TSet<T>): Boolean;
-    class operator LessThanOrEqual(a: TSet<T>; const b: TEnumerable<T>): Boolean;
+    class operator LessThanOrEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
+    class operator LessThanOrEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    class operator LessThanOrEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator LogicalAnd(a: TSet<T>;       b: TSet<T>): TSet<T>;
-    class operator LogicalAnd(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+    class operator LogicalAnd(const a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
+    class operator LogicalAnd(const a: TSet<T>; const b: TArray<T>      ): TSet<T>;
+    class operator LogicalAnd(const a: TSet<T>; const b: TSet<T>        ): TSet<T>;
 
-    class operator LogicalOr(a: TSet<T>;       b: TSet<T>): TSet<T>;
-    class operator LogicalOr(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+    class operator LogicalOr(const a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
+    class operator LogicalOr(const a: TSet<T>; const b: TArray<T>      ): TSet<T>;
+    class operator LogicalOr(const a: TSet<T>; const b: TSet<T>        ): TSet<T>;
 
-    class operator LogicalXor(a: TSet<T>;       b: TSet<T>): TSet<T>;
-    class operator LogicalXor(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+    class operator LogicalXor(const a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
+    class operator LogicalXor(const a: TSet<T>; const b: TArray<T>      ): TSet<T>;
+    class operator LogicalXor(const a: TSet<T>; const b: TSet<T>        ): TSet<T>;
 
-    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property Count: Integer read GetCount;
     property Empty: Boolean read GetEmpty;
-    property Count: integer read GetCount;
-    property Collection: TEnumerable<T> read GetCollection;
+    property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property OnValueNotify: TValueNotifyEvent read GetOnValueNotify write SetOnValueNotify;
+    property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
   end;
 
 implementation
@@ -519,55 +629,662 @@ begin
   FSet.Remove(AValue);
 end;
 
+{ TCustomSetRec<T>.TValueEnumerator }
+
+constructor TCustomSetRec<T>.TValueEnumerator.Create(const AItems: TArray<TItem>);
+begin
+  FItems := AItems;
+  FIndex := -1;
+end;
+
+function TCustomSetRec<T>.TValueEnumerator.GetCurrent: T;
+begin
+  Result := FItems[FIndex].Value;
+end;
+
+function TCustomSetRec<T>.TValueEnumerator.MoveNext: Boolean;
+begin
+  while FIndex < Length(FItems) - 1 do
+  begin
+    Inc(FIndex);
+    if FItems[FIndex].HashCode <> EMPTY_HASH then
+      Exit(True);
+  end;
+  Result := False;
+end;
+
+{ TCustomSetRec<T> }
+
+procedure TCustomSetRec<T>.Init(ACapacity: Integer = 0; const AComparer: IEqualityComparer<T> = nil);
+var
+  cap: Integer;
+begin
+  if ACapacity < 0 then
+    raise EArgumentOutOfRangeException.CreateRes(@SArgumentOutOfRange);
+  Self := Default(TCustomSetRec<T>);
+  if AComparer = nil
+    then FComparer := TComparerUtils.DefaultEqualityComparer<T>
+    else FComparer := AComparer;
+  SetCapacity(ACapacity);
+end;
+
+procedure TCustomSetRec<T>.Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T>);
+var
+  Item: T;
+begin
+  Init(0, AComparer);
+  for Item in AValues do
+    Add(Item);
+end;
+
+procedure TCustomSetRec<T>.Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil);
+var
+  Item: T;
+begin
+  Init(Length(AValues), AComparer);
+  for Item in AValues do
+    Add(Item);
+end;
+
+procedure TCustomSetRec<T>.Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil);
+var
+  Item: T;
+begin
+  Init(Length(AValues), AComparer);
+  for Item in AValues do
+    Add(Item);
+end;
+
+procedure TCustomSetRec<T>.Add(const Value: T);
+var
+  hc: Integer;
+  index: Integer;
+begin
+  hc := Hash(Value);
+  index := GetBucketIndex(Value, hc);
+  if index >= 0 then
+    DoSetValue(index, Value)
+  else
+  begin
+    // We only grow if we are inserting a new value.
+    if Count >= FGrowThreshold then
+    begin
+      Grow;
+      // We need a new Bucket Index because the array has grown.
+      index := GetBucketIndex(Value, hc);
+    end;
+    DoAdd(hc, not index, Value);
+  end;
+end;
+
+procedure TCustomSetRec<T>.Add(const Values: TEnumerable<T>);
+var
+  V: T;
+begin
+  for V in Values do
+    Add(V);
+end;
+
+procedure TCustomSetRec<T>.Add(const Values: TArray<T>);
+var
+  V: T;
+begin
+  for V in Values do
+    Add(V);
+end;
+
+procedure TCustomSetRec<T>.Add(const Values: array of T);
+var
+  V: T;
+begin
+  for V in Values do
+    Add(V);
+end;
+
+procedure TCustomSetRec<T>.Add(const Values: TCustomSetRec<T>);
+var
+  V: T;
+begin
+  for V in Values do
+    Add(V);
+end;
+
+procedure TCustomSetRec<T>.Clear;
+var
+  i: Integer;
+  oldItems: TArray<TItem>;
+begin
+  oldItems := FItems;
+  FCount := 0;
+  SetLength(FItems, 0);
+  SetCapacity(0);
+  FGrowThreshold := 0;
+
+  for i := 0 to Length(oldItems) - 1 do
+    if oldItems[i].HashCode <> EMPTY_HASH then
+      ValueNotify(oldItems[i].Value, cnRemoved);
+end;
+
+function TCustomSetRec<T>.Contains(const Value: T): Boolean;
+begin
+  Result := GetBucketIndex(Value, Hash(Value)) >= 0;
+end;
+
+function TCustomSetRec<T>.Contains(const Values: TEnumerable<T>): Boolean;
+var
+  Value: T;
+begin
+  for Value in Values do
+    if GetBucketIndex(Value, Hash(Value)) < 0 then
+      Exit(False);
+  result := True;
+end;
+
+function TCustomSetRec<T>.Contains(const Values: TArray<T>): Boolean;
+var
+  Value: T;
+begin
+  for Value in Values do
+    if GetBucketIndex(Value, Hash(Value)) < 0 then
+      Exit(False);
+  result := True;
+end;
+
+function TCustomSetRec<T>.Contains(const Values: TCustomSetRec<T>): Boolean;
+var
+  Value: T;
+begin
+  for Value in Values do
+    if GetBucketIndex(Value, Hash(Value)) < 0 then
+      Exit(False);
+  result := True;
+end;
+
+procedure TCustomSetRec<T>.CopyFrom(const Src: TCustomSetRec<T>);
+var
+  I: Integer;
+begin
+  SetLength(FItems, Length(Src.FItems));
+  for I := Low(FItems) to High(FItems) do
+    FItems[I] := Src.FItems[I];
+  FCount := Src.FCount;
+  FComparer := Src.FComparer;
+  FGrowThreshold := Src.FGrowThreshold;
+  FOnValueNotify := Src.FOnValueNotify;
+  FOwnsValues := Src.FOwnsValues;
+end;
+
+procedure TCustomSetRec<T>.DoAdd(HashCode, Index: Integer; const Value: T);
+begin
+  FItems[Index].HashCode := HashCode;
+  FItems[Index].Value := Value;
+  Inc(FCount);
+  ValueNotify(Value, cnAdded);
+end;
+
+function TCustomSetRec<T>.DoRemove(const Key: T; HashCode: Integer; Notification: TCollectionNotification): T;
+var
+  gap, index, hc, bucket: Integer;
+begin
+  index := GetBucketIndex(Key, HashCode);
+  if index < 0 then
+    Exit(Default(T));
+
+  FItems[index].HashCode := EMPTY_HASH;
+  Result := FItems[index].Value;
+
+  gap := index;
+  while True do
+  begin
+    Inc(index);
+    if index = Length(FItems) then
+      index := 0;
+
+    hc := FItems[index].HashCode;
+    if hc = EMPTY_HASH then
+      Break;
+
+    bucket := hc and (Length(FItems) - 1);
+    if not InCircularRange(gap, bucket, index) then
+    begin
+      FItems[gap] := FItems[index];
+      gap := index;
+      // The gap moved, but we still need to find it to terminate.
+      FItems[gap].HashCode := EMPTY_HASH;
+    end;
+  end;
+
+  FItems[gap].HashCode := EMPTY_HASH;
+  FItems[gap].Value := Default(T);
+  Dec(FCount);
+
+  ValueNotify(Result, Notification);
+end;
+
+procedure TCustomSetRec<T>.DoSetValue(Index: Integer; const Value: T);
+var
+  oldValue: T;
+begin
+  oldValue := FItems[Index].Value;
+  FItems[Index].Value := Value;
+
+  ValueNotify(oldValue, cnRemoved);
+  ValueNotify(Value, cnAdded);
+end;
+
+function TCustomSetRec<T>.Extract(const Value: T): T;
+var
+  hc, index: Integer;
+begin
+  hc := Hash(Value);
+  index := GetBucketIndex(Value, hc);
+  if index < 0 then
+    Exit(Default(T));
+
+  Result := DoRemove(Value, hc, cnExtracted);
+end;
+
+function TCustomSetRec<T>.GetBucketIndex(const Value: T; HashCode: Integer): Integer;
+var
+  start, hc: Integer;
+begin
+  if Length(FItems) = 0 then
+    Exit(not High(Integer));
+
+  start := HashCode and (Length(FItems) - 1);
+  Result := start;
+  while True do
+  begin
+    hc := FItems[Result].HashCode;
+
+    // Not found: return complement of insertion point.
+    if hc = EMPTY_HASH then
+      Exit(not Result);
+
+    // Found: return location.
+    if (hc = HashCode) and FComparer.Equals(FItems[Result].Value, Value) then
+      Exit(Result);
+
+    Inc(Result);
+    if Result >= Length(FItems) then
+      Result := 0;
+  end;
+end;
+
+function TCustomSetRec<T>.GetEnumerator: TValueEnumerator;
+begin
+  result := TValueEnumerator.Create(FItems);
+end;
+
+procedure TCustomSetRec<T>.Grow;
+var
+  newCap: Integer;
+begin
+  newCap := Length(FItems) * 2;
+  if newCap = 0 then
+    newCap := 4;
+  Rehash(newCap);
+end;
+
+function TCustomSetRec<T>.Hash(const Key: T): Integer;
+const
+  PositiveMask = not Integer($80000000);
+begin
+  // Double-Abs to avoid -MaxInt and MinInt problems.
+  // Not using compiler-Abs because we *must* get a positive integer;
+  // for compiler, Abs(Low(Integer)) is a null op.
+  Result := PositiveMask and ((PositiveMask and FComparer.GetHashCode(Key)) + 1);
+end;
+
+procedure TCustomSetRec<T>.Rehash(NewCapPow2: Integer);
+var
+  oldItems, newItems: TArray<TItem>;
+  i: Integer;
+begin
+  if NewCapPow2 = Length(FItems) then
+    Exit
+  else if NewCapPow2 < 0 then
+    OutOfMemoryError;
+
+  oldItems := FItems;
+  SetLength(newItems, NewCapPow2);
+  for i := 0 to Length(newItems) - 1 do
+    newItems[i].HashCode := EMPTY_HASH;
+  FItems := newItems;
+  FGrowThreshold := NewCapPow2 shr 1 + NewCapPow2 shr 2; // 75%
+
+  for i := 0 to Length(oldItems) - 1 do
+    if oldItems[i].HashCode <> EMPTY_HASH then
+      RehashAdd(oldItems[i].HashCode, oldItems[i].Value);
+end;
+
+procedure TCustomSetRec<T>.RehashAdd(HashCode: Integer; const Value: T);
+var
+  index: Integer;
+begin
+  index := not GetBucketIndex(Value, HashCode);
+  FItems[index].HashCode := HashCode;
+  FItems[index].Value := Value;
+end;
+
+procedure TCustomSetRec<T>.Remove(const Values: TEnumerable<T>);
+var
+  Value: T;
+begin
+  for Value in Values do
+    DoRemove(Value, Hash(Value), cnRemoved);
+end;
+
+procedure TCustomSetRec<T>.Remove(const Values: TArray<T>);
+var
+  Value: T;
+begin
+  for Value in Values do
+    DoRemove(Value, Hash(Value), cnRemoved);
+end;
+
+procedure TCustomSetRec<T>.Remove(const Values: TCustomSetRec<T>);
+var
+  Value: T;
+begin
+  for Value in Values do
+    DoRemove(Value, Hash(Value), cnRemoved);
+end;
+
+procedure TCustomSetRec<T>.Remove(const Value: T);
+begin
+  DoRemove(Value, Hash(Value), cnRemoved);
+end;
+
+procedure TCustomSetRec<T>.SetCapacity(ACapacity: Integer);
+var
+  newCap: Integer;
+begin
+  if ACapacity < Count then
+    raise EArgumentOutOfRangeException.CreateRes(@SArgumentOutOfRange);
+
+  if ACapacity = 0 then
+    Rehash(0)
+  else
+  begin
+    newCap := 4;
+    while newCap < ACapacity do
+      newCap := newCap shl 1;
+    Rehash(newCap);
+  end
+end;
+
+procedure TCustomSetRec<T>.SetOwnsValues(const Value: boolean);
+begin
+  if Value and not TRttiUtils.IsInstance<T> then
+    raise Exception.Create('Generic type is not a class.');
+  FOwnsValues := Value;
+end;
+
+function TCustomSetRec<T>.ToArray: TArray<T>;
+var
+  Value: T;
+  I: integer;
+begin
+  // We assume our caller has passed correct Count
+  SetLength(Result, Count);
+  I := 0;
+  for Value in Self do
+  begin
+    Result[I] := Value;
+    Inc(I);
+  end;
+end;
+
+function TCustomSetRec<T>.ToString: string;
+begin
+  result := ToText(' ');
+end;
+
+function TCustomSetRec<T>.ToText(const ValuesDelimiter: string): string;
+var
+  Builder: TStringBuilder;
+  V: T;
+  N: Boolean;
+begin
+  Builder := TStringBuilder.Create;
+  try
+    N := False;
+    for V in Self do
+    begin
+      if N then
+        Builder.Append(ValuesDelimiter)
+      else
+        N := True;
+      Builder.Append(TRttiUtils.ValueAsString<T>(V));
+    end;
+    result := Builder.ToString;
+  finally
+    Builder.Free;
+  end;
+end;
+
+procedure TCustomSetRec<T>.TrimExcess;
+begin
+  // Ensure at least one empty slot for GetBucketIndex to terminate.
+  SetCapacity(Count + 1);
+end;
+
+procedure TCustomSetRec<T>.ValueNotify(const Value: T; Action: TCollectionNotification);
+begin
+  if Assigned(FOnValueNotify) then
+    FOnValueNotify(Value, Action);
+  if FOwnsValues and (Action = TCollectionNotification.cnRemoved) then
+    PObject(@Value)^.DisposeOf;
+end;
+
+{ TSet<T>.TData }
+
+destructor TSet<T>.TData.Destroy;
+begin
+  FSet.Clear;
+  inherited;
+end;
+
 { TSet<T> }
 
 procedure TSet<T>.Init;
 begin
   Self := Default(TSet<T>);
+  FData := TData.Create;
+  FDataIntf := FData;
+  FData.FSet.Init;
 end;
 
-procedure TSet<T>.Init(ACapacity: integer; AComparer: IEqualityComparer<T>);
+procedure TSet<T>.Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T> = nil);
 begin
   Self := Default(TSet<T>);
-  CreateSet(ACapacity, AComparer);
+  FData := TData.Create;
+  FDataIntf := FData;
+  FData.FSet.Init(AValues, AComparer);
 end;
 
-procedure TSet<T>.Init(const V: array of T; ACapacity: integer; AComparer: IEqualityComparer<T>);
+class operator TSet<T>.In(const a: T; b: TSet<T>): Boolean;
+begin
+  result := b.Contains(a);
+end;
+
+class operator TSet<T>.In(const a: TEnumerable<T>; b: TSet<T>): Boolean;
+begin
+  result := b.Contains(a);
+end;
+
+class operator TSet<T>.In(const a: TArray<T>; b: TSet<T>): Boolean;
+begin
+  result := b.Contains(a);
+end;
+
+class operator TSet<T>.Implicit(const a: T): TSet<T>;
+begin
+  result.Init;
+  result.Add(a);
+end;
+
+class operator TSet<T>.Implicit(const a: TEnumerable<T>): TSet<T>;
+begin
+  result.Init;
+  result.Add(a);
+end;
+
+class operator TSet<T>.Implicit(const a: TArray<T>): TSet<T>;
+begin
+  result.Init;
+  result.Add(a);
+end;
+
+class operator TSet<T>.In(const a: TSet<T>; b: TSet<T>): Boolean;
+begin
+  result := b.Contains(a);
+end;
+
+procedure TSet<T>.Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil);
 begin
   Self := Default(TSet<T>);
-  CreateSet(ACapacity, AComparer);
-  Add(v);
+  FData := TData.Create;
+  FDataIntf := FData;
+  FData.FSet.Init(AValues, AComparer);
 end;
 
-procedure TSet<T>.Init(const V: TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
+procedure TSet<T>.Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil);
 begin
   Self := Default(TSet<T>);
-  CreateSet(ACapacity, AComparer);
-  Add(v);
+  FData := TData.Create;
+  FDataIntf := FData;
+  FData.FSet.Init(AValues, AComparer);
 end;
 
-procedure TSet<T>.Init(const V: array of TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
+class operator TSet<T>.LessThan(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
+begin
+  result := not (a >= b);
+end;
+
+class operator TSet<T>.LessThan(const a: TSet<T>; const b: TArray<T>): Boolean;
+begin
+  result := not (a >= b);
+end;
+
+class operator TSet<T>.LessThan(const a, b: TSet<T>): Boolean;
+begin
+  result := not (a >= b);
+end;
+
+class operator TSet<T>.LessThanOrEqual(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
+begin
+  result := not (a > b);
+end;
+
+class operator TSet<T>.LessThanOrEqual(const a: TSet<T>; const b: TArray<T>): Boolean;
+begin
+  result := not (a > b);
+end;
+
+class operator TSet<T>.LessThanOrEqual(const a, b: TSet<T>): Boolean;
+begin
+  result := not (a > b);
+end;
+
+class operator TSet<T>.LogicalAnd(const a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+var
+  Value: T;
+begin
+  result.Init;
+  for Value in b do
+    if a.Contains(Value) then
+      result.Add(Value);
+end;
+
+class operator TSet<T>.LogicalAnd(const a: TSet<T>; const b: TArray<T>): TSet<T>;
+var
+  Value: T;
+begin
+  result.Init;
+  for Value in b do
+    if a.Contains(Value) then
+      result.Add(Value);
+end;
+
+class operator TSet<T>.LogicalAnd(const a, b: TSet<T>): TSet<T>;
+var
+  Value: T;
+begin
+  if a.Count > b.Count then
+    result := b and a
+  else
+  begin
+    result.Init;
+    for Value in a do
+      if b.Contains(Value) then
+        result.Add(Value);
+  end;
+end;
+
+class operator TSet<T>.LogicalOr(const a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+begin
+  result.CopyFrom(a);
+  result.Add(b);
+end;
+
+class operator TSet<T>.LogicalOr(const a: TSet<T>; const b: TArray<T>): TSet<T>;
+begin
+  result.CopyFrom(a);
+  result.Add(b);
+end;
+
+class operator TSet<T>.LogicalOr(const a, b: TSet<T>): TSet<T>;
+begin
+  result.CopyFrom(a);
+  result.Add(b);
+end;
+
+class operator TSet<T>.LogicalXor(const a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
+begin
+  result := a xor TSet<T>(b);
+end;
+
+class operator TSet<T>.LogicalXor(const a: TSet<T>; const b: TArray<T>): TSet<T>;
+begin
+  result := a xor TSet<T>(b);
+end;
+
+class operator TSet<T>.LogicalXor(const a, b: TSet<T>): TSet<T>;
+var
+  Value: T;
+begin
+  result.Init;
+  for Value in A do
+    if not B.Contains(Value) then
+      result.Add(Value);
+  for Value in B do
+    if not A.Contains(Value) then
+      result.Add(Value);
+end;
+
+class operator TSet<T>.NotEqual(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
+begin
+  result := not (a = b);
+end;
+
+class operator TSet<T>.NotEqual(const a: TSet<T>; const b: TArray<T>): Boolean;
+begin
+  result := not (a = b);
+end;
+
+class operator TSet<T>.NotEqual(const a, b: TSet<T>): Boolean;
+begin
+  result := not (a = b);
+end;
+
+procedure TSet<T>.Init(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil);
 begin
   Self := Default(TSet<T>);
-  CreateSet(ACapacity, AComparer);
-  Add(v);
-end;
-
-procedure TSet<T>.Init(V: TSet<T>; ACapacity: integer; AComparer: IEqualityComparer<T>);
-begin
-  Self := Default(TSet<T>);
-  CreateSet(ACapacity, AComparer);
-  Add(v);
-end;
-
-class function TSet<T>.Create(const V: array of T; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
-begin
-  result.Init(V, ACapacity, AComparer);
-end;
-
-class function TSet<T>.Create(ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
-begin
-  result.Init(ACapacity, AComparer);
+  FData := TData.Create;
+  FDataIntf := FData;
+  FData.FSet.Init(ACapacity, AComparer);
 end;
 
 class function TSet<T>.Create: TSet<T>;
@@ -575,535 +1292,332 @@ begin
   result.Init;
 end;
 
-class function TSet<T>.Create(V: TSet<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+class function TSet<T>.Create(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T> = nil): TSet<T>;
 begin
-  result.Init(V, ACapacity, AComparer);
+  result.Init(AValues, AComparer);
 end;
 
-class function TSet<T>.Create(const V: array of TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+class function TSet<T>.Create(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil): TSet<T>;
 begin
-  result.Init(V, ACapacity, AComparer);
+  result.Init(AValues, AComparer);
 end;
 
-class function TSet<T>.Create(const V: TEnumerable<T>; ACapacity: integer; AComparer: IEqualityComparer<T>): TSet<T>;
+class function TSet<T>.Create(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil): TSet<T>;
 begin
-  result.Init(V, ACapacity, AComparer);
+  result.Init(AValues, AComparer);
 end;
 
-procedure TSet<T>.Add(const V: T);
+class function TSet<T>.Create(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil): TSet<T>;
 begin
-  RW.Include(V);
+  result.Init(ACapacity, AComparer);
 end;
 
-procedure TSet<T>.Add(const V: TEnumerable<T>);
-var
-  D: TSetClass<T>;
-  Value: T;
+function TSet<T>.GetComparer: IEqualityComparer<T>;
 begin
-  D := RW;
-  for Value in V do
-    D.Include(Value);
+  result := FData.FSet.Comparer;
 end;
 
-procedure TSet<T>.Add(const V: array of T);
-var
-  D: TSetClass<T>;
-  Value: T;
+function TSet<T>.GetCount: Integer;
 begin
-  D := RW;
-  for Value in V do
-    D.Include(Value);
-end;
-
-procedure TSet<T>.Add(V: TSet<T>);
-var
-  S,D: TSetClass<T>;
-  Value: T;
-begin
-  D := RW;
-  S := V.RO;
-  for Value in S do
-    D.Include(Value);
-end;
-
-procedure TSet<T>.Add(const V: array of TEnumerable<T>);
-var
-  D: TSetClass<T>;
-  Enum: TEnumerable<T>;
-  Value: T;
-begin
-  D := RW;
-  for Enum in V do
-    for Value in Enum do
-      D.Include(Value);
+  result := FData.FSet.Count;
 end;
 
 function TSet<T>.GetEmpty: Boolean;
 begin
-  result := Count = 0;
+  result := FData.FSet.Count = 0;
 end;
 
-function TSet<T>.GetEnumerator: TEnumerator<T>;
+function TSet<T>.GetEnumerator: TValueEnumerator;
 begin
-  result := RO.GetEnumerator;
+  result := FData.FSet.GetEnumerator;
 end;
 
-function TSet<T>.GetReadonly:TSetClass<T>;
+function TSet<T>.GetOnValueNotify: TValueNotifyEvent;
 begin
-  if FSetInt=nil then
-    CreateSet;
-  result := FSetInt.Data;
-end;
-
-function TSet<T>.GetReadWrite: TSetClass<T>;
-var
-  SrcSetInt: IInterfacedObject<TSetClass<T>>;
-begin
-  if FSetInt=nil then
-    CreateSet
-  else
-    if FSetInt.GetRefCount<>1 then
-    begin
-      { Copy on write }
-      SrcSetInt := FSetInt;
-      CreateSet(SrcSetInt.Data.Count, SrcSetInt.Data.Comparer);
-      FSetInt.Data.Include(SrcSetInt.Data);
-      FSetInt.Data.OwnsValues := SrcSetInt.Data.OwnsValues;
-    end;
-  result := FSetInt.Data;
-end;
-
-procedure TSet<T>.CreateSet(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
-var
-  C: IEqualityComparer<T>;
-begin
-  if AComparer=nil
-    then C := TComparerUtils.DefaultEqualityComparer<T>
-    else C := AComparer;
-  FSetInt := TInterfacedObject<TSetClass<T>>.Create( TSetClass<T>.Create(ACapacity, C) );
+  result := FData.FSet.OnValueNotify;
 end;
 
 function TSet<T>.GetOwnsValues: boolean;
 begin
-  result := RO.OwnsValues;
+  result := FData.FSet.OwnsValues;
 end;
 
-procedure TSet<T>.SetOwnsValues(AOwnsValues: boolean);
+class operator TSet<T>.GreaterThanOrEqual(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
 begin
-  RW.OwnsValues := AOwnsValues;
+  result := a.Contains(b);
 end;
 
-function TSet<T>.Contains(const a: T) : Boolean;
+class operator TSet<T>.GreaterThanOrEqual(const a: TSet<T>; const b: TArray<T>): Boolean;
 begin
-  result := RO.Contains(a);
+  result := a.Contains(b);
 end;
 
-function TSet<T>.Contains(const a: TEnumerable<T>) : Boolean;
+class operator TSet<T>.GreaterThanOrEqual(const a, b: TSet<T>): Boolean;
 begin
-  result := RO.Contains(a);
+  result := a.Contains(b);
 end;
 
-function TSet<T>.Contains(a: TSet<T>) : Boolean;
+class operator TSet<T>.GreaterThan(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
 begin
-  result := RO.Contains(a.RO);
+  result := a > TSet<T>(b);
 end;
 
-class operator TSet<T>.In(const a: TEnumerable<T>; b: TSet<T>): Boolean;
+class operator TSet<T>.GreaterThan(const a: TSet<T>; const b: TArray<T>): Boolean;
 begin
-  result := b.RO.Contains(a);
+  result := a > TSet<T>(b);
 end;
 
-class operator TSet<T>.In(const a: T; b: TSet<T>): Boolean;
+class operator TSet<T>.GreaterThan(const a, b: TSet<T>): Boolean;
 begin
-  result := b.RO.Contains(a);
+  result := (a.Count > b.Count) and a.Contains(b);
 end;
 
-class operator TSet<T>.In(a, b: TSet<T>): Boolean;
+procedure TSet<T>.Add(const AValue: T);
 begin
-  result := b.RO.Contains(a.RO);
+  FData.FSet.Add(AValue);
 end;
 
-class operator TSet<T>.Implicit(const a: T): TSet<T>;
+procedure TSet<T>.Add(const AValues: TEnumerable<T>);
 begin
-  result.FSetInt := nil;
+  FData.FSet.Add(AValues);
+end;
+
+procedure TSet<T>.Add(const AValues: TArray<T>);
+begin
+  FData.FSet.Add(AValues);
+end;
+
+procedure TSet<T>.Add(const AValues: array of T);
+begin
+  FData.FSet.Add(AValues);
+end;
+
+procedure TSet<T>.Add(const AValues: TSet<T>);
+begin
+  FData.FSet.Add(AValues.FData.FSet);
+end;
+
+class operator TSet<T>.Explicit(const a: T): TSet<T>;
+begin
+  result.Init;
   result.Add(a);
 end;
 
-class operator TSet<T>.Implicit(const a: TEnumerable<T>): TSet<T>;
+class operator TSet<T>.Explicit(const a: TEnumerable<T>): TSet<T>;
 begin
-  result.FSetInt := nil;
-  if a<>nil then
-    result.Add(a);
-end;
-
-class operator TSet<T>.Implicit(const a : array of T) : TSet<T>;
-begin
-  result.FSetInt := nil;
+  result.Init;
   result.Add(a);
 end;
 
-class operator TSet<T>.Implicit(const a : TArray<T>) : TSet<T>;
+class operator TSet<T>.Equal(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
 begin
-  result.FSetInt := nil;
+  result := TSet<T>(b) = a;
+end;
+
+class operator TSet<T>.Equal(const a: TSet<T>; const b: TArray<T>): Boolean;
+begin
+  result := TSet<T>(b) = a;
+end;
+
+class operator TSet<T>.Equal(const a, b: TSet<T>): Boolean;
+begin
+  result := (a.Count = b.Count) and a.Contains(b);
+end;
+
+class operator TSet<T>.Explicit(const a: TArray<T>): TSet<T>;
+begin
+  result.Init;
   result.Add(a);
 end;
 
-class operator TSet<T>.Explicit(const a : T) : TSet<T>;
+function TSet<T>.Extract(const Value: T): T;
 begin
-  result.FSetInt := nil;
-  result.Add(a);
-end;
-
-class operator TSet<T>.Explicit(const a : TEnumerable<T>) : TSet<T>;
-begin
-  result.FSetInt := nil;
-  if a<>nil then
-    result.Add(a);
-end;
-
-class operator TSet<T>.Explicit(const a : array of T) : TSet<T>;
-begin
-  result.FSetInt := nil;
-  result.Add(a);
-end;
-
-class operator TSet<T>.Explicit(const a : TArray<T>) : TSet<T>;
-begin
-  result.FSetInt := nil;
-  result.Add(a);
-end;
-
-class operator TSet<T>.Add(a, b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
-begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Include(b.RO);
+  result := FData.FSet.Extract(Value);
 end;
 
 class operator TSet<T>.Add(a: TSet<T>; const b: T): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Include(b);
+  result.CopyFrom(a);
+  result.Add(b);
 end;
 
 class operator TSet<T>.Add(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Include(b);
+  result.CopyFrom(a);
+  result.Add(b);
 end;
 
-class operator TSet<T>.Add(a: TSet<T>; const b: array of T): TSet<T>;
-var
-  D: TSetClass<T>;
+class operator TSet<T>.Add(a: TSet<T>; const b: TArray<T>): TSet<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Include(b);
+  result.CopyFrom(a);
+  result.Add(b);
+end;
+
+class operator TSet<T>.Add(a: TSet<T>; const b: TSet<T>): TSet<T>;
+begin
+  result.CopyFrom(a);
+  result.Add(b);
 end;
 
 class operator TSet<T>.Add(const a: T; b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Include(b.RO);
-end;
-
-class operator TSet<T>.Add(const a: array of T; b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
-begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Include(b.RO);
+  result.CopyFrom(b);
+  result.Add(a);
 end;
 
 class operator TSet<T>.Add(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Include(b.RO);
+  result.CopyFrom(b);
+  result.Add(a);
+end;
+
+class operator TSet<T>.Add(const a: TArray<T>; b: TSet<T>): TSet<T>;
+begin
+  result.CopyFrom(b);
+  result.Add(a);
 end;
 
 procedure TSet<T>.Clear;
 begin
-  Self := Default(TSet<T>);
+  FData.FSet.Clear;
 end;
 
-function TSet<T>.GetCollection: TEnumerable<T>;
+function TSet<T>.Contains(const AValue: T): Boolean;
 begin
-  result := RO;
+  result := FData.FSet.Contains(AValue);
 end;
 
-function TSet<T>.GetCount: integer;
+function TSet<T>.Contains(const AValues: TEnumerable<T>): Boolean;
 begin
-  result := RO.Count;
+  result := FData.FSet.Contains(AValues);
+end;
+
+function TSet<T>.Contains(const AValues: TArray<T>): Boolean;
+begin
+  result := FData.FSet.Contains(AValues);
+end;
+
+function TSet<T>.Contains(const AValues: TSet<T>): Boolean;
+begin
+  result := FData.FSet.Contains(AValues.FData.FSet);
 end;
 
 function TSet<T>.Copy: TSet<T>;
 begin
-  if FSetInt=nil then
-    result.FSetInt := nil
-  else
-  begin
-    result.Init(Count, FSetInt.Data.Comparer);
-    result.Add(Self);
-  end;
+  result.Init;
+  result.FData.FSet.CopyFrom(FData.FSet);
 end;
 
-procedure TSet<T>.Remove(const V: TEnumerable<T>);
+procedure TSet<T>.CopyFrom(const Src: TSet<T>);
 begin
-  RW.Remove(V);
+  Init;
+  FData.FSet.CopyFrom(Src.FData.FSet);
 end;
 
-procedure TSet<T>.Remove(const V: array of T);
+procedure TSet<T>.Remove(const AValue: T);
 begin
-  RW.Remove(V);
+  FData.FSet.Remove(AValue);
 end;
 
-procedure TSet<T>.Remove(const V: T);
+procedure TSet<T>.Remove(const AValues: TEnumerable<T>);
 begin
-  RW.Remove(V);
+  FData.FSet.Remove(AValues);
 end;
 
-procedure TSet<T>.Remove(V: TSet<T>);
+procedure TSet<T>.Remove(const AValues: TArray<T>);
 begin
-  RW.Remove(V.RO);
+  FData.FSet.Remove(AValues);
 end;
 
-procedure TSet<T>.Remove(const V: array of TEnumerable<T>);
-var
-  i: integer;
-  D: TSetClass<T>;
+procedure TSet<T>.Remove(const AValues: TSet<T>);
 begin
-  D := RW;
-  for i := 0 to High(v) do
-    D.Remove(V[i]);
+  FData.FSet.Remove(AValues.FData.FSet);
 end;
 
-class operator TSet<T>.Equal(a, b: TSet<T>): Boolean;
-var
-  S,D: TSetClass<T>;
+procedure TSet<T>.SetComparer(const Value: IEqualityComparer<T>);
 begin
-  S := a.RO;
-  D := b.RO;
-  result := (S.Count=D.Count) and D.Contains(S);
+  FData.FSet.Comparer := Value;
 end;
 
-class operator TSet<T>.Equal(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-var
-  Value: T;
-  D: TSetClass<T>;
-  N: Integer;
+procedure TSet<T>.SetOnValueNotify(const Value: TValueNotifyEvent);
 begin
-  D := a.RO;
-  N := 0;
-  for Value in b do
-    if D.Contains(Value) then
-      inc(N)
-    else
-      exit(False);
-  result := N=D.Count;
+  FData.FSet.OnValueNotify := Value;
 end;
 
-class operator TSet<T>.NotEqual(a, b: TSet<T>): Boolean;
+procedure TSet<T>.SetOwnsValues(const Value: boolean);
 begin
-  result := not (a=b);
-end;
-
-class operator TSet<T>.NotEqual(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := not (a=b);
+  FData.FSet.OwnsValues := Value;
 end;
 
 class operator TSet<T>.Subtract(a: TSet<T>; const b: T): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Remove(b);
-end;
-
-class operator TSet<T>.Subtract(a, b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
-begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Remove(b.RO);
+  result.CopyFrom(a);
+  result.Remove(b);
 end;
 
 class operator TSet<T>.Subtract(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Remove(b);
+  result.CopyFrom(a);
+  result.Remove(b);
 end;
 
-class operator TSet<T>.Subtract(a: TSet<T>; const b: array of T): TSet<T>;
-var
-  D: TSetClass<T>;
+class operator TSet<T>.Subtract(a: TSet<T>; const b: TArray<T>): TSet<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Remove(b);
+  result.CopyFrom(a);
+  result.Remove(b);
+end;
+
+class operator TSet<T>.Subtract(a: TSet<T>; const b: TSet<T>): TSet<T>;
+begin
+  result.CopyFrom(a);
+  result.Remove(b);
 end;
 
 class operator TSet<T>.Subtract(const a: T; b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Remove(b.RO);
-end;
-
-class operator TSet<T>.Subtract(const a: array of T; b: TSet<T>): TSet<T>;
-var
-  D: TSetClass<T>;
-begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Remove(b.RO);
+  result.Init;
+  if not b.Contains(a) then
+    result.Add(a);
 end;
 
 class operator TSet<T>.Subtract(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
 var
-  D: TSetClass<T>;
+  Value: T;
 begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a);
-  D.Remove(b.RO);
+  result.Init;
+  for Value in a do
+    if not b.Contains(Value) then
+      result.Add(Value);
+end;
+
+class operator TSet<T>.Subtract(const a: TArray<T>; b: TSet<T>): TSet<T>;
+var
+  Value: T;
+begin
+  result.Init;
+  for Value in a do
+    if not b.Contains(Value) then
+      result.Add(Value);
 end;
 
 function TSet<T>.ToArray: TArray<T>;
 begin
-  result := RO.ToArray;
+  result := FData.FSet.ToArray;
 end;
 
 function TSet<T>.ToString: string;
 begin
-  result := RO.ToString;
+  result := FData.FSet.ToString;
 end;
 
-function TSet<T>.ToText(const ValueDelimiter: string = #13#10): string;
+function TSet<T>.ToText(const ValuesDelimiter: string): string;
 begin
-  result := RO.ToText(ValueDelimiter);
+  result := FData.FSet.ToText(ValuesDelimiter);
 end;
 
-class operator TSet<T>.GreaterThanOrEqual(a, b: TSet<T>): Boolean;
+procedure TSet<T>.TrimExcess;
 begin
-  result := b in a;
-end;
-
-class operator TSet<T>.GreaterThanOrEqual(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := b in a;
-end;
-
-class operator TSet<T>.GreaterThan(a, b: TSet<T>): Boolean;
-begin
-  result := (a.Count>b.Count) and (b in a);
-end;
-
-class operator TSet<T>.GreaterThan(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := (a<>b) and (b in a);
-end;
-
-class operator TSet<T>.LessThan(a, b: TSet<T>): Boolean;
-begin
-  result := (a.Count<b.Count) and (a in b);
-end;
-
-class operator TSet<T>.LessThan(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := (a<>b) and (a in b);
-end;
-
-class operator TSet<T>.LessThanOrEqual(a, b: TSet<T>): Boolean;
-begin
-  result := a in b;
-end;
-
-class operator TSet<T>.LessThanOrEqual(a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := a in b;
-end;
-
-class operator TSet<T>.LogicalAnd(a, b: TSet<T>): TSet<T>;
-begin
-  result.FSetInt := nil;
-  result.RW.IncludeLogicalAnd(a.RO, b.RO);
-end;
-
-class operator TSet<T>.LogicalAnd(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-var
-  S,R: TSetClass<T>;
-  Value: T;
-begin
-  result.FSetInt := nil;
-  S := a.RO;
-  R := result.RW;
-  for Value in b do
-    if S.Contains(Value) then
-      R.Include(Value);
-end;
-
-class operator TSet<T>.LogicalOr(a, b: TSet<T>): TSet<T>;
-begin
-  result.FSetInt := nil;
-  result.RW.IncludeLogicalOr(a.RO, b.RO);
-end;
-
-class operator TSet<T>.LogicalOr(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-var
-  D: TSetClass<T>;
-begin
-  result.FSetInt := nil;
-  D := result.RW;
-  D.Include(a.RO);
-  D.Include(b);
-end;
-
-class operator TSet<T>.LogicalXor(a, b: TSet<T>): TSet<T>;
-begin
-  result.FSetInt := nil;
-  result.RW.IncludeLogicalXor(a.RO, b.RO);
-end;
-
-class operator TSet<T>.LogicalXor(a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-begin
-  result.FSetInt := nil;
-  result := a xor TSet<T>(b);
+  FData.FSet.TrimExcess;
 end;
 
 end.

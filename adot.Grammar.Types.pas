@@ -599,7 +599,7 @@ begin
     CurrentItem    := StartGrammar;
     StartGrammar   := nil;
     Queue.Clear;
-    IdSet.Clear;
+    IdSet.Init;
     IdSet.Add(CurrentItem.Id);
     Exit(True);
   end;
@@ -659,7 +659,7 @@ begin
     CurrentItem    := StartGrammar;
     StartGrammar   := nil;
     Queue.Clear;
-    IdSet.Clear;
+    IdSet.Init;
     IdSet.Add(CurrentItem.Id);
   end
   else

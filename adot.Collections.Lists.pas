@@ -274,7 +274,7 @@ var
   Values: TSet<T>;
   Item,D: PDoublyLinkedListItem;
 begin
-  Values.Clear;
+  Values.Init;
   Item := FFront;
   while Item <> nil do
     if Item.Data in Values then
