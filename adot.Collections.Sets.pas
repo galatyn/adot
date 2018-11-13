@@ -6,7 +6,13 @@ interface
   TSet<T>
   TSetClass<T>
 
-  Example:
+  Example 1:
+    var S: TSet<integer>;
+    S := [1,2,3,4,5];
+    S.Remove([2,3,4]);
+    Assert((S and [2,3,4]).Empty);
+
+  Example 2:
   var
     a,b,c: TSet<string>;
     s: string;
@@ -124,11 +130,13 @@ type
     procedure Clear;
     procedure TrimExcess;
     procedure SetOwnsValues(const Value: boolean);
+    function GetCapacity: integer;
 
     property Count: Integer read FCount;
     property OwnsValues: boolean read FOwnsValues write SetOwnsValues;
     property OnValueNotify: TValueNotifyEvent read FOnValueNotify write FOnValueNotify;
-    property Comparer: IEqualityComparer<T> read FComparer write FComparer;
+    property Comparer: IEqualityComparer<T> read FComparer;
+    property Capacity: integer read GetCapacity;
 
   public
     function GetEnumerator: TValueEnumerator; { must be public to allow "for in" syntax }
@@ -157,10 +165,10 @@ type
     function GetOnValueNotify: TValueNotifyEvent;
     procedure SetOnValueNotify(const Value: TValueNotifyEvent);
     function GetComparer: IEqualityComparer<T>;
-    procedure SetComparer(const Value: IEqualityComparer<T>);
     function GetEmpty: Boolean;
     function GetOwnsValues: boolean;
     procedure SetOwnsValues(const Value: boolean);
+    function GetCapacity: integer;
 
   public
     procedure Init; overload;
@@ -210,11 +218,9 @@ type
     class operator In(const a: TArray<T>;      b: TSet<T>) : Boolean;
     class operator In(const a: TSet<T>;        b: TSet<T>) : Boolean;
 
-    class operator Implicit(const a : T)              : TSet<T>;
     class operator Implicit(const a : TEnumerable<T>) : TSet<T>;
     class operator Implicit(const a : TArray<T>)      : TSet<T>;
 
-    class operator Explicit(const a : T)              : TSet<T>;
     class operator Explicit(const a : TEnumerable<T>) : TSet<T>;
     class operator Explicit(const a : TArray<T>)      : TSet<T>;
 
@@ -236,28 +242,23 @@ type
     class operator Subtract(const a: TEnumerable<T>; b: TSet<T>): TSet<T>;
     class operator Subtract(const a: TArray<T>;      b: TSet<T>): TSet<T>;
 
-    class operator Equal(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
-    class operator Equal(const a: TSet<T>; const b: TArray<T>      ): Boolean;
+    { To compare TEnumerable<T>/TArray<T> againt TSet<T>, we convert them to TSet<T> anyway.
+      It can be done by Implicit operator, no need to overload Equal operator for TEnumerable<T>/TArray<T>.
+      It is correct for some other operators as well (GreaterThan etc). }
     class operator Equal(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator NotEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
-    class operator NotEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
     class operator NotEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
     class operator GreaterThanOrEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
     class operator GreaterThanOrEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
     class operator GreaterThanOrEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator GreaterThan(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
-    class operator GreaterThan(const a: TSet<T>; const b: TArray<T>      ): Boolean;
     class operator GreaterThan(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
     class operator LessThan(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
     class operator LessThan(const a: TSet<T>; const b: TArray<T>      ): Boolean;
     class operator LessThan(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
-    class operator LessThanOrEqual(const a: TSet<T>; const b: TEnumerable<T> ): Boolean;
-    class operator LessThanOrEqual(const a: TSet<T>; const b: TArray<T>      ): Boolean;
     class operator LessThanOrEqual(const a: TSet<T>; const b: TSet<T>        ): Boolean;
 
     class operator LogicalAnd(const a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
@@ -268,15 +269,14 @@ type
     class operator LogicalOr(const a: TSet<T>; const b: TArray<T>      ): TSet<T>;
     class operator LogicalOr(const a: TSet<T>; const b: TSet<T>        ): TSet<T>;
 
-    class operator LogicalXor(const a: TSet<T>; const b: TEnumerable<T> ): TSet<T>;
-    class operator LogicalXor(const a: TSet<T>; const b: TArray<T>      ): TSet<T>;
     class operator LogicalXor(const a: TSet<T>; const b: TSet<T>        ): TSet<T>;
 
     property Count: Integer read GetCount;
     property Empty: Boolean read GetEmpty;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
     property OnValueNotify: TValueNotifyEvent read GetOnValueNotify write SetOnValueNotify;
-    property Comparer: IEqualityComparer<T> read GetComparer write SetComparer;
+    property Comparer: IEqualityComparer<T> read GetComparer;
+    property Capacity: integer read GetCapacity;
   end;
 
   TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
@@ -886,6 +886,13 @@ begin
   end;
 end;
 
+function TCustomSetRec<T>.GetCapacity: integer;
+begin
+  result := Length(FItems)-1; { check SetCapacity - we always allocate 1 extra item }
+  if result < 0 then
+    result := 0;
+end;
+
 function TCustomSetRec<T>.GetEnumerator: TValueEnumerator;
 begin
   result := TValueEnumerator.Create(FItems);
@@ -1021,11 +1028,14 @@ var
   Builder: TStringBuilder;
   V: T;
   N: Boolean;
+  Values: TArray<T>;
 begin
+  Values := ToArray;
+  TArray.Sort<T>(Values);
   Builder := TStringBuilder.Create;
   try
     N := False;
-    for V in Self do
+    for V in Values do
     begin
       if N then
         Builder.Append(ValuesDelimiter)
@@ -1094,12 +1104,6 @@ begin
   result := b.Contains(a);
 end;
 
-class operator TSet<T>.Implicit(const a: T): TSet<T>;
-begin
-  result.Init;
-  result.Add(a);
-end;
-
 class operator TSet<T>.Implicit(const a: TEnumerable<T>): TSet<T>;
 begin
   result.Init;
@@ -1135,32 +1139,22 @@ end;
 
 class operator TSet<T>.LessThan(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
 begin
-  result := not (a >= b);
+  result := not a.Contains(b);
 end;
 
 class operator TSet<T>.LessThan(const a: TSet<T>; const b: TArray<T>): Boolean;
 begin
-  result := not (a >= b);
+  result := not a.Contains(b);
 end;
 
 class operator TSet<T>.LessThan(const a, b: TSet<T>): Boolean;
 begin
-  result := not (a >= b);
-end;
-
-class operator TSet<T>.LessThanOrEqual(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := not (a > b);
-end;
-
-class operator TSet<T>.LessThanOrEqual(const a: TSet<T>; const b: TArray<T>): Boolean;
-begin
-  result := not (a > b);
+  result := not a.Contains(b);
 end;
 
 class operator TSet<T>.LessThanOrEqual(const a, b: TSet<T>): Boolean;
 begin
-  result := not (a > b);
+  result := (a.Count <= b.Count) or not a.Contains(b); { not (A > B) }
 end;
 
 class operator TSet<T>.LogicalAnd(const a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
@@ -1216,16 +1210,6 @@ begin
   result.Add(b);
 end;
 
-class operator TSet<T>.LogicalXor(const a: TSet<T>; const b: TEnumerable<T>): TSet<T>;
-begin
-  result := a xor TSet<T>(b);
-end;
-
-class operator TSet<T>.LogicalXor(const a: TSet<T>; const b: TArray<T>): TSet<T>;
-begin
-  result := a xor TSet<T>(b);
-end;
-
 class operator TSet<T>.LogicalXor(const a, b: TSet<T>): TSet<T>;
 var
   Value: T;
@@ -1239,19 +1223,9 @@ begin
       result.Add(Value);
 end;
 
-class operator TSet<T>.NotEqual(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := not (a = b);
-end;
-
-class operator TSet<T>.NotEqual(const a: TSet<T>; const b: TArray<T>): Boolean;
-begin
-  result := not (a = b);
-end;
-
 class operator TSet<T>.NotEqual(const a, b: TSet<T>): Boolean;
 begin
-  result := not (a = b);
+  result := (a.Count <> b.Count) or not a.Contains(b);
 end;
 
 procedure TSet<T>.Init(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil);
@@ -1285,6 +1259,11 @@ end;
 class function TSet<T>.Create(ACapacity: Integer; const AComparer: IEqualityComparer<T> = nil): TSet<T>;
 begin
   result.Init(ACapacity, AComparer);
+end;
+
+function TSet<T>.GetCapacity: integer;
+begin
+  result := FData.FSet.Capacity;
 end;
 
 function TSet<T>.GetComparer: IEqualityComparer<T>;
@@ -1332,16 +1311,6 @@ begin
   result := a.Contains(b);
 end;
 
-class operator TSet<T>.GreaterThan(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := a > TSet<T>(b);
-end;
-
-class operator TSet<T>.GreaterThan(const a: TSet<T>; const b: TArray<T>): Boolean;
-begin
-  result := a > TSet<T>(b);
-end;
-
 class operator TSet<T>.GreaterThan(const a, b: TSet<T>): Boolean;
 begin
   result := (a.Count > b.Count) and a.Contains(b);
@@ -1372,26 +1341,10 @@ begin
   FData.FSet.Add(AValues.FData.FSet);
 end;
 
-class operator TSet<T>.Explicit(const a: T): TSet<T>;
-begin
-  result.Init;
-  result.Add(a);
-end;
-
 class operator TSet<T>.Explicit(const a: TEnumerable<T>): TSet<T>;
 begin
   result.Init;
   result.Add(a);
-end;
-
-class operator TSet<T>.Equal(const a: TSet<T>; const b: TEnumerable<T>): Boolean;
-begin
-  result := TSet<T>(b) = a;
-end;
-
-class operator TSet<T>.Equal(const a: TSet<T>; const b: TArray<T>): Boolean;
-begin
-  result := TSet<T>(b) = a;
 end;
 
 class operator TSet<T>.Equal(const a, b: TSet<T>): Boolean;
@@ -1507,11 +1460,6 @@ end;
 procedure TSet<T>.Remove(const AValues: TSet<T>);
 begin
   FData.FSet.Remove(AValues.FData.FSet);
-end;
-
-procedure TSet<T>.SetComparer(const Value: IEqualityComparer<T>);
-begin
-  FData.FSet.Comparer := Value;
 end;
 
 procedure TSet<T>.SetOnValueNotify(const Value: TValueNotifyEvent);
