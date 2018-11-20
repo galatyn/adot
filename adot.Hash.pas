@@ -782,7 +782,7 @@ end;
 
 class function TDigests.ToString(const AHash: TBytes): string;
 begin
-  Result := THex.Encode(AHash);
+  Result := THex.Encode(AHash).ToLower;
 end;
 
 class function TDigests.Mix(const HashA, HashB: integer): integer;
