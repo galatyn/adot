@@ -546,7 +546,7 @@ end;
 
 function TCompoundEqualityComparer<TypeA, TypeB>.GetHashCode(const Value: TCompound<TypeA, TypeB>): Integer;
 begin
-  result := THashUtils.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
+  result := TDigests.Mix(FComparerA.GetHashCode(Value.A), FComparerB.GetHashCode(Value.B));
 end;
 
 { TCompoundEqualityComparer<TypeA, TypeB, TypeC> }
@@ -601,7 +601,7 @@ end;
 function TCompoundEqualityComparer<TypeA, TypeB, TypeC>.GetHashCode(
   const Value: TCompound<TypeA, TypeB, TYpeC>): Integer;
 begin
-  result := THashUtils.Mix(
+  result := TDigests.Mix(
     FComparerA.GetHashCode(Value.A),
     FComparerB.GetHashCode(Value.B),
     FComparerC.GetHashCode(Value.C)

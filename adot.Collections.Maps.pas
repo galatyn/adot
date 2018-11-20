@@ -1089,7 +1089,7 @@ end;
 function TMultimapClass<TKey, TValue>.TMultimapKeyEqualityComparer.GetHashCode(
   const Value: TMultimapKey): Integer;
 begin
-  result := THashUtils.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
+  result := TDigests.Mix(FKeyComparer.GetHashCode(Value.Key), Value.Number);
 end;
 
 { TMultimapClass<TKey, TValue>.TPairEnumerator }

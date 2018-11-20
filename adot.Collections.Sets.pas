@@ -4,55 +4,70 @@ interface
 
 {
   TSet<T>
+    record type with full set of (compatible) overloaded operators:
+    - can be initialized either by Init/Create or assigment operator:
+        S.Init([1,2,3]); // call Init to initialize
+        S := [1,2,3];    // same
+    - default string comparer is case insensitive
+        S := ['one','two'];
+        Assert('ONE' in S);
+    - supports all logical operators (and,or,xor)
+        A := [1,2,3];
+        B := [2,3,4];
+        Assert((A and B).Count = 2);
+        Assert(A or B = TSet<integer>.Create([1,2,3,4]));
+    - supports all compare operators (<,<=,=,<>,>,>=)
+        A := [1,2];
+        B := [1,2,3,4];
+        Assert(A < B);
+    - supports IN,Add,Subtract,Implicit,Explicit operators
+        A := [1,2];
+        B := [1,2,3,4];
+        Assert(B - A = TSet<integer>.Create([3,4]));
+    - has .OwnsValues property (can be used as TObjectSet<T>)
+    - can be sent as parameter similar to regular object pointer, all changes will be visible in the source set
+
+        procedure RemoveNegative(S: TSet<integer>); // "var" specifier can be used as well
+        var Value: integer;
+        begin
+          for Value in S.ToArray do
+            if Value < 0 then
+              S.Remove(Value);
+        end;
+
+        function CountPositives(const S: TSet<integer>): integer;
+        var Value: integer;
+        begin
+          result := 0;
+          for Value in S do
+            if Value > 0 then
+              inc(result);
+        end;
+
+    - supports automatic reference counting (no need to destruct manually)
+        var S: TSet<string>;
+        begin
+          S := ['1','2','test'];
+          assert('1' in S);
+        end;
+    - implementation is based on TDictionary, performance is very similar (performance penalty is close to zero)
+
   TSetClass<T>
+    class based implementation (not so handy as record based TSet<T>, but sometime
+    class or manual life time control is required).
 
-  Example 1:
-    var S: TSet<integer>;
-    S := [1,2,3,4,5];
-    S.Remove([2,3,4]);
-    Assert((S and [2,3,4]).Empty);
-
-  Example 2:
-  var
-    a,b,c: TSet<string>;
-    s: string;
-  begin
-    a := ['Mandag', 'Tirsdag', 'Fredag'];
-    b := ['Fredag', 'Lørdag'];
-    c := a and b;                           // ['Fredag']
-    c := a or b;                            // ['Mandag', 'Tirsdag', 'Fredag', 'Lørdag']
-    c := a + b - ['Mandag', 'Tirsdag'];     // ['Fredag', 'Lørdag']
-    if a xor b = TSet<string>.Create(['Mandag', 'Tirsdag', 'Lørdag']) then
-      [...]
-    if (b in a) or ('Fredag' in a) then
-      [...]
-    if a>b then     // "a" contains all items from "b" and at least one item extra
-      [...]
-    if a>=b then    // "a" contains all items from "b" and maybe some items extra
-      [...]
-    for s in c do   // enumerate all values from the set
-      [...]
-    c := ['One'];
-    c.Add(['Two', 'Three']);
-    c.Remove('Two'); // ['One', 'Three']
-    Assert( ('one' in c) and ('three' in c) ); // default comparer for "string" type is case insensitive
-    c := TSet<string>.Create(['One','Two'], 0,TStringComparer.Ordinal);
-    Assert( ('One' in c) and NOT ('one' in c) ); // now we used case sensitive comparer
-  end;
 }
 
 uses
-  adot.Types,
   adot.Collections.Types,
   System.Generics.Collections,
   System.Generics.Defaults,
-  System.StrUtils,
   System.SysUtils,
   System.RTLConsts;
 
 type
-  { check TSet bellow }
-  TCustomSetRec<T> = record
+  { check TSet<T> / TSetClass<T> bellow }
+  TCustomUnorderedSet<T> = record
   private
     type
       TItem = record
@@ -109,19 +124,19 @@ type
     procedure Add(const Values: TEnumerable<T>); overload;
     procedure Add(const Values: TArray<T>); overload;
     procedure Add(const Values: array of T); overload;
-    procedure Add(const Values: TCustomSetRec<T>); overload;
+    procedure Add(const Values: TCustomUnorderedSet<T>); overload;
 
     procedure Remove(const Value: T); overload;
     procedure Remove(const Values: TEnumerable<T>); overload;
     procedure Remove(const Values: TArray<T>); overload;
-    procedure Remove(const Values: TCustomSetRec<T>); overload;
+    procedure Remove(const Values: TCustomUnorderedSet<T>); overload;
 
     function Contains(const Value: T): Boolean; overload;
     function Contains(const Values: TEnumerable<T>): Boolean; overload;
     function Contains(const Values: TArray<T>): Boolean; overload;
-    function Contains(const Values: TCustomSetRec<T>): Boolean; overload;
+    function Contains(const Values: TCustomUnorderedSet<T>): Boolean; overload;
 
-    procedure CopyFrom(const Src: TCustomSetRec<T>);
+    procedure CopyFrom(const Src: TCustomUnorderedSet<T>);
     function ToArray: TArray<T>;
     function ToString: string;
     function ToText(const ValuesDelimiter: string = #13#10): string;
@@ -147,15 +162,15 @@ type
     type
       TData = class(TInterfacedObject, IInterface)
       private
-        FSet: TCustomSetRec<T>;
+        FSet: TCustomUnorderedSet<T>;
       public
         destructor Destroy; override;
       end;
 
   public
     type
-      TValueEnumerator = TCustomSetRec<T>.TValueEnumerator;
-      TValueNotifyEvent = TCustomSetRec<T>.TValueNotifyEvent;
+      TValueEnumerator = TCustomUnorderedSet<T>.TValueEnumerator;
+      TValueNotifyEvent = TCustomUnorderedSet<T>.TValueNotifyEvent;
 
   private
     FData: TData;          { valid as long as FDataIntf is alive }
@@ -196,8 +211,7 @@ type
     procedure Remove(const AValues: TArray<T>); overload;
     procedure Remove(const AValues: TSet<T>); overload;
 
-    { It is prefered to use syntax "Item in SomSet" over "SomeSet.Contains(Item)", but in
-      rare situations compiler can be confused and then "Contains" method is the only way to go }
+    { Normally it is preferred to use syntax "Item in SomSet" }
     function Contains(const AValue: T): Boolean; overload;
     function Contains(const AValues: TEnumerable<T>) : Boolean; overload;
     function Contains(const AValues: TArray<T>) : Boolean; overload;
@@ -279,81 +293,91 @@ type
     property Capacity: integer read GetCapacity;
   end;
 
-  TSetOp = (soUnion, soIntersection, soDifference, soSymmetricDifference);
-
-  { Generic class for unordered set }
   TSetClass<T> = class(TEnumerableExt<T>)
   public
     type
-      { TObjectDictionary (Delphi 10.2.1) doesn't allow to change Ownership for existing objects,
-        we can provide Ownership in constructor only. We implement own version of ObjectDictionary to fix it. }
-      TSetObjectDictionary<TSetDictKey,TSetDictValue> = class(TDictionary<TSetDictKey,TSetDictValue>)
-      protected
-        OwnsKeys: boolean;
+      TValueNotifyEvent = TCustomUnorderedSet<T>.TValueNotifyEvent;
 
-        procedure KeyNotify(const Key: TSetDictKey; Action: TCollectionNotification); override;
+      TEnumerator = class(TEnumerator<T>)
+      protected
+        FEnum: TCustomUnorderedSet<T>.TValueEnumerator;
+
+        function DoGetCurrent: T; override;
+        function DoMoveNext: Boolean; override;
+
+      public
+        constructor Create(AOwner: TSetClass<T>);
       end;
 
-  protected
-    var
-      FSet: TSetObjectDictionary<T, TEmptyRec>;
-      FComparerCopy: IEqualityComparer<T>; { FSet.Comparer is hidden in private section, so we keep copy }
+  private
+    FSet: TCustomUnorderedSet<T>;
 
     function GetCount: integer;
-    function DoGetEnumerator: TEnumerator<T>; override;
     function GetComparer: IEqualityComparer<T>;
     procedure SetOwnsValues(AOwnsValues: boolean);
     function GetOwnsValues: boolean;
+    function GetContainsValue(const AValue: T): boolean;
+    procedure SetContainsValue(const AValue: T; const AContains: boolean);
+    function GetOnValueNotify: TValueNotifyEvent;
+    procedure SetOnValueNotify(const Value: TValueNotifyEvent);
+    function GetCapacity: integer;
+    function GetEmpty: Boolean;
+
+  protected
+    function DoGetEnumerator: TEnumerator<T>; override;
 
   public
     constructor Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil); overload;
     constructor Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil); overload;
     constructor Create(const AValues: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil); overload;
-    constructor Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp; AComparer: IEqualityComparer<T> = nil); overload;
 
     destructor Destroy; override;
 
     procedure Add(const AValue: T); overload;
-    procedure Add(const ASet: array of T); overload;
+    procedure Add(const AValues: TArray<T>); overload;
     procedure Add(const AValues: TEnumerable<T>); overload;
 
-    procedure IncludeLogicalAnd(const A,B: TSetClass<T>);
-    procedure IncludeLogicalOr(const A,B: TSetClass<T>);
-    procedure IncludeLogicalXor(const A,B: TSetClass<T>);
-
     procedure Remove(const AValue: T); overload;
-    procedure Remove(const ASet: array of T); overload;
+    procedure Remove(const AValues: TArray<T>); overload;
     procedure Remove(const AValues: TEnumerable<T>); overload;
 
     function Contains(const AValue: T): boolean; overload;
-    function Contains(const ASet: array of T): boolean; overload;
+    function Contains(const AValues: TArray<T>): boolean; overload;
     function Contains(const AValues: TEnumerable<T>): boolean; overload;
 
     procedure Clear;
-    function Empty: Boolean;
     function ToArray: TArray<T>; override;
 
     property Count: integer read GetCount;
-    property Comparer: IEqualityComparer<T> read GetComparer;
+    property Empty: Boolean read GetEmpty;
     property OwnsValues: boolean read GetOwnsValues write SetOwnsValues;
+    property OnValueNotify: TValueNotifyEvent read GetOnValueNotify write SetOnValueNotify;
+    property Comparer: IEqualityComparer<T> read GetComparer;
+    property Capacity: integer read GetCapacity;
+    property ContainsValue[const Value: T]: boolean read GetContainsValue write SetContainsValue; default;
   end;
 
 implementation
 
 uses
-  adot.Tools,
-  adot.Strings,
   adot.Tools.RTTI,
   adot.Collections;
 
-{ TSetClass<T>.TSetObjectDictionary<TSetDictKey, TSetDictValue> }
+{ TSetClass<T>.TEnumerator }
 
-procedure TSetClass<T>.TSetObjectDictionary<TSetDictKey, TSetDictValue>.KeyNotify(
-  const Key: TSetDictKey; Action: TCollectionNotification);
+constructor TSetClass<T>.TEnumerator.Create(AOwner: TSetClass<T>);
 begin
-  inherited;
-  if OwnsKeys and (Action = TCollectionNotification.cnRemoved) then
-    PObject(@Key)^.DisposeOf;
+  FEnum := AOwner.FSet.GetEnumerator;
+end;
+
+function TSetClass<T>.TEnumerator.DoGetCurrent: T;
+begin
+  result := FEnum.Current;
+end;
+
+function TSetClass<T>.TEnumerator.DoMoveNext: Boolean;
+begin
+  result := FEnum.MoveNext;
 end;
 
 { TSetClass<T> }
@@ -361,118 +385,48 @@ end;
 constructor TSetClass<T>.Create(ACapacity: integer = 0; AComparer: IEqualityComparer<T> = nil);
 begin
   inherited Create;
-  FSet := TSetObjectDictionary<T, TEmptyRec>.Create(ACapacity, AComparer);
-  FComparerCopy := AComparer;
+  FSet.Init(ACapacity, AComparer);
 end;
 
 constructor TSetClass<T>.Create(const AValues: TArray<T>; AComparer: IEqualityComparer<T> = nil);
 begin
-  Create(Length(AValues), AComparer);
-  Add(AValues);
+  FSet.Init(AValues, AComparer);
 end;
 
 constructor TSetClass<T>.Create(const AValues: TEnumerable<T>; AComparer: IEqualityComparer<T> = nil);
 begin
-  Create(0, AComparer);
-  Add(AValues);
-end;
-
-constructor TSetClass<T>.Create(const AOperands: TArray<TSetClass<T>>; ASetOp: TSetOp;
-  AComparer: IEqualityComparer<T>);
-var
-  FoundInAll: Boolean;
-  Value: T;
-  I,J: Integer;
-  Found: Boolean;
-begin
-  Create(0, AComparer);
-  case ASetOp of
-
-    soUnion:
-      for I := 0 to High(AOperands) do
-        Add(AOperands[I]);
-
-    soIntersection:
-      begin
-        if Length(AOperands)=0 then
-          Exit;
-        J := 0;
-        for I := 1 to High(AOperands) do
-          if AOperands[I].Count<AOperands[J].Count then
-            J := I;
-        for Value in AOperands[J] do
-        begin
-          FoundInAll := True;
-          for I := 0 to High(AOperands) do
-            if (I<>J) and not AOperands[I].Contains(Value) then
-            begin
-              FoundInAll := False;
-              Break;
-            end;
-          if FoundInAll then
-            Add(Value);
-        end;
-      end;
-
-    soDifference:
-      begin
-        if Length(AOperands)>0 then
-          Add(AOperands[0]);
-        for I := 1 to High(AOperands) do
-          Remove(AOperands[I]);
-      end;
-
-    soSymmetricDifference:
-      for i := 0 to High(AOperands) do
-        for Value in AOperands[i] do
-        begin
-          Found := False;
-          for j := 0 to High(AOperands) do
-            if (i<>j) and AOperands[j].Contains(Value) then
-            begin
-              Found := True;
-              Break;
-            end;
-          if not Found then
-            Add(Value);
-        end;
-  end;
+  FSet.Init(AValues, AComparer);
 end;
 
 destructor TSetClass<T>.Destroy;
 begin
-  Sys.FreeAndNil(FSet);
+  FSet.Clear;
   inherited;
 end;
 
 function TSetClass<T>.DoGetEnumerator: TEnumerator<T>;
 begin
-  result := FSet.Keys.GetEnumerator;
-end;
-
-function TSetClass<T>.Empty: Boolean;
-begin
-  result := FSet.Count=0;
+  result := TEnumerator.Create(Self);
 end;
 
 function TSetClass<T>.ToArray: TArray<T>;
-var
-  i: Integer;
-  Value: T;
 begin
-  SetLength(Result, Count);
-  i := 0;
-  for Value in FSet.Keys do
-  begin
-    Result[i] := Value;
-    inc(i);
-  end;
-  Assert(Count=i);
+  result := FSet.ToArray;
+end;
+
+function TSetClass<T>.GetCapacity: integer;
+begin
+  result := FSet.Capacity;
 end;
 
 function TSetClass<T>.GetComparer: IEqualityComparer<T>;
 begin
-  result := FComparerCopy;
+  result := FSet.Comparer;
+end;
+
+function TSetClass<T>.GetContainsValue(const AValue: T): boolean;
+begin
+  result := FSet.Contains(AValue);
 end;
 
 function TSetClass<T>.GetCount: integer;
@@ -480,93 +434,64 @@ begin
   result := FSet.Count;
 end;
 
-procedure TSetClass<T>.Remove(const ASet: array of T);
-var
-  i: Integer;
+function TSetClass<T>.GetEmpty: Boolean;
 begin
-  for i := Low(ASet) to High(ASet) do
-    Remove(ASet[i]);
+  result := FSet.Count=0;
+end;
+
+procedure TSetClass<T>.Remove(const AValue: T);
+begin
+  FSet.Remove(AValue);
+end;
+
+procedure TSetClass<T>.Remove(const AValues: TArray<T>);
+begin
+  FSet.Remove(AValues);
 end;
 
 procedure TSetClass<T>.Remove(const AValues: TEnumerable<T>);
-var
-  Item: T;
 begin
-  for Item in AValues do
-    Remove(Item);
+  FSet.Remove(AValues);
+end;
+
+function TSetClass<T>.GetOnValueNotify: TValueNotifyEvent;
+begin
+  result := FSet.OnValueNotify;
 end;
 
 function TSetClass<T>.GetOwnsValues: boolean;
 begin
-  result := FSet.OwnsKeys;
+  result := FSet.OwnsValues;
+end;
+
+procedure TSetClass<T>.SetContainsValue(const AValue: T; const AContains: boolean);
+begin
+  if AContains then FSet.Add(AValue) else FSet.Remove(AValue);
+end;
+
+procedure TSetClass<T>.SetOnValueNotify(const Value: TValueNotifyEvent);
+begin
+  FSet.OnValueNotify := Value;
 end;
 
 procedure TSetClass<T>.SetOwnsValues(AOwnsValues: boolean);
 begin
-  if AOwnsValues and not TRttiUtils.IsInstance<T> then
-    raise Exception.Create('Generic type is not a class.');
-  FSet.OwnsKeys := AOwnsValues;
+  FSet.OwnsValues := AOwnsValues;
 end;
 
 procedure TSetClass<T>.Add(const AValue: T);
 begin
-  FSet.AddOrSetValue(AValue, EmptyRec);
+  FSet.Add(AValue);
 end;
 
-procedure TSetClass<T>.Add(const ASet: array of T);
-var
-  i: Integer;
+procedure TSetClass<T>.Add(const AValues: TArray<T>);
 begin
-  for i := Low(ASet) to High(ASet) do
-    FSet.AddOrSetValue(ASet[i], EmptyRec);
+  FSet.Add(AValues);
 end;
 
 procedure TSetClass<T>.Add(const AValues: TEnumerable<T>);
-var
-  Item: T;
 begin
-  for Item in AValues do
-    FSet.AddOrSetValue(Item, EmptyRec);
-end;
-
-procedure TSetClass<T>.IncludeLogicalAnd(const A, B: TSetClass<T>);
-var
-  Value: T;
-begin
-  if A.Count<=B.Count then
-  begin
-    for Value in A do
-      if B.Contains(Value) then
-        Add(Value);
-  end
-  else
-  begin
-    for Value in B do
-      if A.Contains(Value) then
-        Add(Value);
-  end
-end;
-
-procedure TSetClass<T>.IncludeLogicalOr(const A, B: TSetClass<T>);
-var
-  Value: T;
-begin
-  for Value in A do
-    Add(Value);
-  for Value in B do
-    Add(Value);
-end;
-
-procedure TSetClass<T>.IncludeLogicalXor(const A, B: TSetClass<T>);
-var
-  Value: T;
-begin
-  for Value in A do
-    if not B.Contains(Value) then
-      Add(Value);
-  for Value in B do
-    if not A.Contains(Value) then
-      Add(Value);
+  FSet.Add(AValues);
 end;
 
 procedure TSetClass<T>.Clear;
@@ -576,48 +501,33 @@ end;
 
 function TSetClass<T>.Contains(const AValue: T): boolean;
 begin
-  result := FSet.ContainsKey(AValue);
+  result := FSet.Contains(AValue);
 end;
 
-function TSetClass<T>.Contains(const ASet: array of T): boolean;
-var
-  i: Integer;
+function TSetClass<T>.Contains(const AValues: TArray<T>): boolean;
 begin
-  for i := Low(ASet) to High(ASet) do
-    if not Contains(ASet[i]) then
-      Exit(False);
-  result := True;
+  result := FSet.Contains(AValues);
 end;
 
 function TSetClass<T>.Contains(const AValues: TEnumerable<T>): boolean;
-var
-  Item: T;
 begin
-  for Item in AValues do
-    if not Contains(Item) then
-      Exit(False);
-  result := True;
+  result := FSet.Contains(AValues);
 end;
 
-procedure TSetClass<T>.Remove(const AValue: T);
-begin
-  FSet.Remove(AValue);
-end;
+{ TCustomUnorderedSet<T>.TValueEnumerator }
 
-{ TCustomSetRec<T>.TValueEnumerator }
-
-constructor TCustomSetRec<T>.TValueEnumerator.Create(const AItems: TArray<TItem>);
+constructor TCustomUnorderedSet<T>.TValueEnumerator.Create(const AItems: TArray<TItem>);
 begin
   FItems := AItems;
   FIndex := -1;
 end;
 
-function TCustomSetRec<T>.TValueEnumerator.GetCurrent: T;
+function TCustomUnorderedSet<T>.TValueEnumerator.GetCurrent: T;
 begin
   Result := FItems[FIndex].Value;
 end;
 
-function TCustomSetRec<T>.TValueEnumerator.MoveNext: Boolean;
+function TCustomUnorderedSet<T>.TValueEnumerator.MoveNext: Boolean;
 begin
   while FIndex < Length(FItems) - 1 do
   begin
@@ -628,22 +538,22 @@ begin
   Result := False;
 end;
 
-{ TCustomSetRec<T> }
+{ TCustomUnorderedSet<T> }
 
-procedure TCustomSetRec<T>.Init(ACapacity: Integer = 0; const AComparer: IEqualityComparer<T> = nil);
+procedure TCustomUnorderedSet<T>.Init(ACapacity: Integer = 0; const AComparer: IEqualityComparer<T> = nil);
 var
   cap: Integer;
 begin
   if ACapacity < 0 then
     raise EArgumentOutOfRangeException.CreateRes(@SArgumentOutOfRange);
-  Self := Default(TCustomSetRec<T>);
+  Self := Default(TCustomUnorderedSet<T>);
   if AComparer = nil
     then FComparer := TComparerUtils.DefaultEqualityComparer<T>
     else FComparer := AComparer;
   SetCapacity(ACapacity);
 end;
 
-procedure TCustomSetRec<T>.Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T>);
+procedure TCustomUnorderedSet<T>.Init(const AValues: TEnumerable<T>; const AComparer: IEqualityComparer<T>);
 var
   Item: T;
 begin
@@ -652,7 +562,7 @@ begin
     Add(Item);
 end;
 
-procedure TCustomSetRec<T>.Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil);
+procedure TCustomUnorderedSet<T>.Init(const AValues: TArray<T>; const AComparer: IEqualityComparer<T> = nil);
 var
   Item: T;
 begin
@@ -661,7 +571,7 @@ begin
     Add(Item);
 end;
 
-procedure TCustomSetRec<T>.Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil);
+procedure TCustomUnorderedSet<T>.Init(const AValues: array of T; const AComparer: IEqualityComparer<T> = nil);
 var
   Item: T;
 begin
@@ -670,7 +580,7 @@ begin
     Add(Item);
 end;
 
-procedure TCustomSetRec<T>.Add(const Value: T);
+procedure TCustomUnorderedSet<T>.Add(const Value: T);
 var
   hc: Integer;
   index: Integer;
@@ -692,7 +602,7 @@ begin
   end;
 end;
 
-procedure TCustomSetRec<T>.Add(const Values: TEnumerable<T>);
+procedure TCustomUnorderedSet<T>.Add(const Values: TEnumerable<T>);
 var
   V: T;
 begin
@@ -700,7 +610,7 @@ begin
     Add(V);
 end;
 
-procedure TCustomSetRec<T>.Add(const Values: TArray<T>);
+procedure TCustomUnorderedSet<T>.Add(const Values: TArray<T>);
 var
   V: T;
 begin
@@ -708,7 +618,7 @@ begin
     Add(V);
 end;
 
-procedure TCustomSetRec<T>.Add(const Values: array of T);
+procedure TCustomUnorderedSet<T>.Add(const Values: array of T);
 var
   V: T;
 begin
@@ -716,7 +626,7 @@ begin
     Add(V);
 end;
 
-procedure TCustomSetRec<T>.Add(const Values: TCustomSetRec<T>);
+procedure TCustomUnorderedSet<T>.Add(const Values: TCustomUnorderedSet<T>);
 var
   V: T;
 begin
@@ -724,7 +634,7 @@ begin
     Add(V);
 end;
 
-procedure TCustomSetRec<T>.Clear;
+procedure TCustomUnorderedSet<T>.Clear;
 var
   i: Integer;
   oldItems: TArray<TItem>;
@@ -740,12 +650,12 @@ begin
       ValueNotify(oldItems[i].Value, cnRemoved);
 end;
 
-function TCustomSetRec<T>.Contains(const Value: T): Boolean;
+function TCustomUnorderedSet<T>.Contains(const Value: T): Boolean;
 begin
   Result := GetBucketIndex(Value, Hash(Value)) >= 0;
 end;
 
-function TCustomSetRec<T>.Contains(const Values: TEnumerable<T>): Boolean;
+function TCustomUnorderedSet<T>.Contains(const Values: TEnumerable<T>): Boolean;
 var
   Value: T;
 begin
@@ -755,7 +665,7 @@ begin
   result := True;
 end;
 
-function TCustomSetRec<T>.Contains(const Values: TArray<T>): Boolean;
+function TCustomUnorderedSet<T>.Contains(const Values: TArray<T>): Boolean;
 var
   Value: T;
 begin
@@ -765,7 +675,7 @@ begin
   result := True;
 end;
 
-function TCustomSetRec<T>.Contains(const Values: TCustomSetRec<T>): Boolean;
+function TCustomUnorderedSet<T>.Contains(const Values: TCustomUnorderedSet<T>): Boolean;
 var
   Value: T;
 begin
@@ -775,7 +685,7 @@ begin
   result := True;
 end;
 
-procedure TCustomSetRec<T>.CopyFrom(const Src: TCustomSetRec<T>);
+procedure TCustomUnorderedSet<T>.CopyFrom(const Src: TCustomUnorderedSet<T>);
 var
   I: Integer;
 begin
@@ -789,7 +699,7 @@ begin
   FOwnsValues := Src.FOwnsValues;
 end;
 
-procedure TCustomSetRec<T>.DoAdd(HashCode, Index: Integer; const Value: T);
+procedure TCustomUnorderedSet<T>.DoAdd(HashCode, Index: Integer; const Value: T);
 begin
   FItems[Index].HashCode := HashCode;
   FItems[Index].Value := Value;
@@ -797,7 +707,7 @@ begin
   ValueNotify(Value, cnAdded);
 end;
 
-function TCustomSetRec<T>.DoRemove(const Key: T; HashCode: Integer; Notification: TCollectionNotification): T;
+function TCustomUnorderedSet<T>.DoRemove(const Key: T; HashCode: Integer; Notification: TCollectionNotification): T;
 var
   gap, index, hc, bucket: Integer;
 begin
@@ -836,7 +746,7 @@ begin
   ValueNotify(Result, Notification);
 end;
 
-procedure TCustomSetRec<T>.DoSetValue(Index: Integer; const Value: T);
+procedure TCustomUnorderedSet<T>.DoSetValue(Index: Integer; const Value: T);
 var
   oldValue: T;
 begin
@@ -847,7 +757,7 @@ begin
   ValueNotify(Value, cnAdded);
 end;
 
-function TCustomSetRec<T>.Extract(const Value: T): T;
+function TCustomUnorderedSet<T>.Extract(const Value: T): T;
 var
   hc, index: Integer;
 begin
@@ -859,7 +769,7 @@ begin
   Result := DoRemove(Value, hc, cnExtracted);
 end;
 
-function TCustomSetRec<T>.GetBucketIndex(const Value: T; HashCode: Integer): Integer;
+function TCustomUnorderedSet<T>.GetBucketIndex(const Value: T; HashCode: Integer): Integer;
 var
   start, hc: Integer;
 begin
@@ -886,19 +796,19 @@ begin
   end;
 end;
 
-function TCustomSetRec<T>.GetCapacity: integer;
+function TCustomUnorderedSet<T>.GetCapacity: integer;
 begin
   result := Length(FItems)-1; { check SetCapacity - we always allocate 1 extra item }
   if result < 0 then
     result := 0;
 end;
 
-function TCustomSetRec<T>.GetEnumerator: TValueEnumerator;
+function TCustomUnorderedSet<T>.GetEnumerator: TValueEnumerator;
 begin
   result := TValueEnumerator.Create(FItems);
 end;
 
-procedure TCustomSetRec<T>.Grow;
+procedure TCustomUnorderedSet<T>.Grow;
 var
   newCap: Integer;
 begin
@@ -908,7 +818,7 @@ begin
   Rehash(newCap);
 end;
 
-function TCustomSetRec<T>.Hash(const Key: T): Integer;
+function TCustomUnorderedSet<T>.Hash(const Key: T): Integer;
 const
   PositiveMask = not Integer($80000000);
 begin
@@ -918,7 +828,7 @@ begin
   Result := PositiveMask and ((PositiveMask and FComparer.GetHashCode(Key)) + 1);
 end;
 
-procedure TCustomSetRec<T>.Rehash(NewCapPow2: Integer);
+procedure TCustomUnorderedSet<T>.Rehash(NewCapPow2: Integer);
 var
   oldItems, newItems: TArray<TItem>;
   i: Integer;
@@ -940,7 +850,7 @@ begin
       RehashAdd(oldItems[i].HashCode, oldItems[i].Value);
 end;
 
-procedure TCustomSetRec<T>.RehashAdd(HashCode: Integer; const Value: T);
+procedure TCustomUnorderedSet<T>.RehashAdd(HashCode: Integer; const Value: T);
 var
   index: Integer;
 begin
@@ -949,7 +859,7 @@ begin
   FItems[index].Value := Value;
 end;
 
-procedure TCustomSetRec<T>.Remove(const Values: TEnumerable<T>);
+procedure TCustomUnorderedSet<T>.Remove(const Values: TEnumerable<T>);
 var
   Value: T;
 begin
@@ -957,7 +867,7 @@ begin
     DoRemove(Value, Hash(Value), cnRemoved);
 end;
 
-procedure TCustomSetRec<T>.Remove(const Values: TArray<T>);
+procedure TCustomUnorderedSet<T>.Remove(const Values: TArray<T>);
 var
   Value: T;
 begin
@@ -965,7 +875,7 @@ begin
     DoRemove(Value, Hash(Value), cnRemoved);
 end;
 
-procedure TCustomSetRec<T>.Remove(const Values: TCustomSetRec<T>);
+procedure TCustomUnorderedSet<T>.Remove(const Values: TCustomUnorderedSet<T>);
 var
   Value: T;
 begin
@@ -973,12 +883,12 @@ begin
     DoRemove(Value, Hash(Value), cnRemoved);
 end;
 
-procedure TCustomSetRec<T>.Remove(const Value: T);
+procedure TCustomUnorderedSet<T>.Remove(const Value: T);
 begin
   DoRemove(Value, Hash(Value), cnRemoved);
 end;
 
-procedure TCustomSetRec<T>.SetCapacity(ACapacity: Integer);
+procedure TCustomUnorderedSet<T>.SetCapacity(ACapacity: Integer);
 var
   newCap: Integer;
 begin
@@ -996,14 +906,14 @@ begin
   end
 end;
 
-procedure TCustomSetRec<T>.SetOwnsValues(const Value: boolean);
+procedure TCustomUnorderedSet<T>.SetOwnsValues(const Value: boolean);
 begin
   if Value and not TRttiUtils.IsInstance<T> then
     raise Exception.Create('Generic type is not a class.');
   FOwnsValues := Value;
 end;
 
-function TCustomSetRec<T>.ToArray: TArray<T>;
+function TCustomUnorderedSet<T>.ToArray: TArray<T>;
 var
   Value: T;
   I: integer;
@@ -1018,12 +928,12 @@ begin
   end;
 end;
 
-function TCustomSetRec<T>.ToString: string;
+function TCustomUnorderedSet<T>.ToString: string;
 begin
   result := ToText(' ');
 end;
 
-function TCustomSetRec<T>.ToText(const ValuesDelimiter: string): string;
+function TCustomUnorderedSet<T>.ToText(const ValuesDelimiter: string): string;
 var
   Builder: TStringBuilder;
   V: T;
@@ -1049,13 +959,13 @@ begin
   end;
 end;
 
-procedure TCustomSetRec<T>.TrimExcess;
+procedure TCustomUnorderedSet<T>.TrimExcess;
 begin
   // Ensure at least one empty slot for GetBucketIndex to terminate.
   SetCapacity(Count + 1);
 end;
 
-procedure TCustomSetRec<T>.ValueNotify(const Value: T; Action: TCollectionNotification);
+procedure TCustomUnorderedSet<T>.ValueNotify(const Value: T; Action: TCollectionNotification);
 begin
   if Assigned(FOnValueNotify) then
     FOnValueNotify(Value, Action);

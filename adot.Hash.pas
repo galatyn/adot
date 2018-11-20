@@ -1,12 +1,15 @@
 unit adot.Hash;
 
 {
-  TCustomHash = class
-    Abstract class for hashes.
+  TDigest = record
+    Simple API for block / chain hashing
+    Supported hashes:
+      MD5, SHA1, SHA2, BobJenkins32 (System.Hash)
+      CRC32, Adler32 (System.ZLib)
 
-  THashes = class
-    Simple API for hashing functions (including CRC32/Adler32)
-
+  TDigests = record
+    Simple API for single data block hashing
+    Hashing helpers (mix function etc)
 }
 
 interface
@@ -16,103 +19,23 @@ uses
   System.Hash,
   System.SysUtils,
   System.Classes,
-  System.Math;
+  System.Math,
+  System.Generics.Collections,
+  System.Generics.Defaults;
 
 type
-  THashData = TArray<byte>;
-
-  { Abstract class for hashes }
-  TCustomHash = class abstract
+  TCustomDigest = class abstract(TInterfacedObject, IInterface)
   protected
-
-    { used by CRC/Adler to transform 32bit hash to TBytes }
-    class function Hash32ToBytes(Hash: Cardinal): TBytes; static;
-
-    { single call }
-    class function DoEncode(const Buf; ByteBufSize: integer): TBytes; overload; virtual; abstract;
-    class function DoEncode(S: TStream): TBytes; overload; virtual; abstract;
-
-    { streaming }
-    class procedure DoInit(out Hash: THashData); virtual; abstract;
-    class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); virtual; abstract;
-    class function DoDone(var Hash: THashData): TBytes; virtual; abstract;
-  public
-
-    { single call functions }
-    class function Encode(const Buf; ByteBufSize: integer): TBytes; overload;
-    class function Encode(S: TStream): TBytes; overload;
-    class function Encode(const S: TBytes; StartIndex,Count: integer): TBytes; overload;
-    class function Encode(const S: TBytes): TBytes; overload;
-    class function Encode(const S: string): TBytes; overload;
-    {$If Defined(MSWindows)}
-      class function EncodeAnsiString(const S: AnsiString): TBytes;
-    {$EndIf}
-    class function Encode(const Lines: TArray<string>): TBytes; overload;
-    class function EncodeFile(const AFileName: string): TBytes; overload;
-
-    { streaming functions }
-    class procedure Init(out Hash: THashData);
-
-    { for values with fixed length, hash will be generated from data only }
-    class procedure Update(const Value; ValueByteSize: integer; var Hash: THashData); overload;
-    class procedure Update(const Value: integer;      var Hash: THashData); overload;
-    class procedure Update(const Value: double;       var Hash: THashData); overload;
-    class procedure Update(const Value: TGUID;        var Hash: THashData); overload;
-
-    { for values with variable length, hash will be generated from length and data }
-    class procedure Update(const Value: TArray<byte>; var Hash: THashData); overload;
-    class procedure Update(const Value: string;       var Hash: THashData); overload;
-
-    class function Done(var Hash: THashData): TBytes;
-
-  end;
-
-  THashClass = class of TCustomHash;
-
-  { AH: Don't use THashMD5/THashSHA1 directly, implementation in XE8 has serious bugs:
-    http://qc.embarcadero.com/wc/qcmain.aspx?d=132100
-    AH (update from 05.04.2016): The issue is fixed, in Delphi 10 Seattle it works correctly.
-    Why we still keep THashes class:
-    - For now Delphi doesn't have CRC/Adler (usefull for files, but can be replaced by THashBobJenkins)
-    - In object model it is much easier to introduce new functions (like hash file/stream etc)
-    - If other issues will be discovered in Delphi lib, we can fix it without changes in the code
-
-   Simple API for hashing functions (including CRC32/Adler32). Example:
-
-    function GetHash(L: TList<TRec>): string;
-    var
-      H: THashClass;
-      D: THashData;
-      I: Integer;
-    begin
-      H := THashUtils.Strong;
-      H.Init(D);
-      for I := 0 to List.Count-1 do
-        H.Update(L[I], SizeOf(L[I]), D);
-      result := THashUtils.HashToString(H.Done(D));
-    end;
-
-    Same example without THashClass:
-
-    function GetHash(L: TList<TRec>): string;
-    var
-      D: THashData;
-      I: Integer;
-    begin
-      THashUtils.Strong.Init(D);
-      for I := 0 to List.Count-1 do
-        THashUtils.Strong.Update(L[I], SizeOf(L[I]), D);
-      result := THashUtils.HashToString(THashUtils.Strong.Done(D));
-    end; }
-  THashUtils = class
-  private
     type
       { Stream block reader (ReadNext to get next block of data from stream as array of byte) }
       TBlockReader = class
       private
-        Stream: TStream;
-        OwnsStream: boolean;
-        BytesToRead: int64;
+        const
+          StreamingBufSize = 64*1024;
+        var
+          Stream: TStream;
+          OwnsStream: boolean;
+          BytesToRead: int64;
 
       public
         Bytes: TArray<Byte>;
@@ -124,554 +47,755 @@ type
         function ReadNext: Boolean;
       end;
 
+    { block/chain functions }
+    procedure DoUpdate(const Data; SizeOFData: integer); virtual; abstract;
+    function DoDone: TBytes; virtual; abstract;
+
+    class procedure CreateDigest(out ADigest: TCustomDigest; out ADigestInt: IInterface);
+
+    { Low level functions. They calculate digest from data only }
+    procedure Update(const AData; ADataSize: integer); overload;
+    procedure Update(const AData: TStream); overload;
+    procedure Update(const AData: TBytes; AStartIndex,ACount: integer); overload;
+    procedure Update(const AData: TBytes); overload;
+    procedure Update(const AData: string); overload;
+    procedure Update(const AData: string; AStartIndex,ACount: integer); overload;
+    procedure Update(const AData: TArray<string>); overload;
+    procedure Update(const AData: TEnumerable<string>); overload;
+    procedure Update(const AData: TObject); overload;
+    procedure Update<T: record>(const AData: T); overload;
+    procedure UpdateFromFile(const AFileName: string); overload;
+
   public
-    const
-      StreamingBufSize = 64*1024;
+    constructor Create; virtual; abstract;
 
+    { High level functions. They calculate digest from size and data, not from data only }
+    class function GetHash(const AData; ADataSize: integer): TBytes; overload;
+    class function GetHash(const AData: TStream): TBytes; overload;
+    class function GetHash(const AData: TBytes; AStartIndex,ACount: integer): TBytes; overload;
+    class function GetHash(const AData: TBytes): TBytes; overload;
+    class function GetHash(const AData: string): TBytes; overload;
+    class function GetHash(const AData: string; AStartIndex,ACount: integer): TBytes; overload;
+    class function GetHash(const AData: TObject): TBytes; overload;
+    class function GetHash<T: record>(const AData: T): TBytes; overload;
+    class function GetHashOfFile(const AFileName: string): TBytes; overload;
+
+    { For containers we calculate digest from size and data, not from data only.
+      It guarantees that
+        GetHash(["A", "BC"]) <>
+        GetHash(["AB", "C"]) }
+    class function GetHash(const AData: TArray<string>): TBytes; overload;
+    class function GetHash(const AData: TEnumerable<string>): TBytes; overload;
+  end;
+  TDigestClass = class of TCustomDigest;
+
+  {
+    function GetHash(L: TList<TRec>): string;
+    var
+      D: TDigest;
+      I: Integer;
+    begin
+      D.InitStrong;
+      for I := 0 to List.Count-1 do
+        D.Update(L[I]);
+      result := D.ToString;
+    end;
+  }
+  TDigest = record
+  private
     type
-      MD5 = class(TCustomHash)
+      TMD5 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: THashMD5;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; override;
       end;
 
-      SHA1 = class(TCustomHash)
+      TSHA1 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: THashSHA1;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; override;
       end;
 
-      { we use default 256bit hash (use THashSHA2 directly for other options - 224bit,384bit,...) }
-      SHA2 = class(TCustomHash)
+      TSHA2 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: THashSHA2;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; overload; override;
+        constructor Create(const Ver: THashSHA2.TSHA2Version); reintroduce; overload;
       end;
 
-      CRC32 = class(TCustomHash)
+      TCRC32 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: cardinal;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; override;
       end;
 
-      Adler32 = class(TCustomHash)
+      TAdler32 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: cardinal;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; override;
       end;
 
-      BobJenkins32 = class(TCustomHash)
+      TBobJenkins32 = class(TCustomDigest)
       protected
-        class function DoEncode(const Buf; ByteBufSize: integer): TBytes; override;
-        class function DoEncode(S: TStream): TBytes; override;
-        class procedure DoInit(out Hash: THashData); override;
-        class procedure DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData); override;
-        class function DoDone(var Hash: THashData): TBytes; override;
+        FData: THashBobJenkins;
+
+        procedure DoUpdate(const Data; SizeOFData: integer); override;
+        function DoDone: TBytes; override;
+      public
+        constructor Create; override;
       end;
 
-      { Strong hash for critical parts (password checksum etc).
-        MD5 is outdated for use in cryptography, but for other tasks it's still good enough }
-      Strong = MD5;
+    var
+      FDigest: TCustomDigest;
+      FDigestInt: IInterface;
 
-      { Fast hash with good avalanche effect (hash tables etc). }
-      Fast = BobJenkins32;
+    procedure SetDigest(const Value: TCustomDigest);
 
-      { Fastest hash for detection of modifications in massive data arrays (file checksum etc).
-        We use Adler32, it's two times faster than Crc32 and still quite good. }
-      Fastest = Adler32;
+    property Digest: TCustomDigest read FDigest write SetDigest;
 
-    { general }
+  public
+
+    { Block / chain functions }
+    procedure InitMD5;
+    procedure InitSHA1;
+    procedure InitSHA2; overload;
+    procedure InitSHA2(const Ver: THashSHA2.TSHA2Version); overload;
+    procedure InitCRC32;
+    procedure InitAdler32;
+    procedure InitBobJenkins32;
+
+    procedure InitStrong;
+    procedure InitFast;
+    procedure InitFastest;
+
+    procedure Update(const AData; ADataSize: integer); overload;
+    procedure Update(const AData: TStream); overload;
+    procedure Update(const AData: TBytes; AStartIndex,ACount: integer); overload;
+    procedure Update(const AData: TBytes); overload;
+    procedure Update(const AData: string); overload;
+    procedure Update(const AData: string; AStartIndex,ACount: integer); overload;
+    procedure Update(const AData: TArray<string>); overload;
+    procedure Update(const AData: TEnumerable<string>); overload;
+    procedure Update(const AData: TObject); overload;
+    procedure Update<T: record>(const AData: T); overload;
+    procedure UpdateFromFile(const AFileName: string); overload;
+
+    function Done: TBytes;
+    function ToString: string;
+    function ToBytes: TBytes;
+  end;
+
+  {
+    var
+      A,B,R: TBytes;
+      V: TArray<string>;
+    begin
+      V := ['1', '2', '3'];
+      A := TDigests.MD5.GetHashOfFile('c:\1.xml');
+      B := TDigests.SHA2.GetHash(V);
+      R := TDigests.Mix(A,B);
+    end;
+  }
+  TDigests = record
+  private
+    class function GetAdler32Class      : TDigestClass; static;
+    class function GetBobJenkins32Class : TDigestClass; static;
+    class function GetCRC32Class        : TDigestClass; static;
+    class function GetMD5Class          : TDigestClass; static;
+    class function GetSHA1Class         : TDigestClass; static;
+    class function GetSHA2Class         : TDigestClass; static;
+
+  public
+    class property MD5          : TDigestClass read GetMD5Class;
+    class property SHA1         : TDigestClass read GetSHA1Class;
+    class property SHA2         : TDigestClass read GetSHA2Class;
+    class property CRC32        : TDigestClass read GetCRC32Class;
+    class property Adler32      : TDigestClass read GetAdler32Class;
+    class property BobJenkins32 : TDigestClass read GetBobJenkins32Class;
+
     class function Mix(const HashA,HashB: integer): integer; overload; static; {$IFDEF UseInline}inline;{$ENDIF}
     class function Mix(const HashA,HashB,HashC: integer): integer; overload; static;
     class function Mix(const HashA,HashB: TBytes): TBytes; overload; static;
     class function Mix(const Hashes: array of integer): integer; overload; static;
     class function Mix(const Hashes: array of TBytes): TBytes; overload; static;
 
-    class function HashToString(const AHash: TBytes): string; static;
+    class function ToString(const AHash: TBytes): string; static;
 
     class function GetHash32(const Hash: TBytes): integer; static;
     class function GetHash24(const Hash: TBytes): integer; static;
     class function GetHash16(const Hash: TBytes): integer; static;
   end;
 
-  THashes = THashUtils;
-
 implementation
 
 uses
   adot.Tools;
 
-{ THashUtils.TBlockReader }
+{ TDigest.TMD5 }
 
-constructor THashUtils.TBlockReader.Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean);
+constructor TDigest.TMD5.Create;
 begin
-  Stream := Src;
-  OwnsStream := AOwnsStream;
-  SetLength(Bytes, BufSize);
-  if not FromBeginning then
-    BytesToRead := Stream.Size - Stream.Position
-  else
-  begin
-    Stream.Position := 0;
-    BytesToRead := Stream.Size;
-  end;
+  FData := THashMD5.Create;
 end;
 
-destructor THashUtils.TBlockReader.Destroy;
+procedure TDigest.TMD5.DoUpdate(const Data; SizeOFData: integer);
 begin
-  if OwnsStream then
-    Stream.Free;
-  Stream := nil;
   inherited;
+  FData.Update(Data, SizeOFData);
 end;
 
-function THashUtils.TBlockReader.ReadNext: Boolean;
+function TDigest.TMD5.DoDone: TBytes;
 begin
-  Result := BytesToRead > 0;
-  if Result then
-  begin
-    Count := Min(BytesToRead, Length(Bytes));
-    Stream.ReadBuffer(Bytes,  Count);
-    Dec(BytesToRead, Count);
-  end
-  else
-  begin
-    SetLength(Bytes, 0);
-    Count := 0;
-  end;
+  result := FData.HashAsBytes;
 end;
 
-{ TCustomHash }
+{ TDigest }
 
-class function TCustomHash.Encode(const Buf; ByteBufSize: integer): TBytes;
+function TDigest.Done: TBytes;
 begin
-  result := DoEncode(Buf, ByteBufSize);
+  result := Digest.DoDone;
 end;
 
-class function TCustomHash.Encode(S: TStream): TBytes;
+procedure TDigest.InitAdler32;
 begin
-  result := DoEncode(S);
+  Digest := TAdler32.Create;
 end;
 
-class function TCustomHash.Encode(const S: TBytes; StartIndex,Count: integer): TBytes;
+procedure TDigest.InitBobJenkins32;
 begin
-  Assert((StartIndex >= 0) and (StartIndex + Count <= Length(S)));
-  if Count <= 0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[StartIndex], Count);
+  Digest := TBobJenkins32.Create;
 end;
 
-class function TCustomHash.Encode(const S: TBytes): TBytes;
+procedure TDigest.InitCRC32;
 begin
-  result := Encode(S, 0, Length(S));
+  Digest := TCRC32.Create;
 end;
 
-class function TCustomHash.Encode(const S: string): TBytes;
+procedure TDigest.InitMD5;
 begin
-  if Length(S)=0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+  Digest := TMD5.Create;
 end;
 
-class function TCustomHash.Encode(const Lines: TArray<string>): TBytes;
-var
-  H: THashData;
-  S: string;
+procedure TDigest.InitSHA1;
 begin
-  Init(H);
-  for S in Lines do
-    Update(S, H);
-  result := Done(H);
+  Digest := TSHA1.Create;
 end;
 
-{$If Defined(MSWindows)}
-class function TCustomHash.EncodeAnsiString(const S: AnsiString): TBytes;
+procedure TDigest.InitSHA2;
 begin
-  if Length(S)=0 then
-    result := DoEncode(nil^, 0)
-  else
-    result := DoEncode(S[Low(S)], length(S)*SizeOf(S[Low(S)]));
+  Digest := TSHA2.Create(THashSHA2.TSHA2Version.SHA256);
 end;
-{$EndIf}
 
-class function TCustomHash.EncodeFile(const AFileName: string): TBytes;
-var
-  S: TFileStream;
+procedure TDigest.InitSHA2(const Ver: THashSHA2.TSHA2Version);
 begin
-  S := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
-  try
-    Result := DoEncode(S);
-  finally
-    S.Free;
-  end;
+  Digest := TSHA2.Create(Ver);
 end;
 
-class function TCustomHash.Hash32ToBytes(Hash: Cardinal): TBytes;
+procedure TDigest.InitStrong;
+begin
+  InitMD5;
+end;
+
+procedure TDigest.InitFast;
+begin
+  InitBobJenkins32;
+end;
+
+procedure TDigest.InitFastest;
+begin
+  InitAdler32;
+end;
+
+procedure TDigest.SetDigest(const Value: TCustomDigest);
+begin
+  if FDigest = Value then
+    Exit;
+  FDigest := nil;
+  FDigestInt := nil;
+  FDigestInt := Value;
+  FDigest := Value;
+end;
+
+function TDigest.ToBytes: TBytes;
+begin
+  result := Digest.DoDone;
+end;
+
+function TDigest.ToString: string;
+begin
+  result := TDigests.ToString(Digest.DoDone);
+end;
+
+procedure TDigest.Update(const AData: TBytes);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update(const AData: TBytes; AStartIndex, ACount: integer);
+begin
+  Digest.Update(AData, AStartIndex, ACount);
+end;
+
+procedure TDigest.Update(const AData: TStream);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update(const AData; ADataSize: integer);
+begin
+  Digest.Update(AData, ADataSize);
+end;
+
+procedure TDigest.Update(const AData: string);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update(const AData: string; AStartIndex,ACount: integer);
+begin
+  Digest.Update(AData,AStartIndex,ACount);
+end;
+
+procedure TDigest.Update(const AData: TObject);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update(const AData: TEnumerable<string>);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update(const AData: TArray<string>);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.Update<T>(const AData: T);
+begin
+  Digest.Update(AData);
+end;
+
+procedure TDigest.UpdateFromFile(const AFileName: string);
+begin
+  Digest.UpdateFromFile(AFileName);
+end;
+
+{ TDigest.TSHA1 }
+
+constructor TDigest.TSHA1.Create;
+begin
+  FData := THashSHA1.Create;
+end;
+
+procedure TDigest.TSHA1.DoUpdate(const Data; SizeOFData: integer);
+begin
+  inherited;
+  FData.Update(Data, SizeOFData);
+end;
+
+function TDigest.TSHA1.DoDone: TBytes;
+begin
+  result := FData.HashAsBytes;
+end;
+
+{ TDigest.TSHA2 }
+
+constructor TDigest.TSHA2.Create(const Ver: THashSHA2.TSHA2Version);
+begin
+  FData := THashSHA2.Create(Ver);
+end;
+
+constructor TDigest.TSHA2.Create;
+begin
+  FData := THashSHA2.Create(THashSHA2.TSHA2Version.SHA256);
+end;
+
+procedure TDigest.TSHA2.DoUpdate(const Data; SizeOFData: integer);
+begin
+  inherited;
+  FData.Update(Data, SizeOFData);
+end;
+
+function TDigest.TSHA2.DoDone: TBytes;
+begin
+  result := FData.HashAsBytes;
+end;
+
+{ TDigest.TCRC32 }
+
+constructor TDigest.TCRC32.Create;
+begin
+  FData := System.ZLib.crc32(0, nil, 0);
+end;
+
+procedure TDigest.TCRC32.DoUpdate(const Data; SizeOFData: integer);
+begin
+  inherited;
+  FData := System.ZLib.crc32(FData, @Data, SizeOFData);
+end;
+
+function TDigest.TCRC32.DoDone: TBytes;
 begin
   SetLength(Result, 4);
-  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(Hash);
+  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(FData);
 end;
 
-class procedure TCustomHash.Init(out Hash: TArray<byte>);
+{ TDigest.TAdler32 }
+
+constructor TDigest.TAdler32.Create;
 begin
-  DoInit(Hash);
+  FData := System.ZLib.adler32(0, nil, 0);
 end;
 
-class procedure TCustomHash.Update(const Value; ValueByteSize: integer; var Hash: THashData);
+procedure TDigest.TAdler32.DoUpdate(const Data; SizeOFData: integer);
 begin
-  DoUpdate(Value, ValueByteSize, Hash);
+  inherited;
+  FData := System.ZLib.adler32(FData, @Data, SizeOFData);
 end;
 
-class procedure TCustomHash.Update(const Value: integer; var Hash: THashData);
+function TDigest.TAdler32.DoDone: TBytes;
 begin
-  DoUpdate(Value, SizeOf(Value), Hash);
+  SetLength(Result, 4);
+  PCardinal(@Result[0])^ := System.Hash.THash.ToBigEndian(FData);
 end;
 
-class procedure TCustomHash.Update(const Value: double; var Hash: THashData);
+{ TDigest.TBobJenkins32 }
+
+constructor TDigest.TBobJenkins32.Create;
 begin
-  DoUpdate(Value, SizeOf(Value), Hash);
+  FData := THashBobJenkins.Create;
 end;
 
-class procedure TCustomHash.Update(const Value: TGUID; var Hash: THashData);
+procedure TDigest.TBobJenkins32.DoUpdate(const Data; SizeOFData: integer);
 begin
-  DoUpdate(Value, SizeOf(Value), Hash);
+  inherited;
+  FData.Update(Data, SizeOFData);
 end;
 
-class procedure TCustomHash.Update(const Value: TArray<byte>; var Hash: THashData);
+function TDigest.TBobJenkins32.DoDone: TBytes;
 begin
-  { Length must be included in hash, otherwise arrays
-    [a, ab] and [aa, b] will produce same hash }
-  Update(Length(Value), Hash);
-  if Length(Value) > 0 then
-    DoUpdate(Value[0], Length(Value), Hash);
+  result := FData.HashAsBytes;
 end;
 
-class procedure TCustomHash.Update(const Value: string; var Hash: THashData);
+{ TCustomDigest }
+
+class procedure TCustomDigest.CreateDigest(out ADigest: TCustomDigest; out ADigestInt: IInterface);
 begin
-  { Length must be included in hash, otherwise arrays
-    ["a", "ab"] and ["aa", "b"] will produce same hash }
-  Update(Length(Value), Hash);
-  if Value <> '' then
-    DoUpdate(Value[Low(Value)], Length(Value)*SizeOf(Char), Hash);
+  ADigest := Self.Create;
+  ADigestInt := ADigest;
 end;
 
-class function TCustomHash.Done(var Hash: TArray<byte>): TBytes;
+class function TCustomDigest.GetHash(const AData: TBytes): TBytes;
 begin
-  result := DoDone(Hash);
+  result := GetHash(AData, 0, Length(AData));
 end;
 
-{ TMD5 }
-
-class function THashUtils.MD5.DoEncode(const Buf; ByteBufSize: integer): TBytes;
+class function TCustomDigest.GetHash(const AData: TBytes; AStartIndex,ACount: integer): TBytes;
 var
-  Hash: THashMD5;
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
 begin
-  Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData, AStartIndex, ACount);
+  Result := Digest.DoDone;
 end;
 
-class function THashUtils.MD5.DoEncode(S: TStream): TBytes;
+class function TCustomDigest.GetHash(const AData: TStream): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+begin
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData);
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHash(const AData; ADataSize: integer): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+begin
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData, ADataSize);
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHash(const AData: string): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+begin
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData);
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHash(const AData: string; AStartIndex,ACount: integer): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+begin
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData,AStartIndex,ACount);
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHash(const AData: TEnumerable<string>): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+  S: string;
+begin
+  CreateDigest(Digest, DigestInt);
+  for S in AData do
+  begin
+    Digest.Update(Length(S));
+    Digest.Update(S);
+  end;
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHash(const AData: TArray<string>): TBytes;
+var
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
+  S: string;
+begin
+  CreateDigest(Digest, DigestInt);
+  for S in AData do
+  begin
+    Digest.Update(Length(S));
+    Digest.Update(S);
+  end;
+  Result := Digest.DoDone;
+end;
+
+class function TCustomDigest.GetHashOfFile(const AFileName: string): TBytes;
+var
+  Hasher: TCustomDigest;
+  HasherInt: IInterface;
+begin
+  CreateDigest(Hasher, HasherInt);
+  Hasher.UpdateFromFile(AFileName);
+  Result := Hasher.DoDone;
+end;
+
+procedure TCustomDigest.Update(const AData: string);
+begin
+  Update(TEncoding.UTF8.GetBytes(AData));
+end;
+
+procedure TCustomDigest.Update(const AData: string; AStartIndex,ACount: integer);
+begin
+  Update(TEncoding.UTF8.GetBytes(AData.Substring(AStartIndex, ACount)));
+end;
+
+procedure TCustomDigest.Update(const AData: TBytes);
+begin
+  if Length(AData) > 0
+    then DoUpdate(AData[0], Length(AData))
+    else DoUpdate(nil^, 0);
+end;
+
+procedure TCustomDigest.Update(const AData: TBytes; AStartIndex, ACount: integer);
+begin
+  if ACount > 0
+    then DoUpdate(AData[AStartIndex], ACount)
+    else DoUpdate(nil^, 0);
+end;
+
+procedure TCustomDigest.Update(const AData: TStream);
 var
   Reader: TBlockReader;
-  Hash: THashMD5;
 begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
+  Reader := TBlockReader.Create(AData, False, TBlockReader.StreamingBufSize, True);
   try
-    Hash := THashMD5.Create; { Create may have params and is not equal to Reset }
     while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
+      DoUpdate(Reader.Bytes[0], Reader.Count);
   finally
     Reader.Free;
   end;
 end;
 
-class procedure THashUtils.MD5.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashMD5));
-  THashMD5((@Hash[0])^) := THashMD5.Create;
-end;
-
-class procedure THashUtils.MD5.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashMD5));
-  THashMD5((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.MD5.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashMD5));
-  result := THashMD5((@Hash[0])^).HashAsBytes;
-  THashMD5((@Hash[0])^) := Default(THashMD5);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.SHA1 }
-
-class function THashUtils.SHA1.DoEncode(const Buf; ByteBufSize: integer): TBytes;
+procedure TCustomDigest.Update(const AData: TObject);
 var
-  Hash: THashSHA1;
+  Code: Integer;
 begin
-  Hash := THashSHA1.Create;
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
+  Code := AData.GetHashCode;
+  DoUpdate(Code, SizeOf(Code));
 end;
 
-class function THashUtils.SHA1.DoEncode(S: TStream): TBytes;
-var
-  Reader: TBlockReader;
-  Hash: THashSHA1;
+procedure TCustomDigest.Update(const AData; ADataSize: integer);
 begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
+  if ADataSize > 0
+    then DoUpdate(AData, ADataSize)
+    else DoUpdate(nil^, 0);
+end;
+
+procedure TCustomDigest.Update(const AData: TEnumerable<string>);
+var
+  S: string;
+begin
+  for S in AData do
+    Update(S);
+end;
+
+procedure TCustomDigest.Update(const AData: TArray<string>);
+var
+  S: string;
+begin
+  for S in AData do
+    Update(S);
+end;
+
+procedure TCustomDigest.Update<T>(const AData: T);
+begin
+  DoUpdate(AData, SizeOf(AData));
+end;
+
+procedure TCustomDigest.UpdateFromFile(const AFileName: string);
+var
+  FileStream: TFileStream;
+begin
+  FileStream := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
   try
-    Hash := THashSHA1.Create;
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
+    Update(FileStream);
   finally
-    Reader.Free;
+    FileStream.Free;
   end;
 end;
 
-class procedure THashUtils.SHA1.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashSHA1));
-  THashSHA1((@Hash[0])^) := THashSHA1.Create;
-end;
-
-class procedure THashUtils.SHA1.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA1));
-  THashSHA1((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.SHA1.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashSHA1));
-  result := THashSHA1((@Hash[0])^).HashAsBytes;
-  THashSHA1((@Hash[0])^) := Default(THashSHA1);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.SHA2 }
-
-class function THashUtils.SHA2.DoEncode(const Buf; ByteBufSize: integer): TBytes;
+class function TCustomDigest.GetHash(const AData: TObject): TBytes;
 var
-  Hash: THashSHA2;
+  Digest: TCustomDigest;
+  DigestInt: IInterface;
 begin
-  Hash := THashSHA2.Create;
-  Hash.Update(Buf, ByteBufSize);
-  Result := Hash.HashAsBytes;
+  CreateDigest(Digest, DigestInt);
+  Digest.Update(AData);
+  Result := Digest.DoDone;
 end;
 
-class function THashUtils.SHA2.DoEncode(S: TStream): TBytes;
+class function TCustomDigest.GetHash<T>(const AData: T): TBytes;
 var
-  Reader: TBlockReader;
-  Hash: THashSHA2;
+  Hasher: TCustomDigest;
+  HasherInt: IInterface;
 begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
-  try
-    Hash := THashSHA2.Create;
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Reader.Free;
-  end;
+  CreateDigest(Hasher, HasherInt);
+  Hasher.Update(AData);
+  Result := Hasher.DoDone;
 end;
 
-class procedure THashUtils.SHA2.DoInit(out Hash: THashData);
+{ TDigests }
+
+class function TDigests.GetAdler32Class: TDigestClass;
 begin
-  SetLength(Hash, SizeOf(THashSHA2));
-  THashSHA2((@Hash[0])^) := THashSHA2.Create;
+  result := TDigest.TAdler32;
 end;
 
-class procedure THashUtils.SHA2.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+class function TDigests.GetBobJenkins32Class: TDigestClass;
 begin
-  Assert(Length(Hash)=SizeOf(THashSHA2));
-  THashSHA2((@Hash[0])^).Update(Buf, ByteBufSize);
+  result := TDigest.TBobJenkins32;
 end;
 
-class function THashUtils.SHA2.DoDone(var Hash: THashData): TBytes;
+class function TDigests.GetCRC32Class: TDigestClass;
 begin
-  Assert(Length(Hash)=SizeOf(THashSHA2));
-  result := THashSHA2((@Hash[0])^).HashAsBytes;
-  THashSHA2((@Hash[0])^) := Default(THashSHA2);
-  SetLength(Hash, 0);
+  result := TDigest.TCRC32;
 end;
 
-{ THashUtils.CRC32 }
-
-class function THashUtils.CRC32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Crc: Cardinal;
+class function TDigests.GetMD5Class: TDigestClass;
 begin
-  Crc := System.ZLib.crc32(0, nil, 0);
-  Crc := System.ZLib.crc32(Crc, @Buf, ByteBufSize);
-  Result := Hash32ToBytes(Crc);
+  result := TDigest.TMD5;
 end;
 
-class function THashUtils.CRC32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TBlockReader;
-  Crc: Cardinal;
+class function TDigests.GetSHA1Class: TDigestClass;
 begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
-  try
-    Crc := System.ZLib.crc32(0, nil, 0);
-    while Reader.ReadNext do
-      Crc := System.ZLib.crc32(Crc, @Reader.Bytes[0], Reader.Count);
-    Result := Hash32ToBytes(Crc);
-  finally
-    Reader.Free;
-  end;
+  result := TDigest.TSHA1;
 end;
 
-class procedure THashUtils.CRC32.DoInit(out Hash: THashData);
+class function TDigests.GetSHA2Class: TDigestClass;
 begin
-  SetLength(Hash, SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.crc32(0, nil, 0);
+  result := TDigest.TSHA2;
 end;
 
-class procedure THashUtils.CRC32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
+class function TDigests.GetHash16(const Hash: TBytes): integer;
 begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.crc32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      ((integer(Hash[0]) xor integer(Hash[1])) shl 8) or
+      (integer(Hash[2]) xor integer(Hash[3]))
+  else
+    result := GetHash16(CRC32.GetHash(Hash,0,Length(Hash)));
 end;
 
-class function THashUtils.CRC32.DoDone(var Hash: THashData): TBytes;
+class function TDigests.GetHash24(const Hash: TBytes): integer;
 begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  Result := Hash32ToBytes(cardinal((@Hash[0])^));
-  cardinal((@Hash[0])^) := Default(cardinal);
-  SetLength(Hash, 0);
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      (integer(Hash[0]) shl 16) or
+      (integer(Hash[1]) shl  8) or
+      (integer(Hash[2]) xor integer(Hash[3]))
+  else
+    result := GetHash24(CRC32.GetHash(Hash,0,Length(Hash)));
 end;
 
-{ THashUtils.Adler32 }
-
-class function THashUtils.Adler32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  Crc: Cardinal;
+class function TDigests.GetHash32(const Hash: TBytes): integer;
 begin
-  Crc := System.ZLib.adler32(0, nil, 0);
-  Crc := System.ZLib.adler32(Crc, @Buf, ByteBufSize);
-  Result := Hash32ToBytes(Crc);
+  if Length(Hash) = 0 then
+    result := 0
+  else
+  if Length(Hash) = 4 then
+    result :=
+      (integer(Hash[0]) shl 24) or
+      (integer(Hash[1]) shl 16) or
+      (integer(Hash[2]) shl  8) or
+      (integer(Hash[3]))
+  else
+    result := GetHash32(CRC32.GetHash(Hash,0,Length(Hash)));
 end;
 
-class function THashUtils.Adler32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TBlockReader;
-  Crc: Cardinal;
+class function TDigests.ToString(const AHash: TBytes): string;
 begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
-  try
-    Crc := System.ZLib.adler32(0, nil, 0);
-    while Reader.ReadNext do
-      Crc := System.ZLib.adler32(Crc, @Reader.Bytes[0], Reader.Count);
-    Result := Hash32ToBytes(Crc);
-  finally
-    Reader.Free;
-  end;
+  Result := THex.Encode(AHash);
 end;
 
-class procedure THashUtils.Adler32.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.adler32(0, nil, 0);
-end;
-
-class procedure THashUtils.Adler32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  cardinal((@Hash[0])^) := System.ZLib.adler32(cardinal((@Hash[0])^), @Buf, ByteBufSize);
-end;
-
-class function THashUtils.Adler32.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(cardinal));
-  Result := Hash32ToBytes(cardinal((@Hash[0])^));
-  cardinal((@Hash[0])^) := Default(cardinal);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils.BobJenkins32 }
-
-class function THashUtils.BobJenkins32.DoEncode(const Buf; ByteBufSize: integer): TBytes;
-var
-  h: THashBobJenkins;
-begin
-  h := THashBobJenkins.Create;
-  h.Update(Buf, ByteBufSize);
-  Result := h.HashAsBytes;
-end;
-
-class function THashUtils.BobJenkins32.DoEncode(S: TStream): TBytes;
-var
-  Reader: TBlockReader;
-  Hash: THashBobJenkins;
-begin
-  Reader := TBlockReader.Create(S, False, StreamingBufSize, True);
-  try
-    Hash := THashBobJenkins.Create;
-    while Reader.ReadNext do
-      Hash.Update(Reader.Bytes, Reader.Count);
-    Result := Hash.HashAsBytes;
-  finally
-    Reader.Free;
-  end;
-end;
-
-class procedure THashUtils.BobJenkins32.DoInit(out Hash: THashData);
-begin
-  SetLength(Hash, SizeOf(THashBobJenkins));
-  THashBobJenkins((@Hash[0])^) := THashBobJenkins.Create;
-end;
-
-class procedure THashUtils.BobJenkins32.DoUpdate(const Buf; ByteBufSize: integer; var Hash: THashData);
-begin
-  Assert(Length(Hash)=SizeOf(THashBobJenkins));
-  THashBobJenkins((@Hash[0])^).Update(Buf, ByteBufSize);
-end;
-
-class function THashUtils.BobJenkins32.DoDone(var Hash: THashData): TBytes;
-begin
-  Assert(Length(Hash)=SizeOf(THashBobJenkins));
-  Result := THashBobJenkins((@Hash[0])^).HashAsBytes;
-  THashBobJenkins((@Hash[0])^) := Default(THashBobJenkins);
-  SetLength(Hash, 0);
-end;
-
-{ THashUtils }
-
-class function THashUtils.Mix(const HashA, HashB, HashC: integer): integer;
-begin
-  result := Mix(Mix(HashA, HashB), HashC);
-end;
-
-class function THashUtils.Mix(const HashA, HashB: integer): integer;
+class function TDigests.Mix(const HashA, HashB: integer): integer;
 begin
   result := (HashA*1103515245 + 12345) xor HashB;
 end;
 
-class function THashUtils.Mix(const HashA, HashB: TBytes): TBytes;
+class function TDigests.Mix(const HashA, HashB, HashC: integer): integer;
+begin
+  result := Mix(Mix(HashA, HashB), HashC);
+end;
+
+class function TDigests.Mix(const HashA, HashB: TBytes): TBytes;
 var
   V,L1,L2,LR: Integer;
   Src1,Src2,Dst: pointer;
@@ -743,54 +867,7 @@ begin
   end;
 end;
 
-class function THashUtils.HashToString(const AHash: TBytes): string;
-begin
-  Result := THex.Encode(AHash);
-end;
-
-class function THashUtils.GetHash32(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      (integer(Hash[0]) shl 24) or
-      (integer(Hash[1]) shl 16) or
-      (integer(Hash[2]) shl  8) or
-      (integer(Hash[3]))
-  else
-    result := GetHash32(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.GetHash24(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      (integer(Hash[0]) shl 16) or
-      (integer(Hash[1]) shl  8) or
-      (integer(Hash[2]) xor integer(Hash[3]))
-  else
-    result := GetHash24(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.GetHash16(const Hash: TBytes): integer;
-begin
-  if Length(Hash) = 0 then
-    result := 0
-  else
-  if Length(Hash) = 4 then
-    result :=
-      ((integer(Hash[0]) xor integer(Hash[1])) shl 8) or
-      (integer(Hash[2]) xor integer(Hash[3]))
-  else
-    result := GetHash16(CRC32.Encode(Hash,0,Length(Hash)));
-end;
-
-class function THashUtils.Mix(const Hashes: array of integer): integer;
+class function TDigests.Mix(const Hashes: array of integer): integer;
 var
   I: Integer;
 begin
@@ -799,13 +876,54 @@ begin
     result := Mix(result, Hashes[I]);
 end;
 
-class function THashUtils.Mix(const Hashes: array of TBytes): TBytes;
+class function TDigests.Mix(const Hashes: array of TBytes): TBytes;
 var
   I: Integer;
 begin
   SetLength(result, 0);
   for I := Low(Hashes) to High(Hashes) do
     result := Mix(result, Hashes[I]);
+end;
+
+{ TCustomDigest.TBlockReader }
+
+constructor TCustomDigest.TBlockReader.Create(Src: TStream; AOwnsStream: Boolean; BufSize: integer; FromBeginning: boolean);
+begin
+  Stream := Src;
+  OwnsStream := AOwnsStream;
+  SetLength(Bytes, BufSize);
+  if not FromBeginning then
+    BytesToRead := Stream.Size - Stream.Position
+  else
+  begin
+    Stream.Position := 0;
+    BytesToRead := Stream.Size;
+  end;
+end;
+
+destructor TCustomDigest.TBlockReader.Destroy;
+begin
+  if OwnsStream then
+    Stream.Free;
+  Stream := nil;
+  inherited;
+  inherited;
+end;
+
+function TCustomDigest.TBlockReader.ReadNext: Boolean;
+begin
+  Result := BytesToRead > 0;
+  if Result then
+  begin
+    Count := Min(BytesToRead, Length(Bytes));
+    Stream.ReadBuffer(Bytes,  Count);
+    Dec(BytesToRead, Count);
+  end
+  else
+  begin
+    SetLength(Bytes, 0);
+    Count := 0;
+  end;
 end;
 
 end.
