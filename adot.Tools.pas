@@ -372,6 +372,10 @@ type
         types will be freed correctly) }
     class procedure Clear<T>(var R: T); static;
 
+    { creates new array (not just a reference to original one) with copy of all items }
+    class function Copy<T>(const Src: TArray<T>): TArray<T>; overload; static;
+    class function Copy<T>(const Src: TArray<T>; AStartIndex,ACount: integer): TArray<T>; overload; static;
+
     { Generic function to check if value is withing range }
     class function ValueInRange<T>(AValue, AValueFrom, AValueTo: T): boolean; static;
 
@@ -2045,6 +2049,18 @@ end;
 class procedure Sys.Clear<T>(var R: T);
 begin
   R := Default(T);
+end;
+
+class function Sys.Copy<T>(const Src: TArray<T>; AStartIndex, ACount: integer): TArray<T>;
+begin
+  SetLength(Result, ACount);
+  TArray.Copy<T>(Src, Result, AStartIndex, 0, ACount);
+end;
+
+class function Sys.Copy<T>(const Src: TArray<T>): TArray<T>;
+begin
+  SetLength(Result, Length(Src));
+  TArray.Copy<T>(Src, Result, Length(Src));
 end;
 
 class procedure Sys.Exchange<T>(var A, B: T);
